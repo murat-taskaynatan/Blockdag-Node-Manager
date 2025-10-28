@@ -127,7 +127,7 @@ cat <<EOF
 BlockDAG Node Manager installation complete.
   - Service name: $SERVICE_NAME
   - Config file: $ENV_FILE
-  - UI: http://$DISPLAY_HOST:${PORT_VALUE:-8080}/node-manager
+  - UI: http://$DISPLAY_HOST:${PORT_VALUE:-8081}/
   - Manage via: sudo systemctl {status|restart|stop} $SERVICE_NAME
   - Logs: journalctl -u $SERVICE_NAME -f
 

@@ -732,6 +732,7 @@ def healthz():
     return "ok\n", 200, {"content-type": "text/plain; charset=utf-8"}
 
 
+@app.route("/")
 @app.route("/node-manager")
 def node_manager_view():
     return render_template("node_manager.html", app_version=APP_VERSION, app_version_display=APP_VERSION)
