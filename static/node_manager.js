@@ -246,6 +246,7 @@
     setStat(card, '.stat-remote', stats.remote_height);
     setStat(card, '.stat-delta', stats.height_delta, { sign: true });
     setStat(card, '.stat-peers', stats.peers);
+    updateUptime(card, stats.uptime_seconds);
     updateStartStopButton(card.querySelector('[data-action="toggle"]'), running);
   }
 
@@ -263,6 +264,17 @@
     if (selector.includes('delta')) {
       el.classList.toggle('is-warn', num > 8);
     }
+  }
+
+  function updateUptime(card, seconds) {
+    const el = card.querySelector('.stat-uptime');
+    if (!el) return;
+    const total = Number(seconds);
+    if (!Number.isFinite(total) || total <= 0) {
+      el.textContent = '—';
+      return;
+    }
+    el.textContent = formatEtaDuration(total);
   }
 
   function formatEtaDuration(seconds) {
@@ -534,6 +546,7 @@
       setStat(card, '.stat-remote', metrics.remote_height);
       setStat(card, '.stat-delta', metrics.height_delta, { sign: true });
       setStat(card, '.stat-peers', metrics.peers);
+      updateUptime(card, metrics.uptime_seconds);
 
       const running = !!metrics.running;
       const nodeStatusEl = card.querySelector('.node-status');
