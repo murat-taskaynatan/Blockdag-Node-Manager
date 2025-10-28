@@ -108,11 +108,12 @@ PORT=$PORT_DEFAULT
 # BDAG_RPC_USER=
 # BDAG_RPC_PASS=
 EOF
-  sudo chmod 600 "$ENV_FILE"
 fi
+sudo chown "$SERVICE_USER":"$SERVICE_GROUP" "$ENV_FILE"
+sudo chmod 640 "$ENV_FILE"
 
 echo "[5/7] Installing systemd unit $SERVICE_NAME"
-START_CMD="/bin/bash -lc 'source $ENV_FILE 2>/dev/null || true; HOST=\${HOST:-0.0.0.0}; PORT=\${PORT:-8081}; exec $INSTALL_DIR/.venv/bin/waitress-serve --listen=\"\${HOST}:\${PORT}\" app:app'"
+START_CMD="/bin/bash -lc 'source $ENV_FILE 2>/dev/null || true; HOST=\$${HOST:-0.0.0.0}; PORT=\$${PORT:-8081}; exec $INSTALL_DIR/.venv/bin/waitress-serve --listen=\"\$${HOST}:\$${PORT}\" app:app'"
 sudo tee "$SYSTEMD_DIR/$SERVICE_NAME" >/dev/null <<EOF
 [Unit]
 Description=BlockDAG Node Manager
