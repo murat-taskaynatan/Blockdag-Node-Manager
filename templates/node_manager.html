@@ -16,7 +16,7 @@
   .stack{display:grid;gap:18px}
   .summary-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
   .summary-desc{margin:4px 0 0;color:var(--muted);font-size:13px}
-  .summary-actions{display:flex;gap:10px;flex-wrap:wrap}
+  .summary-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
   .summary-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
   .kv{background:rgba(255,255,255,.04);border-radius:12px;padding:12px 14px}
   .kv .k{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.06em}
@@ -78,7 +78,7 @@
   @keyframes pop{from{transform:scale(.98);opacity:.85}to{transform:scale(1);opacity:1}}
   @media (max-width:840px){
     summary.fleet-summary{flex-wrap:wrap;gap:8px}
-    .summary-actions{width:100%;justify-content:flex-start}
+    .summary-controls{width:100%;justify-content:flex-start}
     .chart-wrap canvas{height:200px}
   }
 </style>
@@ -99,7 +99,7 @@
           <div class="title">Global Stats</div>
           <p class="summary-desc">Real-time snapshot of every node discovered on the local network.</p>
         </div>
-        <div class="summary-actions">
+        <div class="summary-controls">
           <button class="btn btn--ghost" id="btnRefreshFleet">Refresh</button>
           <button class="btn btn--primary" id="btnDiscoverNodes">
             <span class="icon">🔍</span>
