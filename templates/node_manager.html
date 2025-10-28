@@ -37,10 +37,9 @@
   .summary-status-indicator{display:inline-block;width:10px;height:10px;border-radius:999px;background:var(--muted)}
   .summary-status-indicator.is-ok{background:var(--ok)}
   .summary-status-indicator.is-warn{background:var(--warn)}
-  .summary-status-text{font-size:12px;color:var(--muted)}
-  .summary-status-pill{background:rgba(255,255,255,.06)}
-  .summary-status-pill.is-online{color:var(--ok);background:rgba(37,211,102,.12)}
-  .summary-status-pill.is-offline{color:var(--bad);background:rgba(255,83,112,.18)}
+  .summary-status-text{font-size:13px;color:var(--muted)}
+  .summary-status-text.is-online{color:var(--ok)}
+  .summary-status-text.is-offline{color:var(--bad)}
   .status-chip{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:4px 11px;font-size:12px;font-weight:600;background:rgba(255,255,255,.06);color:var(--muted);letter-spacing:.05em;text-transform:uppercase}
   .summary-health-chip{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:4px 11px;font-size:12px;font-weight:600;background:rgba(255,255,255,.06);color:var(--muted);letter-spacing:.05em;text-transform:uppercase}
   .summary-health-chip.health-ok{color:var(--ok);background:rgba(37,211,102,.12)}
@@ -154,7 +153,6 @@
           <span class="summary-status-indicator"></span>
           <span class="summary-status-text">Status</span>
           <span class="status-chip summary-health-chip">Health</span>
-          <span class="status-chip summary-status-pill summary-status-text">Status</span>
           <span class="sync-pill" data-role="sync-pill">Sync —</span>
           <span class="sync-pill" data-role="sync-rate-pill">Rate —</span>
         </div>
