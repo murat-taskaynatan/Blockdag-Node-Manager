@@ -416,24 +416,34 @@ class NodeContext:
         return metrics
 
 
-def _load_node_configs() -> List[dict]:
-    if not NODE_CONFIG_PATH.exists():
-        return []
+def _load_node_configs() -> tuple[List[dict], bool]:
+    has_file = NODE_CONFIG_PATH.exists()
+    if not has_file:
+        return [], False
     try:
         content = NODE_CONFIG_PATH.read_text()
-        if not content.strip():
-            return []
+    except Exception as exc:
+        try:
+            app.logger.warning("Failed to read node config %s: %s", NODE_CONFIG_PATH, exc)
+        except Exception:
+            pass
+        return [], False
+    stripped = content.strip()
+    if not stripped:
+        return [], True
+    try:
         parsed = json.loads(content)
         if isinstance(parsed, dict) and "nodes" in parsed:
             parsed = parsed["nodes"]
         if isinstance(parsed, list):
-            return [entry for entry in parsed if isinstance(entry, dict)]
+            return [entry for entry in parsed if isinstance(entry, dict)], True
     except Exception as exc:
         try:
             app.logger.warning("Failed to parse node config %s: %s", NODE_CONFIG_PATH, exc)
         except Exception:
             pass
-    return []
+        return [], False
+    return [], True
 
 
 def _ensure_unique_id(base_id: str, existing: Iterable[str]) -> str:
@@ -447,8 +457,8 @@ def _ensure_unique_id(base_id: str, existing: Iterable[str]) -> str:
 
 def _initialise_nodes() -> "OrderedDict[str, NodeContext]":
     nodes = OrderedDict()
-    configs = _load_node_configs()
-    if not configs:
+    configs, explicit = _load_node_configs()
+    if not configs and not explicit:
         configs = [dict(DEFAULT_NODE_SETTINGS)]
     for entry in configs:
         entry = dict(entry)
