@@ -62,12 +62,12 @@ if [[ ! -f "$SOURCE_DIR/app.py" ]]; then
   need_cmd git
   TEMP_DIR="$(mktemp -d)"
   trap cleanup EXIT
-  echo "[0/7] Source tree missing; cloning $REPO_URL (ref $REPO_REF)"
+  echo "[0/8] Source tree missing; cloning $REPO_URL (ref $REPO_REF)"
   git clone --depth 1 --branch "$REPO_REF" --single-branch "$REPO_URL" "$TEMP_DIR/repo"
   SOURCE_DIR="$TEMP_DIR/repo"
 fi
 
-echo "[1/7] Removing any existing installation of $SERVICE_NAME (if present)"
+echo "[1/8] Removing any existing installation of $SERVICE_NAME (if present)"
 if systemctl list-unit-files --type=service 2>/dev/null | grep -q "^${SERVICE_NAME}"; then
   sudo systemctl disable --now "$SERVICE_NAME" >/dev/null 2>&1 || true
 fi
@@ -78,7 +78,7 @@ if [[ -d "$INSTALL_DIR" ]]; then
 fi
 sudo systemctl daemon-reload
 
-echo "[2/7] Syncing files to $INSTALL_DIR"
+echo "[2/8] Syncing files to $INSTALL_DIR"
 sudo mkdir -p "$INSTALL_DIR"
 sudo chown "$SERVICE_USER":"$SERVICE_GROUP" "$INSTALL_DIR"
 rsync -a --delete \
@@ -86,7 +86,7 @@ rsync -a --delete \
   --exclude='.venv/' \
   "$SOURCE_DIR/" "$INSTALL_DIR/"
 
-echo "[3/7] Preparing Python environment"
+echo "[3/8] Preparing Python environment"
 "$PYTHON_BIN" -m venv "$INSTALL_DIR/.venv"
 source "$INSTALL_DIR/.venv/bin/activate"
 pip install --upgrade pip >/dev/null
@@ -97,7 +97,7 @@ else
 fi
 deactivate
 
-echo "[4/7] Writing environment file $ENV_FILE"
+echo "[4/8] Writing environment file $ENV_FILE"
 sudo mkdir -p "$ENV_DIR"
 if [[ ! -f "$ENV_FILE" ]]; then
   sudo tee "$ENV_FILE" >/dev/null <<EOF
@@ -112,8 +112,35 @@ fi
 sudo chown "$SERVICE_USER":"$SERVICE_GROUP" "$ENV_FILE"
 sudo chmod 640 "$ENV_FILE"
 
-echo "[5/7] Installing systemd unit $SERVICE_NAME"
-START_CMD="/bin/bash -lc 'source $ENV_FILE 2>/dev/null || true; HOST=\$${HOST:-0.0.0.0}; PORT=\$${PORT:-8081}; exec $INSTALL_DIR/.venv/bin/waitress-serve --listen=\"\$${HOST}:\$${PORT}\" app:app'"
+echo "[5/8] Writing launch helper $INSTALL_DIR/run_node_manager.sh"
+RUNNER="$INSTALL_DIR/run_node_manager.sh"
+sudo tee "$RUNNER" >/dev/null <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+ENV_FILE="__ENV_FILE__"
+INSTALL_DIR="__INSTALL_DIR__"
+VENV_BIN="$INSTALL_DIR/.venv/bin"
+
+if [[ -f "$ENV_FILE" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$ENV_FILE"
+  set +a
+fi
+
+HOST="${HOST:-0.0.0.0}"
+PORT="${PORT:-8081}"
+cd "$INSTALL_DIR"
+exec "$VENV_BIN/waitress-serve" --listen="${HOST}:${PORT}" app:app
+EOF
+sudo sed -i \
+  -e "s|__ENV_FILE__|$ENV_FILE|g" \
+  -e "s|__INSTALL_DIR__|$INSTALL_DIR|g" \
+  "$RUNNER"
+sudo chown "$SERVICE_USER":"$SERVICE_GROUP" "$RUNNER"
+sudo chmod 750 "$RUNNER"
+
+echo "[6/8] Installing systemd unit $SERVICE_NAME"
 sudo tee "$SYSTEMD_DIR/$SERVICE_NAME" >/dev/null <<EOF
 [Unit]
 Description=BlockDAG Node Manager
@@ -127,7 +154,7 @@ Group=$SERVICE_GROUP
 WorkingDirectory=$INSTALL_DIR
 Environment=PYTHONPATH=$INSTALL_DIR
 Environment=PYTHONWARNINGS=ignore:Unverified HTTPS request
-ExecStart=$START_CMD
+ExecStart=$RUNNER
 Restart=on-failure
 RestartSec=2
 
@@ -135,7 +162,7 @@ RestartSec=2
 WantedBy=multi-user.target
 EOF
 
-echo "[6/7] Reloading systemd and starting service"
+echo "[7/8] Reloading systemd and starting service"
 sudo systemctl daemon-reload
 sudo systemctl enable --now "$SERVICE_NAME"
 
@@ -153,7 +180,7 @@ if [[ "$DISPLAY_HOST" == *:* && "$DISPLAY_HOST" != \[* ]]; then
 fi
 
 cat <<EOF
-[7/7] Installation summary:
+[8/8] Installation summary:
 BlockDAG Node Manager installation complete.
   - Service name: $SERVICE_NAME
   - Config file: $ENV_FILE
