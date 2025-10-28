@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_URL="${REPO_URL:-https://github.com/murat-taskaynatan/Blockdag-Node-Manager.git}"
-REPO_REF="${REPO_REF:-${REPO_BRANCH:-main}}"
 INSTALL_DIR="${INSTALL_DIR:-/opt/blockdag-node-manager}"
 SERVICE_NAME="${SERVICE_NAME:-blockdag-node-manager.service}"
 SYSTEMD_DIR="${SYSTEMD_DIR:-/etc/systemd/system}"
@@ -45,29 +43,21 @@ ensure_packages() {
   fi
 }
 
-cleanup() {
-  rm -rf "$TEMP_ROOT"
-}
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SOURCE_DIR="${SOURCE_DIR:-$SCRIPT_DIR}"
 
-need_cmd git
 need_cmd "$PYTHON_BIN"
 ensure_packages python3 python3-venv python3-pip rsync
 
-TEMP_ROOT="$(mktemp -d)"
-trap cleanup EXIT
-
-echo "[1/6] Cloning $REPO_URL (ref $REPO_REF)"
-git clone --depth 1 --branch "$REPO_REF" --single-branch "$REPO_URL" "$TEMP_ROOT/repo"
-
-echo "[2/6] Syncing files to $INSTALL_DIR"
+echo "[1/6] Syncing files to $INSTALL_DIR"
 sudo mkdir -p "$INSTALL_DIR"
 sudo chown "$SERVICE_USER":"$SERVICE_GROUP" "$INSTALL_DIR"
 rsync -a --delete \
   --exclude='.git/' \
   --exclude='.venv/' \
-  "$TEMP_ROOT/repo/" "$INSTALL_DIR/"
+  "$SOURCE_DIR/" "$INSTALL_DIR/"
 
-echo "[3/6] Preparing Python environment"
+echo "[2/6] Preparing Python environment"
 "$PYTHON_BIN" -m venv "$INSTALL_DIR/.venv"
 source "$INSTALL_DIR/.venv/bin/activate"
 pip install --upgrade pip >/dev/null
@@ -78,7 +68,7 @@ else
 fi
 deactivate
 
-echo "[4/6] Writing environment file $ENV_FILE"
+echo "[3/6] Writing environment file $ENV_FILE"
 sudo mkdir -p "$ENV_DIR"
 if [[ ! -f "$ENV_FILE" ]]; then
   sudo tee "$ENV_FILE" >/dev/null <<EOF
@@ -92,7 +82,7 @@ EOF
   sudo chmod 600 "$ENV_FILE"
 fi
 
-echo "[5/6] Installing systemd unit $SERVICE_NAME"
+echo "[4/6] Installing systemd unit $SERVICE_NAME"
 START_CMD="/bin/bash -lc 'source $ENV_FILE 2>/dev/null || true; HOST=\${HOST:-0.0.0.0}; PORT=\${PORT:-8080}; exec $INSTALL_DIR/.venv/bin/waitress-serve --listen=\"\${HOST}:\${PORT}\" app:app'"
 sudo tee "$SYSTEMD_DIR/$SERVICE_NAME" >/dev/null <<EOF
 [Unit]
@@ -115,7 +105,7 @@ RestartSec=2
 WantedBy=multi-user.target
 EOF
 
-echo "[6/6] Reloading systemd and starting service"
+echo "[5/6] Reloading systemd and starting service"
 sudo systemctl daemon-reload
 sudo systemctl enable --now "$SERVICE_NAME"
 
