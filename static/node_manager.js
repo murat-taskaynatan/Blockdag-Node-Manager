@@ -223,7 +223,7 @@
       summaryIndicator.classList.add(running ? 'is-ok' : 'is-warn');
     }
     if (summaryStatusText) {
-      summaryStatusText.textContent = running ? 'Online' : 'Offline';
+      summaryStatusText.textContent = running ? 'ONLINE' : 'OFFLINE';
       summaryStatusText.classList.remove('is-online', 'is-offline');
       summaryStatusText.classList.add(running ? 'is-online' : 'is-offline');
     }
@@ -605,7 +605,7 @@
 
       const summaryStatusText = card.querySelector('.summary-status-text');
       if (summaryStatusText) {
-        summaryStatusText.textContent = running ? 'Online' : 'Offline';
+        summaryStatusText.textContent = running ? 'ONLINE' : 'OFFLINE';
         summaryStatusText.classList.remove('is-online', 'is-offline');
         summaryStatusText.classList.add(running ? 'is-online' : 'is-offline');
       }
