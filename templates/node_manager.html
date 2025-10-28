@@ -1,6 +1,6 @@
 <!doctype html>
 <meta charset="utf-8">
-<title>BlockDAG Node Manager</title>
+<title>BlockDAG | Node Manager</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="https://blockdag.network/images/presskit/Symbol.svg">
 <style>
@@ -32,14 +32,23 @@
   summary.fleet-summary{list-style:none;margin:0;padding:16px 18px;border-bottom:1px solid rgba(255,255,255,.04);display:flex;align-items:center;justify-content:space-between;cursor:pointer}
   summary.fleet-summary::-webkit-details-marker{display:none}
   .summary-main{display:flex;flex-direction:column;gap:4px}
+  .summary-left{display:flex;flex-direction:column;gap:8px}
+  .summary-status{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+  .status-chip{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:4px 11px;font-size:12px;font-weight:600;background:rgba(255,255,255,.06);color:var(--muted);letter-spacing:.05em;text-transform:uppercase}
+  .status-chip.is-online{color:var(--ok);background:rgba(37,211,102,.15)}
+  .status-chip.is-offline{color:var(--bad);background:rgba(255,83,112,.18)}
+  .status-chip.health-ok{color:var(--ok);background:rgba(37,211,102,.12)}
+  .status-chip.health-warn{color:var(--warn);background:rgba(255,183,77,.16)}
+  .status-chip.health-bad{color:var(--bad);background:rgba(255,83,112,.18)}
   .node-name{font-size:18px;font-weight:600}
   .node-meta{font-size:13px;color:var(--muted)}
   .summary-actions{display:flex;align-items:center;gap:10px}
-  .icon-btn{width:36px;height:36px;border-radius:10px;border:1px solid rgba(255,255,255,.1);background:transparent;color:inherit;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background .2s,border .2s,color .2s}
-  .icon-btn:hover:not(:disabled){background:rgba(255,255,255,.08)}
-  .icon-btn.play[data-paused=\"1\"] .icon{transform:none}
-  .icon-btn.play .icon{font-size:16px;transform:translateX(1px)}
-  .icon-btn.restart{color:#ffb74d;border-color:rgba(255,183,77,.4)}
+.icon-btn{width:36px;height:36px;border-radius:10px;border:1px solid rgba(255,255,255,.1);background:transparent;color:inherit;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background .2s,border .2s,color .2s}
+.icon-btn:hover:not(:disabled){background:rgba(255,255,255,.08)}
+.icon-btn.play .icon{font-size:16px;transform:none}
+.icon-btn.play[data-running="0"] .icon{transform:translateX(1px)}
+
+.icon-btn.restart{color:#ffb74d;border-color:rgba(255,183,77,.4)}
   .icon-btn[disabled]{opacity:.5;cursor:default}
   .fleet-body{padding:0 18px 18px;display:grid;gap:12px}
   .node-status{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px}
@@ -68,7 +77,7 @@
   <div class="header">
     <div style="display:flex;align-items:center;gap:10px">
       <img src="{{ url_for('static', filename='3d.gif') }}" alt="BlockDAG">
-      <h1 class="title">BlockDAG Node Manager</h1>
+      <h1 class="title">BlockDAG | Node Manager</h1>
     </div>
     <span class="pill" id="globalSummaryBadge">Loading…</span>
   </div>
@@ -125,9 +134,15 @@
 <template id="nodeCardTemplate">
   <details class="fleet-card" open>
     <summary class="fleet-summary">
-      <div class="summary-main">
-        <span class="node-name">Node</span>
-        <span class="node-meta">—</span>
+      <div class="summary-left">
+        <div class="summary-main">
+          <span class="node-name">Node</span>
+          <span class="node-meta">—</span>
+        </div>
+        <div class="summary-status">
+          <span class="status-chip summary-status-chip">Status</span>
+          <span class="status-chip summary-health-chip">Health</span>
+        </div>
       </div>
       <div class="summary-actions">
         <button class="icon-btn play" data-action="toggle" aria-label="Pause sampling">
@@ -168,5 +183,5 @@
   </details>
 </template>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" integrity="sha384-NrKB+u6Ts6AtkIhwPixiKTzgSKNblyhlk0Sohlgar9UHUBzai/sgnNNWWd291xqt" crossorigin="anonymous"></script>
-<script src="{{ url_for('static', filename='node_manager.js') }}"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" integrity="sha256-s4B2di9zY7yekStouOA0gmeY213ya7YfAA7C56MTe8c=" crossorigin="anonymous"></script>
+<script src="{{ url_for('static', filename='node_manager.js') }}?v={{ app_version }}-{{ cache_buster }}"></script>
