@@ -164,7 +164,7 @@
       if (digits.length) {
         return `Node Worker - ${digits[0]}`;
       }
-      return `Node Worker - ${state.nodes.size}`;
+      return 'Node Worker';
     })();
     card.querySelector('.node-name').textContent = workerLabel;
     card.querySelector('.node-meta').textContent = node.container || '—';
