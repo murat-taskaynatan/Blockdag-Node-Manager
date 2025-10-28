@@ -109,11 +109,25 @@ echo "[5/6] Reloading systemd and starting service"
 sudo systemctl daemon-reload
 sudo systemctl enable --now "$SERVICE_NAME"
 
+HOST_VALUE="$(sudo awk -F= '/^HOST=/{print $2}' "$ENV_FILE" 2>/dev/null | tail -n1)"
+PORT_VALUE="$(sudo awk -F= '/^PORT=/{print $2}' "$ENV_FILE" 2>/dev/null | tail -n1)"
+HOST_VALUE="${HOST_VALUE:-$HOST_DEFAULT}"
+PORT_VALUE="${PORT_VALUE:-$PORT_DEFAULT}"
+if [[ -z "$HOST_VALUE" || "$HOST_VALUE" == "0.0.0.0" || "$HOST_VALUE" == "::" || "$HOST_VALUE" == "[::]" ]]; then
+  DISPLAY_HOST="localhost"
+else
+  DISPLAY_HOST="$HOST_VALUE"
+fi
+if [[ "$DISPLAY_HOST" == *:* && "$DISPLAY_HOST" != \[* ]]; then
+  DISPLAY_HOST="[$DISPLAY_HOST]"
+fi
+
 cat <<EOF
 
 BlockDAG Node Manager installation complete.
   - Service name: $SERVICE_NAME
   - Config file: $ENV_FILE
+  - UI: http://$DISPLAY_HOST:${PORT_VALUE:-8080}/node-manager
   - Manage via: sudo systemctl {status|restart|stop} $SERVICE_NAME
   - Logs: journalctl -u $SERVICE_NAME -f
 

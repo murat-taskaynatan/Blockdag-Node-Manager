@@ -46,9 +46,23 @@ echo "[3/4] Cleaning temporary checkout"
 cleanup
 trap - EXIT
 
+HOST_VALUE="$(sudo awk -F= '/^HOST=/{print $2}' "$ENV_FILE" 2>/dev/null | tail -n1)"
+PORT_VALUE="$(sudo awk -F= '/^PORT=/{print $2}' "$ENV_FILE" 2>/dev/null | tail -n1)"
+HOST_VALUE="${HOST_VALUE:-$HOST}"
+PORT_VALUE="${PORT_VALUE:-$PORT}"
+if [[ -z "$HOST_VALUE" || "$HOST_VALUE" == "0.0.0.0" || "$HOST_VALUE" == "::" || "$HOST_VALUE" == "[::]" ]]; then
+  DISPLAY_HOST="localhost"
+else
+  DISPLAY_HOST="$HOST_VALUE"
+fi
+if [[ "$DISPLAY_HOST" == *:* && "$DISPLAY_HOST" != \[* ]]; then
+  DISPLAY_HOST="[$DISPLAY_HOST]"
+fi
+
 cat <<EOF
 [4/4] Installation finished!
   - Deployed from $REPO_URL@$REPO_REF
   - Service name: $SERVICE_NAME
   - Config file: $ENV_FILE
+  - UI: http://$DISPLAY_HOST:${PORT_VALUE:-8080}/node-manager
 EOF
