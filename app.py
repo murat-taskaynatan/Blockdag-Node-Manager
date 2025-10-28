@@ -9,6 +9,7 @@ import time
 from collections import OrderedDict, deque
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
+from urllib.parse import urlparse
 
 import requests
 from flask import Flask, abort, jsonify, render_template, request
@@ -179,8 +180,23 @@ def _resolve_container_rpc_base(info: dict, env: Dict[str, str]) -> Optional[str
         "RPC_URL",
         "RPC_ENDPOINT",
     ):
-        if env.get(key):
-            return _normalize_rpc_endpoint(env.get(key))
+        value = env.get(key)
+        if not value:
+            continue
+        normalized = _normalize_rpc_endpoint(value)
+        try:
+            parsed = urlparse(normalized)
+        except Exception:
+            parsed = None
+        scheme = (parsed.scheme if parsed else "").lower()
+        host = (parsed.hostname if parsed else "") or ""
+        if scheme not in {"http", "https"}:
+            # skip websocket or other schemes; fall back to port mapping
+            continue
+        if host in {"127.0.0.1", "localhost"}:
+            # inside-container loopback; prefer mapped host port resolution
+            continue
+        return normalized
     ports = info.get("NetworkSettings", {}).get("Ports") or {}
     for port_key, bindings in ports.items():
         if not isinstance(port_key, str) or "/tcp" not in port_key:
