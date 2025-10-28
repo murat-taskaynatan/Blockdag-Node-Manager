@@ -656,7 +656,7 @@
           summaryRatePill.removeAttribute('title');
         } else {
           const formattedRate = rate >= 10 ? rate.toFixed(1) : rate.toFixed(2);
-          summaryRatePill.textContent = `Rate ${formattedRate}/s`;
+          summaryRatePill.textContent = `Rate ${formattedRate} blk/s`;
           summaryRatePill.title = `Approximate sync speed: ${formattedRate} blocks per second`;
         }
       }
