@@ -1,149 +1,94 @@
-# BlockDAG Dashboard Installation Guide
+# BlockDAG Node Manager Installation Guide
 
-This guide walks through installing the BlockDAG Dashboard service on a fresh machine. It covers both deployment options shipped in this repository:
+This guide explains how to deploy the BlockDAG Node Manager UI as a system service using the bundled helper script `install_node_manager.sh`.
 
-- `install_dashboard.sh` – installs from a local checkout.
-- `install_from_github.sh` – clones from GitHub and installs in one step.
+## 1. Prerequisites
 
-> **Default Paths**
-> - Application files: `/opt/blockdag-dashboard`
-> - Environment variables: `/etc/blockdag-dashboard/dashboard.env`
-> - Systemd unit: `blockdag-dashboard.service`
+- Ubuntu/Debian or RHEL/Fedora style host with `sudo`
+- Python 3.9+ with `venv`
+- `git`, `rsync`, `systemctl`, and Docker (optional but recommended for discovery/control)
 
----
+## 2. Quick Install
 
-## 1. Preparation
-
-1. **Clone the repo (local installer only)**
-   ```bash
-   git clone https://github.com/murat-taskaynatan/BlockDAG-Node-Dashboard.git
-   cd BlockDAG-Node-Dashboard
-   ```
-
-2. **Install prerequisites**
-   - Python 3.9+ with `venv`
-   - `git`, `rsync`, `sudo`, `systemctl`
-   - Optional but recommended: run `./scripts/setup_environment.sh` (requires sudo) to install dependencies and create `/etc/blockdag-dashboard/dashboard.env`.
-
-3. **Ensure RPC endpoint**
-   - Default node RPC URL: `http://127.0.0.1:18545`
-   - If your node runs elsewhere, note its URL for later.
-
----
-
-## 2. Install From Local Checkout
-
-Run from inside the repository:
+Clone the repository and run the installer:
 
 ```bash
-sudo ./install_dashboard.sh
+git clone https://github.com/murat-taskaynatan/Blockdag-Node-Manager.git
+cd Blockdag-Node-Manager
+sudo ./install_node_manager.sh
 ```
 
-**What it does**
+The script will:
 
-1. Verifies prerequisites (`python3`, `rsync`, `sudo`, `systemctl`).
-2. Syncs the repo into `/opt/blockdag-dashboard`.
-3. Creates `/opt/blockdag-dashboard/.venv`, upgrades `pip`, installs `requirements.txt` (or fallback: `flask`, `requests`, `waitress`).
-4. Installs `scripts/blockdag-dashboard.service` into `/etc/systemd/system/` (or generates a default unit), reloads systemd, and enables the service immediately.
-5. Installs the sidecar helper (`scripts/bdag_sidecar.py`, `bdag-sidecar.service`, `bdag-sidecar.timer`) and enables the timer if present.
-6. Prints `systemctl status blockdag-dashboard` for verification.
+1. Clone or sync the repository into `/opt/blockdag-node-manager`.
+2. Create a Python virtual environment in `/opt/blockdag-node-manager/.venv`.
+3. Install dependencies from `requirements.txt` (falls back to `flask`, `requests`, `waitress` if missing).
+4. Write `/etc/blockdag-node-manager/node-manager.env` with overridable environment variables.
+5. Register and start the `blockdag-node-manager.service` systemd unit.
 
-**Overrides (optional)**
+Afterwards, visit `http://<host>:8080/node-manager` (defaults to all interfaces on port `8080`).
 
-Set environment variables before running the script to customize:
+## 3. Customising the Install
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `INSTALL_DIR` | Target install path | `/opt/blockdag-dashboard` |
-| `SERVICE_NAME` | Systemd unit filename | `blockdag-dashboard.service` |
-| `SERVICE_USER` / `SERVICE_GROUP` | Service owner | current user |
-| `PYTHON_BIN` | Python interpreter | `python3` |
+Set environment variables before running the installer:
+
+| Variable      | Description                              | Default                               |
+|---------------|------------------------------------------|---------------------------------------|
+| `INSTALL_DIR` | Deploy location for the app              | `/opt/blockdag-node-manager`          |
+| `SERVICE_NAME`| Systemd unit filename                    | `blockdag-node-manager.service`       |
+| `SERVICE_USER`/`SERVICE_GROUP` | Service owner/group    | detected from `SUDO_USER`             |
+| `HOST`        | Listen address for waitress              | `0.0.0.0`                             |
+| `PORT`        | Listen port for waitress                 | `8080`                                |
+| `REPO_URL` / `REPO_REF` | Alternate source/ref         | this repository / `main`              |
 
 Example:
 
 ```bash
-sudo INSTALL_DIR=/srv/dashboard SERVICE_USER=flask \
-  ./install_dashboard.sh
+sudo INSTALL_DIR=/srv/bdag-manager \
+     SERVICE_USER=flask \
+     HOST=127.0.0.1 PORT=5000 \
+     ./install_node_manager.sh
 ```
 
----
+## 4. Runtime Configuration
 
-## 3. Install Directly From GitHub
+Edit `/etc/blockdag-node-manager/node-manager.env` to override RPC settings or binding options:
 
-This script handles cloning and installation in one step—helpful for fresh hosts without the repo checked out.
+```
+HOST=0.0.0.0
+PORT=8080
+BDAG_RPC_BASE=http://127.0.0.1:18545
+BDAG_RPC_USER=
+BDAG_RPC_PASS=
+```
+
+Restart the service after changes:
 
 ```bash
-REPO_REF=v1.4.0-beta \
-  ./install_from_github.sh
+sudo systemctl restart blockdag-node-manager.service
 ```
 
----
-
-## 4. Post-Install Checklist
-
-1. **Verify service**
-   ```bash
-   systemctl status blockdag-dashboard
-   ```
-   Look for `Active: active (running)`.
-
-2. **Configure RPC settings (if needed)**
-   - Edit `/etc/blockdag-dashboard/dashboard.env` and set:
-     ```
-     BDAG_RPC_BASE=http://127.0.0.1:18545
-     ```
-   - Restart after changes:
-     ```bash
-     sudo systemctl restart blockdag-dashboard
-     ```
-
-3. **Open firewall/port**
-   - Dashboard listens on TCP `8080` by default. Allow inbound access if needed.
-
-4. **Check logs**
-   - `journalctl -u blockdag-dashboard -f`
-   - Sidecar timer: `systemctl status bdag-sidecar.timer`
-
----
-
-## 5. Removal / Cleanup
-
-Disable and remove units:
+## 5. Managing the Service
 
 ```bash
-
-  - Stop and disable the services so they don’t restart:
-
-    sudo systemctl disable --now blockdag-dashboard.service
-    sudo systemctl disable --now bdag-sidecar.timer
-    sudo systemctl disable --now bdag-sidecar.service
-
-  - Remove the systemd unit files and sidecar helper, then refresh systemd:
-
-    sudo rm -f /etc/systemd/system/blockdag-dashboard.service
-    sudo rm -f /etc/systemd/system/bdag-sidecar.service
-    sudo rm -f /etc/systemd/system/bdag-sidecar.timer
-    sudo rm -f /usr/local/bin/bdag_sidecar.py
-    sudo systemctl daemon-reload
-    sudo systemctl reset-failed 
- 
+sudo systemctl status blockdag-node-manager.service   # check status
+sudo systemctl restart blockdag-node-manager.service  # restart
+sudo systemctl stop blockdag-node-manager.service     # stop
+journalctl -u blockdag-node-manager.service -f        # tail logs
 ```
 
-Delete the dashboard application and configuration directories (adjust paths if you installed elsewhere):
+## 6. Uninstall
 
 ```bash
-sudo rm -rf /opt/blockdag-dashboard
-sudo rm -rf /etc/blockdag-dashboard
-
-- Optional cleanup: remove any custom data/backup paths you pointed the dashboard at (check /etc/blockdag-dashboard/
-dashboard.env before deleting).
+sudo systemctl disable --now blockdag-node-manager.service
+sudo rm -f /etc/systemd/system/blockdag-node-manager.service
+sudo rm -rf /opt/blockdag-node-manager
+sudo rm -rf /etc/blockdag-node-manager
+sudo systemctl daemon-reload
+sudo systemctl reset-failed
 ```
 
----
+## 7. Support
 
-## 5. Support
-
-- Repo issues list: <https://github.com/murat-taskaynatan/BlockDAG-Node-Dashboard/issues>
-- Provide logs (`journalctl -u blockdag-dashboard`) and environment details when reporting problems.
-
-Happy monitoring!
+- Open issues at <https://github.com/murat-taskaynatan/Blockdag-Node-Manager/issues>
+- Include `journalctl -u blockdag-node-manager.service` logs and `node-manager.env` overrides when reporting problems.
