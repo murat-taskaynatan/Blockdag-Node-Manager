@@ -5,7 +5,7 @@ BlockDAG Node Manager is a lightweight Flask application that discovers, monitor
 <img width="975" height="961" alt="image" src="https://github.com/user-attachments/assets/9959bfd1-7b8b-4837-9b67-e28e6e4cdea0" />
 
 
-![Node Manager UI](static/3d.gif)
+
 
 ## Features
 - Automatic discovery of local Docker containers running BlockDAG nodes.
@@ -73,3 +73,5 @@ All runtime overrides are stored in `/etc/blockdag-node-manager/node-manager.env
 
 ## License
 This project is released under the MIT License. See `LICENSE` for details.
+
+![Node Manager UI](static/3d.gif)
