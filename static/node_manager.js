@@ -154,7 +154,19 @@
       card.open = false;
       card.removeAttribute('open');
     }
-    card.querySelector('.node-name').textContent = node.label || node.id;
+    const workerLabel = (() => {
+      const suffix = node.id.toString().split('-').pop();
+      const num = Number(suffix);
+      if (Number.isFinite(num) && num >= 1) {
+        return `Node Worker - ${num}`;
+      }
+      const digits = (node.id.match(/\d+/g) || []).map(Number).filter((n) => Number.isFinite(n));
+      if (digits.length) {
+        return `Node Worker - ${digits[0]}`;
+      }
+      return `Node Worker - ${state.nodes.size}`;
+    })();
+    card.querySelector('.node-name').textContent = workerLabel;
     card.querySelector('.node-meta').textContent = node.container || '—';
 
     const statusEl = card.querySelector('.status-text');
