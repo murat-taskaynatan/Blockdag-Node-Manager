@@ -638,7 +638,7 @@
           summarySyncPill.textContent = 'Sync —';
           summarySyncPill.removeAttribute('title');
         } else {
-          const formatted = progress >= 99.5 ? '100%' : `${progress.toFixed(progress >= 10 ? 1 : 2)}%`;
+          const formatted = `${progress.toFixed(2)}%`;
           summarySyncPill.textContent = `Sync ${formatted}`;
           summarySyncPill.title = `Local height ${metrics.local_height} of ${metrics.remote_height}`;
         }
