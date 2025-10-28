@@ -4,6 +4,7 @@
     charts: new Map(), // id -> Chart instance
     paused: new Set(),
     lastRates: new Map(), // id -> last non-null sync rate
+    lastProgress: new Map(), // id -> last non-null sync progress
     lastMetricsTs: 0,
   };
 
@@ -85,6 +86,7 @@
         state.charts.delete(nodeId);
         state.paused.delete(nodeId);
         state.lastRates.delete(nodeId);
+        state.lastProgress.delete(nodeId);
       }
     });
   }
@@ -250,8 +252,15 @@
     }
 
     if (summarySyncPill) {
-      summarySyncPill.textContent = 'Sync —';
-      summarySyncPill.removeAttribute('title');
+      const cachedProgress = state.lastProgress.get(node.id);
+      if (Number.isFinite(cachedProgress)) {
+        const formatted = `${cachedProgress.toFixed(1)}%`;
+        summarySyncPill.textContent = `Sync ${formatted}`;
+        summarySyncPill.title = 'Last recorded sync progress';
+      } else {
+        summarySyncPill.textContent = 'Sync —';
+        summarySyncPill.removeAttribute('title');
+      }
     }
     if (summaryRatePill) {
       const cachedRate = state.lastRates.get(node.id);
@@ -642,6 +651,7 @@
           summarySyncPill.textContent = 'Sync —';
           summarySyncPill.removeAttribute('title');
         } else {
+          state.lastProgress.set(nodeId, progress);
           const formatted = `${progress.toFixed(1)}%`;
           summarySyncPill.textContent = `Sync ${formatted}`;
           summarySyncPill.title = `Local height ${metrics.local_height} of ${metrics.remote_height}`;
