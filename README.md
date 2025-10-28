@@ -68,10 +68,11 @@ All runtime overrides are stored in `/etc/blockdag-node-manager/node-manager.env
 Need a zero-touch install on a fresh host? Use the remote installer:
 
 ```bash
-./install_from_github.sh
+curl -fsSL https://raw.githubusercontent.com/murat-taskaynatan/Blockdag-Node-Manager/main/install_nm_from_github.sh \
+  -o install_nm_from_github.sh && chmod +x install_nm_from_github.sh && sudo ./install_nm_from_github.sh
 ```
 
-It clones the latest repository (override with `REPO_REF` if desired) and runs the same deployment flow without requiring a local checkout.
+It downloads the installer, makes it executable, (optionally) honours overrides like `REPO_REF`, then runs the same deployment flow without requiring a local checkout.
 
 ## API Overview
 - `GET /api/node-manager/nodes` — summary of discovered nodes and status.

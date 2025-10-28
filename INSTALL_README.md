@@ -33,9 +33,8 @@ Afterwards, visit `http://<host>:8080/node-manager` (defaults to all interfaces 
 Need to bootstrap a host without cloning this repository first? Use the fetch-and-install helper:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/murat-taskaynatan/Blockdag-Node-Manager/main/install_from_github.sh -o install_from_github.sh
-chmod +x install_from_github.sh
-sudo ./install_from_github.sh
+curl -fsSL https://raw.githubusercontent.com/murat-taskaynatan/Blockdag-Node-Manager/main/install_nm_from_github.sh \
+  -o install_nm_from_github.sh && chmod +x install_nm_from_github.sh && sudo ./install_nm_from_github.sh
 ```
 
 Customize with the same environment variables (`REPO_REF`, `INSTALL_DIR`, etc.) as the local installer.
