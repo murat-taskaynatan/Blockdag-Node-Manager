@@ -226,6 +226,101 @@
     }
   }
 
+  function formatEtaDuration(seconds) {
+    const total = Math.max(0, Math.round(seconds));
+    if (!Number.isFinite(total) || total <= 0) {
+      return '<1m';
+    }
+    const units = [
+      { label: 'd', value: 86400 },
+      { label: 'h', value: 3600 },
+      { label: 'm', value: 60 },
+    ];
+    const parts = [];
+    let remaining = total;
+    for (const unit of units) {
+      if (remaining >= unit.value) {
+        const count = Math.floor(remaining / unit.value);
+        parts.push(`${count}${unit.label}`);
+        remaining %= unit.value;
+      }
+      if (parts.length === 2) {
+        break;
+      }
+    }
+    if (parts.length === 0) {
+      return '<1m';
+    }
+    return parts.join(' ');
+  }
+
+  function computeEtaInfo(metrics) {
+    const remote = Number(metrics.remote_height);
+    const local = Number(metrics.local_height);
+    if (!Number.isFinite(remote) || !Number.isFinite(local)) {
+      return null;
+    }
+    const remaining = remote - local;
+    if (!Number.isFinite(remaining)) {
+      return null;
+    }
+    if (remaining <= 0) {
+      return { text: 'Fully synced', variant: 'ok' };
+    }
+    const labels = Array.isArray(metrics.labels) ? metrics.labels : [];
+    const localSeries = Array.isArray(metrics.local) ? metrics.local : [];
+    const len = Math.min(labels.length, localSeries.length);
+    const samples = [];
+    for (let idx = len - 1; idx >= 0 && samples.length < 6; idx -= 1) {
+      const ts = Number(labels[idx]);
+      const val = Number(localSeries[idx]);
+      if (Number.isFinite(ts) && Number.isFinite(val)) {
+        samples.push({ ts, val });
+      }
+    }
+    if (samples.length < 2) {
+      return { text: 'ETA pending…', variant: null };
+    }
+    const latest = samples[0];
+    const earliest = samples[samples.length - 1];
+    const dtSec = (latest.ts - earliest.ts) / 1000;
+    const delta = latest.val - earliest.val;
+    if (!Number.isFinite(dtSec) || dtSec <= 0 || !Number.isFinite(delta) || delta <= 0) {
+      return { text: 'ETA pending…', variant: null };
+    }
+    const rate = delta / dtSec;
+    if (!Number.isFinite(rate) || rate <= 0) {
+      return { text: 'ETA pending…', variant: null };
+    }
+    const etaSec = remaining / rate;
+    if (!Number.isFinite(etaSec) || etaSec <= 0) {
+      return { text: 'ETA pending…', variant: null };
+    }
+    const pretty = formatEtaDuration(etaSec);
+    let variant = 'warn';
+    if (etaSec <= 900) {
+      variant = 'ok';
+    } else if (etaSec >= 21600) {
+      variant = 'danger';
+    }
+    return { text: `ETA ~ ${pretty}`, variant };
+  }
+
+  function updateEta(card, metrics) {
+    const etaEl = card.querySelector('[data-role="eta"]');
+    if (!etaEl) return;
+    etaEl.classList.remove('is-ok', 'is-warn', 'is-danger');
+    const info = computeEtaInfo(metrics);
+    if (!info) {
+      etaEl.textContent = 'ETA —';
+      return;
+    }
+    etaEl.textContent = info.text;
+    if (info.variant) {
+      etaEl.classList.add(`is-${info.variant}`);
+    }
+  }
+
   function createChart(ctx) {
     return new Chart(ctx, {
       type: 'line',
@@ -448,6 +543,8 @@
         const ts = metrics.last_updated ? new Date(metrics.last_updated) : new Date(now);
         tsEl.textContent = fmtTime.format(ts);
       }
+
+      updateEta(card, metrics);
 
       if (state.paused.has(nodeId)) {
         return;
