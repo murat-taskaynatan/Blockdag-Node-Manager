@@ -305,6 +305,49 @@
     return parts.join(' ');
   }
 
+  function averageHeightRate(labels, localSeries, windowSec = 300) {
+    const len = Math.min(
+      Array.isArray(labels) ? labels.length : 0,
+      Array.isArray(localSeries) ? localSeries.length : 0,
+    );
+    if (len < 2) return null;
+    const latestIdx = len - 1;
+    const latestTs = Number(labels[latestIdx]);
+    const latestVal = Number(localSeries[latestIdx]);
+    if (!Number.isFinite(latestTs) || !Number.isFinite(latestVal)) {
+      return null;
+    }
+    const cutoff = latestTs - Math.max(1, windowSec) * 1000;
+    const filtered = [];
+    for (let idx = 0; idx <= latestIdx; idx += 1) {
+      const ts = Number(labels[idx]);
+      if (!Number.isFinite(ts) || ts < cutoff) {
+        continue;
+      }
+      const val = Number(localSeries[idx]);
+      if (!Number.isFinite(val)) continue;
+      filtered.push({ ts, val });
+    }
+    if (filtered.length < 2) {
+      return null;
+    }
+    const start = filtered[0];
+    const end = filtered[filtered.length - 1];
+    const dtSec = (end.ts - start.ts) / 1000;
+    if (!Number.isFinite(dtSec) || dtSec <= 0) {
+      return null;
+    }
+    const delta = end.val - start.val;
+    if (!Number.isFinite(delta) || delta <= 0) {
+      return null;
+    }
+    const rate = delta / dtSec;
+    if (!Number.isFinite(rate) || rate <= 0) {
+      return null;
+    }
+    return rate;
+  }
+
   function computeEtaInfo(metrics) {
     const remote = Number(metrics.remote_height);
     const local = Number(metrics.local_height);
@@ -318,34 +361,7 @@
     if (remaining <= 0) {
       return { text: 'Fully synced', variant: 'ok' };
     }
-    const labels = Array.isArray(metrics.labels) ? metrics.labels : [];
-    const localSeries = Array.isArray(metrics.local) ? metrics.local : [];
-    const len = Math.min(labels.length, localSeries.length);
-    if (len < 2) {
-      return { text: 'ETA pending…', variant: null };
-    }
-    const samples = [];
-    for (let idx = len - 1; idx >= 0 && samples.length < 16; idx -= 1) {
-      const ts = Number(labels[idx]);
-      const rawVal = localSeries[idx];
-      if (rawVal === null || rawVal === undefined) continue;
-      const val = Number(rawVal);
-      if (!Number.isFinite(ts) || !Number.isFinite(val) || val <= 0) continue;
-      if (samples.length && samples[samples.length - 1].ts === ts) continue;
-      samples.push({ ts, val });
-    }
-    if (samples.length < 2) {
-      return { text: 'ETA pending…', variant: null };
-    }
-    const latest = samples[0];
-    const anchorIndex = Math.min(samples.length - 1, 5);
-    const anchor = samples[anchorIndex];
-    const dtSec = (latest.ts - anchor.ts) / 1000;
-    const delta = latest.val - anchor.val;
-    if (!Number.isFinite(dtSec) || dtSec <= 0 || !Number.isFinite(delta) || delta <= 0) {
-      return { text: 'ETA pending…', variant: null };
-    }
-    const rate = delta / dtSec;
+    const rate = averageHeightRate(metrics.labels, metrics.local);
     if (!Number.isFinite(rate) || rate <= 0) {
       return { text: 'ETA pending…', variant: null };
     }
