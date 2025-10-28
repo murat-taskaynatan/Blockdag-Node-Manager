@@ -307,12 +307,12 @@
   }
 
   function updateEta(card, metrics) {
-    const etaEl = card.querySelector('[data-role="eta"]');
+    const etaEl = card.querySelector('.stat-eta');
     if (!etaEl) return;
     etaEl.classList.remove('is-ok', 'is-warn', 'is-danger');
     const info = computeEtaInfo(metrics);
     if (!info) {
-      etaEl.textContent = 'ETA —';
+      etaEl.textContent = '—';
       return;
     }
     etaEl.textContent = info.text;
