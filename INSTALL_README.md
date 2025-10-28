@@ -26,7 +26,7 @@ The script will:
 4. Write `/etc/blockdag-node-manager/node-manager.env` with overridable environment variables.
 5. Register and start the `blockdag-node-manager.service` systemd unit.
 
-Afterwards, visit `http://<host>:8080/node-manager` (defaults to all interfaces on port `8080`).
+Afterwards, visit `http://<host>:8081/node-manager` (defaults to all interfaces on port `8081`).
 
 ## 3. Install Directly From GitHub
 
@@ -49,7 +49,7 @@ Set environment variables before running the installer:
 | `SERVICE_NAME`| Systemd unit filename                    | `blockdag-node-manager.service`       |
 | `SERVICE_USER`/`SERVICE_GROUP` | Service owner/group    | detected from `SUDO_USER`             |
 | `HOST`        | Listen address for waitress              | `0.0.0.0`                             |
-| `PORT`        | Listen port for waitress                 | `8080`                                |
+| `PORT`        | Listen port for waitress                 | `8081`                                |
 | `REPO_URL` / `REPO_REF` | Alternate source/ref         | this repository / `main`              |
 
 Example:
@@ -67,7 +67,7 @@ Edit `/etc/blockdag-node-manager/node-manager.env` to override RPC settings or b
 
 ```
 HOST=0.0.0.0
-PORT=8080
+PORT=8081
 BDAG_RPC_BASE=http://127.0.0.1:18545
 BDAG_RPC_USER=
 BDAG_RPC_PASS=

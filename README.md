@@ -57,6 +57,8 @@ Use the bundled helper to deploy under `/opt/blockdag-node-manager` with systemd
 ./install_node_manager.sh
 ```
 
+By default the service binds to `0.0.0.0:8081`; adjust `HOST`/`PORT` in `/etc/blockdag-node-manager/node-manager.env` or export them before running the installer if you need different bindings.
+
 The script can be customised via environment variables, e.g.:
 
 ```bash
