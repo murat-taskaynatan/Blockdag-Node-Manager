@@ -140,6 +140,7 @@
       toggleBtn.addEventListener('click', handler);
       toggleBtn.addEventListener('mousedown', (event) => event.stopPropagation());
       toggleBtn.addEventListener('mouseup', (event) => event.stopPropagation());
+      toggleBtn.title = 'Start/Stop container';
     }
     const restartBtn = details.querySelector('[data-action="restart"]');
     if (restartBtn) {
@@ -151,6 +152,7 @@
       restartBtn.addEventListener('click', handler);
       restartBtn.addEventListener('mousedown', (event) => event.stopPropagation());
       restartBtn.addEventListener('mouseup', (event) => event.stopPropagation());
+      restartBtn.title = 'Restart container';
     }
 
     cardsContainer.appendChild(details);
