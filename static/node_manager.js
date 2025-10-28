@@ -206,8 +206,7 @@
     card.querySelector('.node-name').textContent = workerLabel;
     card.querySelector('.node-meta').textContent = node.container || '—';
 
-    const summaryIndicator = card.querySelector('.summary-status-indicator');
-    const summaryStatusText = card.querySelector('.summary-status-text');
+    const summaryStatusChip = card.querySelector('.summary-status-chip');
     const summaryHealthChip = card.querySelector('.summary-health-chip');
     const summarySyncPill = card.querySelector('[data-role="sync-pill"]');
     const summaryRatePill = card.querySelector('[data-role="sync-rate-pill"]');
@@ -220,14 +219,10 @@
       statusEl.parentElement.classList.toggle('is-warn', !running);
     }
 
-    if (summaryIndicator) {
-      summaryIndicator.classList.remove('is-ok', 'is-warn');
-      summaryIndicator.classList.add(running ? 'is-ok' : 'is-warn');
-    }
-    if (summaryStatusText) {
-      summaryStatusText.textContent = running ? 'ONLINE' : 'OFFLINE';
-      summaryStatusText.classList.remove('is-online', 'is-offline');
-      summaryStatusText.classList.add(running ? 'is-online' : 'is-offline');
+    if (summaryStatusChip) {
+      summaryStatusChip.textContent = running ? 'ONLINE' : 'OFFLINE';
+      summaryStatusChip.classList.remove('is-online', 'is-offline');
+      summaryStatusChip.classList.add(running ? 'is-online' : 'is-offline');
     }
     const healthDetail = (stats.health_detail || stats.health_text || '').toString().trim();
     const healthLabel = (stats.health_label || stats.health_text || '').toString().trim();
@@ -606,17 +601,11 @@
         }
       }
 
-      const summaryIndicator = card.querySelector('.summary-status-indicator');
-      if (summaryIndicator) {
-        summaryIndicator.classList.remove('is-ok', 'is-warn');
-        summaryIndicator.classList.add(running ? 'is-ok' : 'is-warn');
-      }
-
-      const summaryStatusText = card.querySelector('.summary-status-text');
-      if (summaryStatusText) {
-        summaryStatusText.textContent = running ? 'ONLINE' : 'OFFLINE';
-        summaryStatusText.classList.remove('is-online', 'is-offline');
-        summaryStatusText.classList.add(running ? 'is-online' : 'is-offline');
+      const summaryStatusChip = card.querySelector('.summary-status-chip');
+      if (summaryStatusChip) {
+        summaryStatusChip.textContent = running ? 'ONLINE' : 'OFFLINE';
+        summaryStatusChip.classList.remove('is-online', 'is-offline');
+        summaryStatusChip.classList.add(running ? 'is-online' : 'is-offline');
       }
 
       const summaryHealthChip = card.querySelector('.summary-health-chip');
