@@ -130,6 +130,14 @@
     nameEl.textContent = node.label || node.id;
     metaEl.textContent = node.container || '—';
 
+    const summary = details.querySelector('summary.fleet-summary');
+    if (summary) {
+      summary.setAttribute('title', 'Click to expand');
+      details.addEventListener('toggle', () => {
+        summary.setAttribute('title', details.open ? 'Click to collapse' : 'Click to expand');
+      });
+    }
+
     const toggleBtn = details.querySelector('[data-action="toggle"]');
     if (toggleBtn) {
       const handler = async (event) => {
