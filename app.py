@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import threading
 import time
+from datetime import datetime, timezone
 from collections import OrderedDict, deque
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
@@ -390,6 +391,7 @@ class NodeContext:
             "height_delta": 0,
             "peers": 0,
             "running": self.running,
+            "uptime_seconds": None,
             "last_updated": int(time.time() * 1000),
         }
 
@@ -619,25 +621,61 @@ def _fetch_remote_height(ctx: NodeContext) -> Optional[int]:
     return None
 
 
-def _container_running_state(name: str) -> Tuple[bool, bool]:
+def _parse_docker_timestamp(value: str) -> Optional[float]:
+    raw = (value or "").strip()
+    if not raw or raw == "0001-01-01T00:00:00Z":
+        return None
+    if raw.endswith("Z"):
+        raw = raw[:-1] + "+00:00"
+    if "." in raw:
+        main, rest = raw.split(".", 1)
+        tz_sign = "+" if "+" in rest else "-" if "-" in rest else None
+        if tz_sign:
+            frac, tz = rest.split(tz_sign, 1)
+            tz = tz_sign + tz
+        else:
+            frac, tz = rest, ""
+        digits = "".join(ch for ch in frac if ch.isdigit())
+        digits = (digits + "000000")[:6]
+        raw = f"{main}.{digits}{tz}"
+    try:
+        dt = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.timestamp()
+
+
+def _container_state(name: str) -> Tuple[bool, bool, Optional[float]]:
     if not name or not DOCKER_BIN:
-        return False, False
+        return False, False, None
     try:
         out = subprocess.check_output(
-            [DOCKER_BIN, "inspect", "-f", "{{.State.Running}}", name],
+            [DOCKER_BIN, "inspect", "-f", "{{.State.Running}}|{{.State.StartedAt}}", name],
             text=True,
             timeout=5,
         )
-        val = (out or "").strip().lower()
-        if val == "true":
-            return True, True
-        if val == "false":
-            return True, False
     except subprocess.CalledProcessError:
-        return False, False
+        return False, False, None
     except Exception:
-        return False, False
-    return False, False
+        return False, False, None
+    raw = (out or "").strip()
+    if not raw:
+        return False, False, None
+    if "|" in raw:
+        running_text, started_text = raw.split("|", 1)
+    else:
+        running_text, started_text = raw, ""
+    running_text = running_text.strip().lower()
+    exists = running_text in {"true", "false"}
+    running = running_text == "true"
+    started_ts = _parse_docker_timestamp(started_text)
+    if not running:
+        started_ts = None
+    if not exists:
+        return False, False, None
+    return True, running, started_ts
 
 
 def _collect_node_metrics(ctx: NodeContext) -> Tuple[dict, Optional[int]]:
@@ -654,17 +692,23 @@ def _collect_node_metrics(ctx: NodeContext) -> Tuple[dict, Optional[int]]:
         peers = _fetch_peer_count(ctx)
     except Exception:
         peers = None
-    exists, running = _container_running_state(ctx.container)
+    exists, running, started_ts = _container_state(ctx.container)
+    uptime_seconds: Optional[int] = None
+    if exists and running and started_ts is not None:
+        now_sec = now_ms / 1000
+        uptime_seconds = max(0, int(now_sec - started_ts))
     local_val = int(local_height) if isinstance(local_height, int) and local_height >= 0 else 0
     remote_val = int(remote_height) if isinstance(remote_height, int) and remote_height >= 0 else None
     peers_val = int(peers) if isinstance(peers, int) and peers >= 0 else 0
     remote_display = remote_val if remote_val is not None else local_val
+    effective_running = running if exists else bool(not ctx.container)
     metrics = {
         "local_height": local_val,
         "remote_height": remote_display,
         "height_delta": int(remote_display - local_val),
         "peers": peers_val,
-        "running": running if exists else bool(not ctx.container),
+        "running": effective_running,
+        "uptime_seconds": uptime_seconds,
         "last_updated": now_ms,
     }
     return metrics, remote_val
