@@ -64,5 +64,5 @@ cat <<EOF
   - Deployed from $REPO_URL@$REPO_REF
   - Service name: $SERVICE_NAME
   - Config file: $ENV_FILE
-  - UI: http://$DISPLAY_HOST:${PORT_VALUE:-8080}/node-manager
+  - UI: http://$DISPLAY_HOST:${PORT_VALUE:-8081}/
 EOF
