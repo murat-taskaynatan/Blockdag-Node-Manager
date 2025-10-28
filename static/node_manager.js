@@ -3,6 +3,7 @@
     nodes: new Map(), // id -> { card, meta }
     charts: new Map(), // id -> Chart instance
     paused: new Set(),
+    lastRates: new Map(), // id -> last non-null sync rate
     lastMetricsTs: 0,
   };
 
@@ -83,6 +84,7 @@
         state.nodes.delete(nodeId);
         state.charts.delete(nodeId);
         state.paused.delete(nodeId);
+        state.lastRates.delete(nodeId);
       }
     });
   }
@@ -257,8 +259,15 @@
       summarySyncPill.removeAttribute('title');
     }
     if (summaryRatePill) {
-      summaryRatePill.textContent = 'Rate —';
-      summaryRatePill.removeAttribute('title');
+      const cachedRate = state.lastRates.get(node.id);
+      if (Number.isFinite(cachedRate) && cachedRate > 0) {
+        const formattedRate = cachedRate >= 10 ? cachedRate.toFixed(1) : cachedRate.toFixed(2);
+        summaryRatePill.textContent = `Rate ${formattedRate} blk/s`;
+        summaryRatePill.title = `Approximate sync speed: ${formattedRate} blocks per second`;
+      } else {
+        summaryRatePill.textContent = 'Rate —';
+        summaryRatePill.removeAttribute('title');
+      }
     }
 
     setStat(card, '.stat-local', stats.local_height);
@@ -651,13 +660,17 @@
       }
       if (summaryRatePill) {
         const rate = averageHeightRate(metrics.labels, metrics.local);
-        if (!Number.isFinite(rate) || rate <= 0) {
-          summaryRatePill.textContent = 'Rate —';
-          summaryRatePill.removeAttribute('title');
-        } else {
-          const formattedRate = rate >= 10 ? rate.toFixed(1) : rate.toFixed(2);
+        if (Number.isFinite(rate) && rate > 0) {
+          state.lastRates.set(nodeId, rate);
+        }
+        const effectiveRate = state.lastRates.get(nodeId);
+        if (Number.isFinite(effectiveRate) && effectiveRate > 0) {
+          const formattedRate = effectiveRate >= 10 ? effectiveRate.toFixed(1) : effectiveRate.toFixed(2);
           summaryRatePill.textContent = `Rate ${formattedRate} blk/s`;
           summaryRatePill.title = `Approximate sync speed: ${formattedRate} blocks per second`;
+        } else {
+          summaryRatePill.textContent = 'Rate —';
+          summaryRatePill.removeAttribute('title');
         }
       }
 
