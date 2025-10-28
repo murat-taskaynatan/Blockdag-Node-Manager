@@ -202,9 +202,11 @@
     const statusEl = card.querySelector('.status-text');
     const stats = node.status || {};
     const running = !!stats.running;
-    statusEl.textContent = '';
-    statusEl.parentElement.classList.toggle('is-ok', running);
-    statusEl.parentElement.classList.toggle('is-warn', !running);
+    if (statusEl) {
+      statusEl.textContent = '';
+      statusEl.parentElement.classList.toggle('is-ok', running);
+      statusEl.parentElement.classList.toggle('is-warn', !running);
+    }
 
     if (summaryIndicator) {
       summaryIndicator.classList.remove('is-ok', 'is-warn');
