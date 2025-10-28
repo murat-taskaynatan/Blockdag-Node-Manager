@@ -45,9 +45,27 @@ ensure_packages() {
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_DIR="${SOURCE_DIR:-$SCRIPT_DIR}"
+REPO_URL="${REPO_URL:-https://github.com/murat-taskaynatan/Blockdag-Node-Manager.git}"
+REPO_REF="${REPO_REF:-${REPO_BRANCH:-main}}"
 
 need_cmd "$PYTHON_BIN"
 ensure_packages python3 python3-venv python3-pip rsync
+
+TEMP_DIR=""
+cleanup() {
+  if [[ -n "$TEMP_DIR" && -d "$TEMP_DIR" ]]; then
+    rm -rf "$TEMP_DIR"
+  fi
+}
+
+if [[ ! -f "$SOURCE_DIR/app.py" ]]; then
+  need_cmd git
+  TEMP_DIR="$(mktemp -d)"
+  trap cleanup EXIT
+  echo "[0/7] Source tree missing; cloning $REPO_URL (ref $REPO_REF)"
+  git clone --depth 1 --branch "$REPO_REF" --single-branch "$REPO_URL" "$TEMP_DIR/repo"
+  SOURCE_DIR="$TEMP_DIR/repo"
+fi
 
 echo "[1/7] Removing any existing installation of $SERVICE_NAME (if present)"
 if systemctl list-unit-files --type=service 2>/dev/null | grep -q "^${SERVICE_NAME}"; then

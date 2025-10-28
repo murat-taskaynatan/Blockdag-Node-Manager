@@ -57,7 +57,7 @@ Use the bundled helper to deploy under `/opt/blockdag-node-manager` with systemd
 ./install_node_manager.sh
 ```
 
-The installer automatically stops and removes any previous `blockdag-node-manager.service` deployment before syncing new files.
+The installer automatically stops and removes any previous `blockdag-node-manager.service` deployment before syncing new files, and if you run it outside a repo clone it will fetch the latest sources from GitHub automatically.
 
 By default the service binds to `0.0.0.0:8081`; adjust `HOST`/`PORT` in `/etc/blockdag-node-manager/node-manager.env` or export them before running the installer if you need different bindings.
 
