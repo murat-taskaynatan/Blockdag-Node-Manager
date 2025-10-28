@@ -2,6 +2,9 @@
 
 BlockDAG Node Manager is a lightweight Flask application that discovers, monitors, and controls BlockDAG nodes running on the same host. It exposes a single-page UI with live height charts, peer counts, container status, and quick controls for restarting Docker-based nodes.
 
+<img width="975" height="961" alt="image" src="https://github.com/user-attachments/assets/9959bfd1-7b8b-4837-9b67-e28e6e4cdea0" />
+
+
 ![Node Manager UI](static/3d.gif)
 
 ## Features
