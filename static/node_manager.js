@@ -207,6 +207,7 @@
     const summaryIndicator = card.querySelector('.summary-status-indicator');
     const summaryStatusText = card.querySelector('.summary-status-text');
     const summaryHealthChip = card.querySelector('.summary-health-chip');
+    const summarySyncPill = card.querySelector('[data-role="sync-pill"]');
     const statusEl = card.querySelector('.status-text');
     const stats = node.status || {};
     const running = !!stats.running;
@@ -248,6 +249,11 @@
       } else if (warnCodes.has(code) || lower.includes('sync') || lower.includes('download')) {
         summaryHealthChip.classList.add('health-warn');
       }
+    }
+
+    if (summarySyncPill) {
+      summarySyncPill.textContent = 'Sync —';
+      summarySyncPill.removeAttribute('title');
     }
 
     setStat(card, '.stat-local', stats.local_height);
@@ -319,41 +325,44 @@
       Array.isArray(localSeries) ? localSeries.length : 0,
     );
     if (len < 2) return null;
-    const latestIdx = len - 1;
-    const latestTs = Number(labels[latestIdx]);
-    const latestVal = Number(localSeries[latestIdx]);
-    if (!Number.isFinite(latestTs) || !Number.isFinite(latestVal)) {
-      return null;
-    }
-    const cutoff = latestTs - Math.max(1, windowSec) * 1000;
-    const filtered = [];
-    for (let idx = 0; idx <= latestIdx; idx += 1) {
+    const samples = [];
+    for (let idx = len - 1; idx >= 0 && samples.length < 20; idx -= 1) {
       const ts = Number(labels[idx]);
-      if (!Number.isFinite(ts) || ts < cutoff) {
-        continue;
+      const rawVal = localSeries[idx];
+      if (rawVal === null || rawVal === undefined) continue;
+      const val = Number(rawVal);
+      if (!Number.isFinite(ts) || !Number.isFinite(val) || val <= 0) continue;
+      if (samples.length && samples[samples.length - 1].ts === ts) continue;
+      samples.push({ ts, val });
+    }
+    if (samples.length < 2) return null;
+    const latest = samples[0];
+    const cutoff = latest.ts - Math.max(1, windowSec) * 1000;
+    let anchor = samples[samples.length - 1];
+    for (let i = 1; i < samples.length; i += 1) {
+      const candidate = samples[i];
+      if (candidate.ts <= cutoff || i === samples.length - 1) {
+        anchor = candidate;
+        break;
       }
-      const val = Number(localSeries[idx]);
-      if (!Number.isFinite(val)) continue;
-      filtered.push({ ts, val });
     }
-    if (filtered.length < 2) {
-      return null;
-    }
-    const start = filtered[0];
-    const end = filtered[filtered.length - 1];
-    const dtSec = (end.ts - start.ts) / 1000;
-    if (!Number.isFinite(dtSec) || dtSec <= 0) {
-      return null;
-    }
-    const delta = end.val - start.val;
-    if (!Number.isFinite(delta) || delta <= 0) {
-      return null;
-    }
+    const dtSec = (latest.ts - anchor.ts) / 1000;
+    if (!Number.isFinite(dtSec) || dtSec <= 0) return null;
+    const delta = latest.val - anchor.val;
+    if (!Number.isFinite(delta) || delta <= 0) return null;
     const rate = delta / dtSec;
-    if (!Number.isFinite(rate) || rate <= 0) {
+    if (!Number.isFinite(rate) || rate <= 0) return null;
+    return rate;
+  }
+
+  function computeSyncProgress(metrics) {
+    const remote = Number(metrics.remote_height);
+    const local = Number(metrics.local_height);
+    if (!Number.isFinite(remote) || remote <= 0 || !Number.isFinite(local) || local < 0) {
       return null;
     }
-    return rate;
+    const ratio = Math.min(1, Math.max(0, local / remote));
+    return ratio * 100;
   }
 
   function computeEtaInfo(metrics) {
@@ -619,6 +628,19 @@
           summaryHealthChip.classList.add('health-bad');
         } else if (warnCodes.has(code) || lower.includes('sync') || lower.includes('download')) {
           summaryHealthChip.classList.add('health-warn');
+        }
+      }
+
+      const summarySyncPill = card.querySelector('[data-role="sync-pill"]');
+      if (summarySyncPill) {
+        const progress = computeSyncProgress(metrics);
+        if (progress === null) {
+          summarySyncPill.textContent = 'Sync —';
+          summarySyncPill.removeAttribute('title');
+        } else {
+          const formatted = progress >= 99.5 ? '100%' : `${progress.toFixed(progress >= 10 ? 1 : 2)}%`;
+          summarySyncPill.textContent = `Sync ${formatted}`;
+          summarySyncPill.title = `Local height ${metrics.local_height} of ${metrics.remote_height}`;
         }
       }
 
