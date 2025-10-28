@@ -186,18 +186,21 @@
       if (digits.length) {
         return `Node Worker - ${digits[0]}`;
       }
-      return 'Node Worker';
+      const orderedKeys = Array.from(state.nodes.keys()).sort();
+      const index = orderedKeys.indexOf(node.id);
+      const ordinal = index >= 0 ? index + 1 : state.nodes.size + 1;
+      return `Node Worker - ${ordinal}`;
     })();
     card.querySelector('.node-name').textContent = workerLabel;
     card.querySelector('.node-meta').textContent = node.container || '—';
 
     const summaryIndicator = card.querySelector('.summary-status-indicator');
     const summaryStatusText = card.querySelector('.summary-status-text');
-    const summaryHealthText = card.querySelector('.summary-health-text');
+    const summaryHealthChip = card.querySelector('.summary-health-chip');
     const statusEl = card.querySelector('.status-text');
     const stats = node.status || {};
     const running = !!stats.running;
-    statusEl.textContent = running ? 'Online' : 'Offline';
+    statusEl.textContent = '';
     statusEl.parentElement.classList.toggle('is-ok', running);
     statusEl.parentElement.classList.toggle('is-warn', !running);
 
@@ -207,29 +210,31 @@
     }
     if (summaryStatusText) {
       summaryStatusText.textContent = running ? 'Online' : 'Offline';
+      summaryStatusText.classList.remove('is-online', 'is-offline');
+      summaryStatusText.classList.add(running ? 'is-online' : 'is-offline');
     }
     const healthDetail = (stats.health_detail || stats.health_text || '').toString().trim();
     const healthLabel = (stats.health_label || stats.health_text || '').toString().trim();
     const displayHealth = healthLabel || (running ? 'Healthy' : 'Offline');
     const code = (stats.health_code || '').toString().toLowerCase();
-    if (summaryHealthText) {
-      summaryHealthText.textContent = displayHealth;
+    if (summaryHealthChip) {
+      summaryHealthChip.textContent = displayHealth || 'Health';
       if (healthDetail || displayHealth) {
-        summaryHealthText.title = healthDetail || displayHealth;
+        summaryHealthChip.title = healthDetail || displayHealth;
       } else {
-        summaryHealthText.removeAttribute('title');
+        summaryHealthChip.removeAttribute('title');
       }
-      summaryHealthText.classList.remove('health-ok', 'health-warn', 'health-bad');
+      summaryHealthChip.classList.remove('health-ok', 'health-warn', 'health-bad');
       const lower = displayHealth.toLowerCase();
       const okCodes = new Set(['healthy', 'steady', 'mining']);
       const warnCodes = new Set(['syncing', 'downloading', 'initializing', 'no_peers']);
       const badCodes = new Set(['offline', 'stalled', 'error']);
       if (okCodes.has(code) || lower.includes('healthy') || lower.includes('mining')) {
-        summaryHealthText.classList.add('health-ok');
+        summaryHealthChip.classList.add('health-ok');
       } else if (badCodes.has(code) || lower.includes('stall') || (!running && lower)) {
-        summaryHealthText.classList.add('health-bad');
+        summaryHealthChip.classList.add('health-bad');
       } else if (warnCodes.has(code) || lower.includes('sync') || lower.includes('download')) {
-        summaryHealthText.classList.add('health-warn');
+        summaryHealthChip.classList.add('health-warn');
       }
     }
 
