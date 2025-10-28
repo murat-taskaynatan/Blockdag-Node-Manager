@@ -198,6 +198,8 @@ def _resolve_container_rpc_base(info: dict, env: Dict[str, str]) -> Optional[str
             continue
         return normalized
     ports = info.get("NetworkSettings", {}).get("Ports") or {}
+    if not ports:
+        ports = info.get("HostConfig", {}).get("PortBindings") or {}
     for port_key, bindings in ports.items():
         if not isinstance(port_key, str) or "/tcp" not in port_key:
             continue
@@ -247,8 +249,6 @@ def _discover_docker_nodes() -> List[dict]:
             continue
         env = _parse_docker_env(data.get("Config", {}).get("Env") or [])
         rpc_base = _resolve_container_rpc_base(data, env)
-        if not rpc_base:
-            continue
         rpc_user, rpc_pass = _extract_rpc_credentials(env)
         remote_bases = _parse_remote_rpc_bases(
             env.get("BDAG_REMOTE_RPC_BASES")
@@ -696,8 +696,11 @@ def refresh_discovered_nodes() -> Tuple[List[str], List[str], List[str]]:
                     target_ctx = ctx
                     break
             if target_ctx:
-                if target_ctx.update_from_metadata(entry):
+                if entry.get("rpc_base") and target_ctx.update_from_metadata(entry):
                     updated.append(target_ctx.id)
+                continue
+            if not entry.get("rpc_base"):
+                # don't create new nodes without rpc info (likely stopped before ever running)
                 continue
             new_id = entry.get("id") or _slugify(container)
             new_id = _ensure_unique_id(new_id, NODES.keys())
