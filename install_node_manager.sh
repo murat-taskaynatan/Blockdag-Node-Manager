@@ -153,7 +153,7 @@ User=$SERVICE_USER
 Group=$SERVICE_GROUP
 WorkingDirectory=$INSTALL_DIR
 Environment=PYTHONPATH=$INSTALL_DIR
-Environment=PYTHONWARNINGS=ignore:Unverified HTTPS request
+Environment="PYTHONWARNINGS=ignore:Unverified HTTPS request"
 ExecStart=$RUNNER
 Restart=on-failure
 RestartSec=2
