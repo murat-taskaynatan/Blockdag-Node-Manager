@@ -309,21 +309,27 @@
     const labels = Array.isArray(metrics.labels) ? metrics.labels : [];
     const localSeries = Array.isArray(metrics.local) ? metrics.local : [];
     const len = Math.min(labels.length, localSeries.length);
+    if (len < 2) {
+      return { text: 'ETA pending…', variant: null };
+    }
     const samples = [];
-    for (let idx = len - 1; idx >= 0 && samples.length < 6; idx -= 1) {
+    for (let idx = len - 1; idx >= 0 && samples.length < 16; idx -= 1) {
       const ts = Number(labels[idx]);
-      const val = Number(localSeries[idx]);
-      if (Number.isFinite(ts) && Number.isFinite(val)) {
-        samples.push({ ts, val });
-      }
+      const rawVal = localSeries[idx];
+      if (rawVal === null || rawVal === undefined) continue;
+      const val = Number(rawVal);
+      if (!Number.isFinite(ts) || !Number.isFinite(val) || val <= 0) continue;
+      if (samples.length && samples[samples.length - 1].ts === ts) continue;
+      samples.push({ ts, val });
     }
     if (samples.length < 2) {
       return { text: 'ETA pending…', variant: null };
     }
     const latest = samples[0];
-    const earliest = samples[samples.length - 1];
-    const dtSec = (latest.ts - earliest.ts) / 1000;
-    const delta = latest.val - earliest.val;
+    const anchorIndex = Math.min(samples.length - 1, 5);
+    const anchor = samples[anchorIndex];
+    const dtSec = (latest.ts - anchor.ts) / 1000;
+    const delta = latest.val - anchor.val;
     if (!Number.isFinite(dtSec) || dtSec <= 0 || !Number.isFinite(delta) || delta <= 0) {
       return { text: 'ETA pending…', variant: null };
     }
@@ -332,7 +338,7 @@
       return { text: 'ETA pending…', variant: null };
     }
     const etaSec = remaining / rate;
-    if (!Number.isFinite(etaSec) || etaSec <= 0) {
+    if (!Number.isFinite(etaSec) || etaSec <= 0 || etaSec > 86400 * 30) {
       return { text: 'ETA pending…', variant: null };
     }
     const pretty = formatEtaDuration(etaSec);
