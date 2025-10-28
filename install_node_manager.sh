@@ -14,7 +14,7 @@ PYTHON_BIN="${PYTHON_BIN:-python3}"
 ENV_DIR="${ENV_DIR:-/etc/blockdag-node-manager}"
 ENV_FILE="${ENV_FILE:-$ENV_DIR/node-manager.env}"
 HOST_DEFAULT="${HOST:-0.0.0.0}"
-PORT_DEFAULT="${PORT:-8080}"
+PORT_DEFAULT="${PORT:-8081}"
 
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || { echo "Error: required command '$1' not found." >&2; exit 1; }
