@@ -49,7 +49,18 @@ SOURCE_DIR="${SOURCE_DIR:-$SCRIPT_DIR}"
 need_cmd "$PYTHON_BIN"
 ensure_packages python3 python3-venv python3-pip rsync
 
-echo "[1/6] Syncing files to $INSTALL_DIR"
+echo "[1/7] Removing any existing installation of $SERVICE_NAME (if present)"
+if systemctl list-unit-files --type=service 2>/dev/null | grep -q "^${SERVICE_NAME}"; then
+  sudo systemctl disable --now "$SERVICE_NAME" >/dev/null 2>&1 || true
+fi
+sudo rm -f "$SYSTEMD_DIR/$SERVICE_NAME"
+sudo rm -f "$ENV_FILE"
+if [[ -d "$INSTALL_DIR" ]]; then
+  sudo rm -rf "$INSTALL_DIR"
+fi
+sudo systemctl daemon-reload
+
+echo "[2/7] Syncing files to $INSTALL_DIR"
 sudo mkdir -p "$INSTALL_DIR"
 sudo chown "$SERVICE_USER":"$SERVICE_GROUP" "$INSTALL_DIR"
 rsync -a --delete \
@@ -57,7 +68,7 @@ rsync -a --delete \
   --exclude='.venv/' \
   "$SOURCE_DIR/" "$INSTALL_DIR/"
 
-echo "[2/6] Preparing Python environment"
+echo "[3/7] Preparing Python environment"
 "$PYTHON_BIN" -m venv "$INSTALL_DIR/.venv"
 source "$INSTALL_DIR/.venv/bin/activate"
 pip install --upgrade pip >/dev/null
@@ -68,7 +79,7 @@ else
 fi
 deactivate
 
-echo "[3/6] Writing environment file $ENV_FILE"
+echo "[4/7] Writing environment file $ENV_FILE"
 sudo mkdir -p "$ENV_DIR"
 if [[ ! -f "$ENV_FILE" ]]; then
   sudo tee "$ENV_FILE" >/dev/null <<EOF
@@ -82,8 +93,8 @@ EOF
   sudo chmod 600 "$ENV_FILE"
 fi
 
-echo "[4/6] Installing systemd unit $SERVICE_NAME"
-START_CMD="/bin/bash -lc 'source $ENV_FILE 2>/dev/null || true; HOST=\${HOST:-0.0.0.0}; PORT=\${PORT:-8080}; exec $INSTALL_DIR/.venv/bin/waitress-serve --listen=\"\${HOST}:\${PORT}\" app:app'"
+echo "[5/7] Installing systemd unit $SERVICE_NAME"
+START_CMD="/bin/bash -lc 'source $ENV_FILE 2>/dev/null || true; HOST=\${HOST:-0.0.0.0}; PORT=\${PORT:-8081}; exec $INSTALL_DIR/.venv/bin/waitress-serve --listen=\"\${HOST}:\${PORT}\" app:app'"
 sudo tee "$SYSTEMD_DIR/$SERVICE_NAME" >/dev/null <<EOF
 [Unit]
 Description=BlockDAG Node Manager
@@ -105,7 +116,7 @@ RestartSec=2
 WantedBy=multi-user.target
 EOF
 
-echo "[5/6] Reloading systemd and starting service"
+echo "[6/7] Reloading systemd and starting service"
 sudo systemctl daemon-reload
 sudo systemctl enable --now "$SERVICE_NAME"
 
@@ -123,7 +134,7 @@ if [[ "$DISPLAY_HOST" == *:* && "$DISPLAY_HOST" != \[* ]]; then
 fi
 
 cat <<EOF
-
+[7/7] Installation summary:
 BlockDAG Node Manager installation complete.
   - Service name: $SERVICE_NAME
   - Config file: $ENV_FILE

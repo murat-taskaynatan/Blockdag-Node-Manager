@@ -26,6 +26,8 @@ The script will:
 4. Write `/etc/blockdag-node-manager/node-manager.env` with overridable environment variables.
 5. Register and start the `blockdag-node-manager.service` systemd unit.
 
+If a previous `blockdag-node-manager.service` exists, the installer stops, disables, and removes it before reinstalling.
+
 Afterwards, visit `http://<host>:8081/` (defaults to all interfaces on port `8081`).
 
 ## 3. Install Directly From GitHub
