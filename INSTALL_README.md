@@ -20,7 +20,7 @@ sudo ./install_node_manager.sh
 
 The script will:
 
-1. Clone or sync the repository into `/opt/blockdag-node-manager`.
+1. Sync the repository contents into `/opt/blockdag-node-manager`.
 2. Create a Python virtual environment in `/opt/blockdag-node-manager/.venv`.
 3. Install dependencies from `requirements.txt` (falls back to `flask`, `requests`, `waitress` if missing).
 4. Write `/etc/blockdag-node-manager/node-manager.env` with overridable environment variables.
@@ -28,7 +28,19 @@ The script will:
 
 Afterwards, visit `http://<host>:8080/node-manager` (defaults to all interfaces on port `8080`).
 
-## 3. Customising the Install
+## 3. Install Directly From GitHub
+
+Need to bootstrap a host without cloning this repository first? Use the fetch-and-install helper:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/murat-taskaynatan/Blockdag-Node-Manager/main/install_from_github.sh -o install_from_github.sh
+chmod +x install_from_github.sh
+sudo ./install_from_github.sh
+```
+
+Customize with the same environment variables (`REPO_REF`, `INSTALL_DIR`, etc.) as the local installer.
+
+## 4. Customising the Install
 
 Set environment variables before running the installer:
 
@@ -50,7 +62,7 @@ sudo INSTALL_DIR=/srv/bdag-manager \
      ./install_node_manager.sh
 ```
 
-## 4. Runtime Configuration
+## 5. Runtime Configuration
 
 Edit `/etc/blockdag-node-manager/node-manager.env` to override RPC settings or binding options:
 
@@ -68,7 +80,7 @@ Restart the service after changes:
 sudo systemctl restart blockdag-node-manager.service
 ```
 
-## 5. Managing the Service
+## 6. Managing the Service
 
 ```bash
 sudo systemctl status blockdag-node-manager.service   # check status
@@ -77,7 +89,7 @@ sudo systemctl stop blockdag-node-manager.service     # stop
 journalctl -u blockdag-node-manager.service -f        # tail logs
 ```
 
-## 6. Uninstall
+## 7. Uninstall
 
 ```bash
 sudo systemctl disable --now blockdag-node-manager.service
@@ -88,7 +100,7 @@ sudo systemctl daemon-reload
 sudo systemctl reset-failed
 ```
 
-## 7. Support
+## 8. Support
 
 - Open issues at <https://github.com/murat-taskaynatan/Blockdag-Node-Manager/issues>
 - Include `journalctl -u blockdag-node-manager.service` logs and `node-manager.env` overrides when reporting problems.

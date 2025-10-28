@@ -65,6 +65,14 @@ HOST=0.0.0.0 PORT=8080 INSTALL_DIR=/opt/bdag-manager ./install_node_manager.sh
 
 All runtime overrides are stored in `/etc/blockdag-node-manager/node-manager.env`.
 
+Need a zero-touch install on a fresh host? Use the remote installer:
+
+```bash
+./install_from_github.sh
+```
+
+It clones the latest repository (override with `REPO_REF` if desired) and runs the same deployment flow without requiring a local checkout.
+
 ## API Overview
 - `GET /api/node-manager/nodes` — summary of discovered nodes and status.
 - `GET /api/node-manager/metrics?nodes=primary,foo` — chart-ready metrics for the requested nodes.
