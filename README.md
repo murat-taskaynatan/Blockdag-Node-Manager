@@ -1,69 +1,72 @@
-# BlockDAG Node Dashboard
+# BlockDAG Node Manager
 
-A Flask-based monitoring dashboard for BlockDAG Network nodes. The UI surfaces node health, peers, RPC latency, and block activity, plus live charts for peers, latency, and block throughput.
+BlockDAG Node Manager is a lightweight Flask application that discovers, monitors, and controls BlockDAG nodes running on the same host. It exposes a single-page UI with live height charts, peer counts, container status, and quick controls for restarting Docker-based nodes.
 
-<img width="1085" height="1077" alt="image" src="https://github.com/user-attachments/assets/3b696666-a05b-46d7-a9db-1a179c91f502" />
-
-
-
-
+![Node Manager UI](static/3d.gif)
 
 ## Features
-- Real-time status pill with node state, peers, latency, and uptime.
-- Block activity dashboard with chart value badges highlighting the latest metrics.
-- Node controls gather BlockDAG’s Docker containers inside the dashboard, giving authorized operators
-  a single place to monitor status and trigger safe restarts without touching the command line.
-- Dedicated backup management module.
-- Chart controls for sampling window and history length, with server-side buffering.
-- Dynamic Flask route `/api/status` and chart APIs powering the frontend.
-- Live log viewer with ANSI cleanup and auto-scroll to keep recent node activity visible.
-- Remote-height awareness that surfaces local vs remote deltas and ETA to full sync.
-- Mining state detection and health categorisation (steady, syncing, downloading, stalled, etc.).
+- Automatic discovery of local Docker containers running BlockDAG nodes.
+- Real-time metrics showing local/remote height, deltas, peers, and node uptime.
+- Time-series charts powered by lightweight sampling (no background daemons required).
+- Safe Docker controls for starting, stopping, and restarting containers directly from the UI.
+- REST API suitable for automation via `/api/node-manager/*`.
 
- Recent Log View
- 
- <img width="1073" height="307" alt="image" src="https://github.com/user-attachments/assets/02dfe1fc-96e8-4a8e-a05f-b3ce69b3fcd3" />
+## Requirements
+- Python 3.9+ with `venv`.
+- `requests`, `flask`, and `waitress` Python packages (install via `pip install -r requirements.txt`).
+- Optional: Docker CLI for container discovery and controls.
 
-
-## Getting Started
-
-### Prerequisites
-- Python 3.9+ (with `venv` support)
-- Git, rsync
-- A running BlockDAG node RPC endpoint
-
-### Quick Install
-To install system-wide (requires sudo):
-
+## Quick Start
 ```bash
-./scripts/setup_environment.sh
-./install_dashboard.sh
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r requirements.txt
+export FLASK_APP=app.py
+flask run --host=0.0.0.0 --port=8080
 ```
 
-The `install_dashboard.sh` script syncs the repo to `/opt/blockdag-dashboard`, installs dependencies, and optionally registers a `blockdag-dashboard.service` systemd unit (if provided).
+Navigate to `http://localhost:8080/node-manager` to open the UI.
 
-During installation the helper script `bdag_sidecar.py` is installed to `/usr/local/bin` along with a `bdag-sidecar.timer` that keeps legacy `head.json` status files populated (peers, activity rates, etc.), ensuring the dashboard fallbacks stay accurate.
+## Configuration
+Node definitions live in `config/nodes.json`. Each entry can specify:
 
-Alternatively, install directly from GitHub (no manual clone required):
-
-```bash
-REPO_URL=https://github.com/murat-taskaynatan/BlockDAG-Node-Dashboard.git \
-./install_from_github.sh
+```jsonc
+[
+  {
+    "id": "primary",
+    "label": "Primary Node",
+    "container": "blockdag-node",
+    "rpc_base": "http://127.0.0.1:18545",
+    "remote_rpc_bases": [
+      "https://rpc.bdagscan.com"
+    ]
+  }
+]
 ```
 
-## Repository Layout
-- `app.py` – Flask application and sampler
-- `templates/index.html` – main dashboard template
-- `static/js/app.js` – chart/UX logic
-- `install_dashboard.sh` – deployment helper
-- `scripts/setup_environment.sh` – environment bootstrapper
+Environment variables (`BDAG_RPC_BASE`, `BDAG_REMOTE_RPC_BASES`, etc.) are honoured and can be referenced inside the JSON using `${VAR:-default}` placeholders.
 
-## Releasing
-
-Current stable release tag: `v1.4.1`
+## Production Install
+Use the bundled helper to deploy under `/opt/blockdag-node-manager` with systemd integration:
 
 ```bash
-git tag -a v1.x.x -m "Version 1.x.x"
-git push origin master --tags
+./install_node_manager.sh
 ```
 
+The script can be customised via environment variables, e.g.:
+
+```bash
+HOST=0.0.0.0 PORT=8080 INSTALL_DIR=/opt/bdag-manager ./install_node_manager.sh
+```
+
+All runtime overrides are stored in `/etc/blockdag-node-manager/node-manager.env`.
+
+## API Overview
+- `GET /api/node-manager/nodes` — summary of discovered nodes and status.
+- `GET /api/node-manager/metrics?nodes=primary,foo` — chart-ready metrics for the requested nodes.
+- `POST /api/node-manager/discover` — force a Docker discovery pass.
+- `POST /api/control` — trigger Docker actions, e.g. `{"action":"docker_restart","node":"primary"}`.
+
+## License
+This project is released under the MIT License. See `LICENSE` for details.
