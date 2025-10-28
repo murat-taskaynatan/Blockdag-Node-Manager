@@ -58,7 +58,7 @@
 
   function syncCards(nodes) {
     const seen = new Set();
-    nodes.forEach((node) => {
+    sortNodes(nodes).forEach((node) => {
       if (!node || !node.id) return;
       seen.add(node.id);
       const existing = state.nodes.get(node.id);
@@ -92,6 +92,28 @@
     if (emptyStateCard) {
       emptyStateCard.style.display = hasCards ? 'none' : 'block';
     }
+  }
+
+  function sortNodes(list) {
+    return (list || []).slice().sort((a, b) => {
+      const parseInfo = (node) => {
+        const fallback = { num: null, original: (node && node.id) ? node.id : '' };
+        if (!node || !node.id) return fallback;
+        const suffix = node.id.toString().split('-').pop();
+        const suffixNum = Number(suffix);
+        if (Number.isFinite(suffixNum)) return { num: suffixNum, original: node.id };
+        const digits = (node.id.match(/\d+/g) || []).map(Number).filter((n) => Number.isFinite(n));
+        if (digits.length) return { num: digits[0], original: node.id };
+        return fallback;
+      };
+      const aInfo = parseInfo(a);
+      const bInfo = parseInfo(b);
+      if (aInfo.num === null && bInfo.num === null) return aInfo.original.localeCompare(bInfo.original);
+      if (aInfo.num === null) return -1;
+      if (bInfo.num === null) return 1;
+      if (aInfo.num !== bInfo.num) return aInfo.num - bInfo.num;
+      return aInfo.original.localeCompare(bInfo.original);
+    });
   }
 
   function createCard(node) {
@@ -169,49 +191,45 @@
     card.querySelector('.node-name').textContent = workerLabel;
     card.querySelector('.node-meta').textContent = node.container || '—';
 
+    const summaryIndicator = card.querySelector('.summary-status-indicator');
+    const summaryStatusText = card.querySelector('.summary-status-text');
+    const summaryHealthText = card.querySelector('.summary-health-text');
     const statusEl = card.querySelector('.status-text');
-    const indicator = card.querySelector('.indicator');
     const stats = node.status || {};
     const running = !!stats.running;
     statusEl.textContent = running ? 'Online' : 'Offline';
-    indicator.classList.toggle('is-ok', running);
-    indicator.classList.toggle('is-warn', !running);
     statusEl.parentElement.classList.toggle('is-ok', running);
     statusEl.parentElement.classList.toggle('is-warn', !running);
 
-    const statusChip = card.querySelector('.summary-status-chip');
-    if (statusChip) {
-      statusChip.textContent = running ? 'Online' : 'Offline';
-      statusChip.title = running ? 'Container running' : 'Container offline';
-      statusChip.classList.remove('is-online', 'is-offline');
-      statusChip.classList.add(running ? 'is-online' : 'is-offline');
+    if (summaryIndicator) {
+      summaryIndicator.classList.remove('is-ok', 'is-warn');
+      summaryIndicator.classList.add(running ? 'is-ok' : 'is-warn');
     }
-
-    const healthChip = card.querySelector('.summary-health-chip');
-    if (healthChip) {
-      const healthLabel = (stats.health_label || stats.health_text || '').toString().trim();
-      const healthDetail = (stats.health_detail || stats.health_text || '').toString().trim();
-      const displayHealth = healthLabel || (running ? 'Healthy' : 'Offline');
-      const code = (stats.health_code || '').toString().toLowerCase();
-      healthChip.textContent = displayHealth;
-      if (healthDetail) {
-        healthChip.title = healthDetail;
-      } else if (displayHealth) {
-        healthChip.title = displayHealth;
+    if (summaryStatusText) {
+      summaryStatusText.textContent = running ? 'Online' : 'Offline';
+    }
+    const healthDetail = (stats.health_detail || stats.health_text || '').toString().trim();
+    const healthLabel = (stats.health_label || stats.health_text || '').toString().trim();
+    const displayHealth = healthLabel || (running ? 'Healthy' : 'Offline');
+    const code = (stats.health_code || '').toString().toLowerCase();
+    if (summaryHealthText) {
+      summaryHealthText.textContent = displayHealth;
+      if (healthDetail || displayHealth) {
+        summaryHealthText.title = healthDetail || displayHealth;
       } else {
-        healthChip.removeAttribute('title');
+        summaryHealthText.removeAttribute('title');
       }
-      healthChip.classList.remove('health-ok', 'health-warn', 'health-bad');
+      summaryHealthText.classList.remove('health-ok', 'health-warn', 'health-bad');
       const lower = displayHealth.toLowerCase();
       const okCodes = new Set(['healthy', 'steady', 'mining']);
       const warnCodes = new Set(['syncing', 'downloading', 'initializing', 'no_peers']);
       const badCodes = new Set(['offline', 'stalled', 'error']);
       if (okCodes.has(code) || lower.includes('healthy') || lower.includes('mining')) {
-        healthChip.classList.add('health-ok');
+        summaryHealthText.classList.add('health-ok');
       } else if (badCodes.has(code) || lower.includes('stall') || (!running && lower)) {
-        healthChip.classList.add('health-bad');
+        summaryHealthText.classList.add('health-bad');
       } else if (warnCodes.has(code) || lower.includes('sync') || lower.includes('download')) {
-        healthChip.classList.add('health-warn');
+        summaryHealthText.classList.add('health-warn');
       }
     }
 
