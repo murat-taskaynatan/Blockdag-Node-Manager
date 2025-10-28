@@ -97,6 +97,10 @@
   function createCard(node) {
     const fragment = cardTemplate.content.cloneNode(true);
     const details = fragment.querySelector('.fleet-card');
+    if (details) {
+      details.open = false;
+      details.removeAttribute('open');
+    }
     details.dataset.nodeId = node.id;
 
     const nameEl = details.querySelector('.node-name');
@@ -105,18 +109,39 @@
     metaEl.textContent = node.container || '—';
 
     const toggleBtn = details.querySelector('[data-action="toggle"]');
-    toggleBtn.addEventListener('click', () => toggleNode(node.id, toggleBtn));
+    if (toggleBtn) {
+      const handler = async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        await startStopNode(node.id, toggleBtn);
+      };
+      toggleBtn.addEventListener('click', handler);
+      toggleBtn.addEventListener('mousedown', (event) => event.stopPropagation());
+      toggleBtn.addEventListener('mouseup', (event) => event.stopPropagation());
+    }
     const restartBtn = details.querySelector('[data-action="restart"]');
-    restartBtn.addEventListener('click', () => restartNode(node.id));
+    if (restartBtn) {
+      const handler = async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        await restartNode(node.id);
+      };
+      restartBtn.addEventListener('click', handler);
+      restartBtn.addEventListener('mousedown', (event) => event.stopPropagation());
+      restartBtn.addEventListener('mouseup', (event) => event.stopPropagation());
+    }
 
     cardsContainer.appendChild(details);
     state.nodes.set(node.id, { card: details, meta: node });
-    state.paused.delete(node.id);
     updateCardHeader(node);
 
     const canvas = details.querySelector('canvas');
-    const chart = createChart(canvas.getContext('2d'));
-    state.charts.set(node.id, chart);
+    if (canvas && typeof Chart === 'function') {
+      const chart = createChart(canvas.getContext('2d'));
+      state.charts.set(node.id, chart);
+    } else {
+      console.warn('[fleet] chart unavailable; skipping chart init for', node.id);
+    }
   }
 
   function updateCardHeader(node) {
@@ -125,6 +150,10 @@
     entry.meta = node;
 
     const card = entry.card;
+    if (card) {
+      card.open = false;
+      card.removeAttribute('open');
+    }
     card.querySelector('.node-name').textContent = node.label || node.id;
     card.querySelector('.node-meta').textContent = node.container || '—';
 
@@ -138,11 +167,47 @@
     statusEl.parentElement.classList.toggle('is-ok', running);
     statusEl.parentElement.classList.toggle('is-warn', !running);
 
+    const statusChip = card.querySelector('.summary-status-chip');
+    if (statusChip) {
+      statusChip.textContent = running ? 'Online' : 'Offline';
+      statusChip.title = running ? 'Container running' : 'Container offline';
+      statusChip.classList.remove('is-online', 'is-offline');
+      statusChip.classList.add(running ? 'is-online' : 'is-offline');
+    }
+
+    const healthChip = card.querySelector('.summary-health-chip');
+    if (healthChip) {
+      const healthLabel = (stats.health_label || stats.health_text || '').toString().trim();
+      const healthDetail = (stats.health_detail || stats.health_text || '').toString().trim();
+      const displayHealth = healthLabel || (running ? 'Healthy' : 'Offline');
+      const code = (stats.health_code || '').toString().toLowerCase();
+      healthChip.textContent = displayHealth;
+      if (healthDetail) {
+        healthChip.title = healthDetail;
+      } else if (displayHealth) {
+        healthChip.title = displayHealth;
+      } else {
+        healthChip.removeAttribute('title');
+      }
+      healthChip.classList.remove('health-ok', 'health-warn', 'health-bad');
+      const lower = displayHealth.toLowerCase();
+      const okCodes = new Set(['healthy', 'steady', 'mining']);
+      const warnCodes = new Set(['syncing', 'downloading', 'initializing', 'no_peers']);
+      const badCodes = new Set(['offline', 'stalled', 'error']);
+      if (okCodes.has(code) || lower.includes('healthy') || lower.includes('mining')) {
+        healthChip.classList.add('health-ok');
+      } else if (badCodes.has(code) || lower.includes('stall') || (!running && lower)) {
+        healthChip.classList.add('health-bad');
+      } else if (warnCodes.has(code) || lower.includes('sync') || lower.includes('download')) {
+        healthChip.classList.add('health-warn');
+      }
+    }
+
     setStat(card, '.stat-local', stats.local_height);
     setStat(card, '.stat-remote', stats.remote_height);
     setStat(card, '.stat-delta', stats.height_delta, { sign: true });
     setStat(card, '.stat-peers', stats.peers);
-    updateToggleButton(card.querySelector('[data-action="toggle"]'), state.paused.has(node.id));
+    updateStartStopButton(card.querySelector('[data-action="toggle"]'), running);
   }
 
   function setStat(card, selector, value, opts = {}) {
@@ -168,24 +233,13 @@
         labels: [],
         datasets: [
           {
-            label: 'Local Height',
+            label: 'Height Δ',
             data: [],
-            borderColor: '#25d366',
-            backgroundColor: 'rgba(37,211,102,0.18)',
-            fill: false,
-            tension: 0.2,
+            borderColor: '#ffb74d',
+            backgroundColor: 'rgba(255,183,77,0.2)',
+            fill: true,
+            tension: 0.25,
             borderWidth: 2,
-            pointRadius: 0,
-          },
-          {
-            label: 'Remote Height',
-            data: [],
-            borderColor: '#ff5370',
-            backgroundColor: 'rgba(255,83,112,0.15)',
-            fill: false,
-            tension: 0.2,
-            borderWidth: 2,
-            borderDash: [6, 4],
             pointRadius: 0,
           },
         ],
@@ -219,20 +273,38 @@
     });
   }
 
-  function updateToggleButton(btn, paused) {
+  function updateStartStopButton(btn, running) {
     if (!btn) return;
-    btn.dataset.paused = paused ? '1' : '0';
-    btn.innerHTML = paused ? '<span class="icon">▶</span>' : '<span class="icon">⏸</span>';
-    btn.setAttribute('aria-label', paused ? 'Resume sampling' : 'Pause sampling');
+    btn.dataset.running = running ? '1' : '0';
+    btn.innerHTML = running ? '<span class="icon">⏹</span>' : '<span class="icon">▶</span>';
+    btn.setAttribute('aria-label', running ? 'Stop node' : 'Start node');
+    btn.title = running ? 'Stop container' : 'Start container';
   }
 
-  function toggleNode(nodeId, btn) {
-    if (state.paused.has(nodeId)) {
-      state.paused.delete(nodeId);
-    } else {
-      state.paused.add(nodeId);
+  async function startStopNode(nodeId, btn) {
+    const entry = state.nodes.get(nodeId);
+    if (!entry) return;
+    const meta = entry.meta || {};
+    const container = meta.container || meta.id;
+    if (!container) return;
+    const status = meta.status || {};
+    const running = !!status.running;
+    const action = running ? 'docker_stop' : 'docker_start';
+    if (btn) btn.disabled = true;
+    try {
+      const res = await fetch('/api/control', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action, container, node: nodeId }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    } catch (err) {
+      console.error('[fleet] start/stop failed', err);
+    } finally {
+      if (btn) btn.disabled = false;
+      await loadNodes();
+      await refreshMetrics();
     }
-    updateToggleButton(btn, state.paused.has(nodeId));
   }
 
   async function restartNode(nodeId) {
@@ -257,14 +329,36 @@
     }
   }
 
-  async function discoverNodes() {
+  async function discoverNodes(options = {}) {
+    const auto = options.auto === true;
     const btn = document.getElementById('btnDiscoverNodes');
     if (btn) btn.disabled = true;
+    const maxPasses = 8;
+    let pass = 0;
     try {
-      const res = await fetch('/api/node-manager/discover', { method: 'POST', headers: { 'content-type': 'application/json' } });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      await loadNodes();
-      await refreshMetrics();
+      while (pass < maxPasses) {
+        pass += 1;
+        const res = await fetch('/api/node-manager/discover', { method: 'POST', headers: { 'content-type': 'application/json' } });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        let payload = {};
+        try {
+          payload = await res.json();
+        } catch (_) {
+          payload = {};
+        }
+        if (payload && payload.ok === false) {
+          throw new Error(payload.error || 'discovery rejected');
+        }
+        await loadNodes();
+        await refreshMetrics();
+        const added = Array.isArray(payload?.added) ? payload.added.length : 0;
+        const removed = Array.isArray(payload?.removed) ? payload.removed.length : 0;
+        const updated = Array.isArray(payload?.updated) ? payload.updated.length : 0;
+        if (!(added > 0 || removed > 0 || updated > 0)) {
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
     } catch (err) {
       console.error('[fleet] discovery failed', err);
     } finally {
@@ -293,19 +387,59 @@
       if (!entry) return;
       const card = entry.card;
 
+      entry.meta = entry.meta || {};
+      entry.meta.status = { ...(entry.meta.status || {}), ...metrics };
+
       setStat(card, '.stat-local', metrics.local_height);
       setStat(card, '.stat-remote', metrics.remote_height);
       setStat(card, '.stat-delta', metrics.height_delta, { sign: true });
       setStat(card, '.stat-peers', metrics.peers);
 
       const statusEl = card.querySelector('.node-status');
+      const running = !!metrics.running;
       if (statusEl) {
-        const running = !!metrics.running;
         statusEl.classList.toggle('is-ok', running);
         statusEl.classList.toggle('is-warn', !running);
         const textEl = statusEl.querySelector('.status-text');
         if (textEl) {
           textEl.textContent = running ? 'Online' : 'Offline';
+        }
+      }
+      const statusChip = card.querySelector('.summary-status-chip');
+      if (statusChip) {
+        statusChip.textContent = running ? 'Online' : 'Offline';
+        statusChip.title = running ? 'Container running' : 'Container offline';
+        statusChip.classList.remove('is-online', 'is-offline');
+        statusChip.classList.add(running ? 'is-online' : 'is-offline');
+      }
+      updateStartStopButton(card.querySelector('[data-action="toggle"]'), running);
+
+      const healthChip = card.querySelector('.summary-health-chip');
+      if (healthChip) {
+        const healthLabel = (metrics.health_label || metrics.health_text || '').toString().trim();
+        const healthDetail = (metrics.health_detail || metrics.health_text || '').toString().trim();
+        const code = (metrics.health_code || '').toString().toLowerCase();
+        const running = !!metrics.running;
+        const displayHealth = healthLabel || (running ? 'Healthy' : 'Offline');
+        healthChip.textContent = displayHealth;
+        if (healthDetail) {
+          healthChip.title = healthDetail;
+        } else if (displayHealth) {
+          healthChip.title = displayHealth;
+        } else {
+          healthChip.removeAttribute('title');
+        }
+        healthChip.classList.remove('health-ok', 'health-warn', 'health-bad');
+        const lower = displayHealth.toLowerCase();
+        const okCodes = new Set(['healthy', 'steady', 'mining']);
+        const warnCodes = new Set(['syncing', 'downloading', 'initializing', 'no_peers']);
+        const badCodes = new Set(['offline', 'stalled', 'error']);
+        if (okCodes.has(code) || lower.includes('healthy') || lower.includes('mining')) {
+          healthChip.classList.add('health-ok');
+        } else if (badCodes.has(code) || lower.includes('stall') || (!running && lower)) {
+          healthChip.classList.add('health-bad');
+        } else if (warnCodes.has(code) || lower.includes('sync') || lower.includes('download')) {
+          healthChip.classList.add('health-warn');
         }
       }
 
@@ -328,9 +462,19 @@
           return stamp;
         }
       });
+      const localSeries = Array.isArray(metrics.local) ? metrics.local : [];
+      const remoteSeries = Array.isArray(metrics.remote) ? metrics.remote : [];
+      const deltaSeries = localSeries.map((localVal, idx) => {
+        const remoteVal = remoteSeries[idx];
+        if (localVal === null || localVal === undefined) return null;
+        if (remoteVal === null || remoteVal === undefined) return null;
+        const localNum = Number(localVal);
+        const remoteNum = Number(remoteVal);
+        const delta = Number.isFinite(remoteNum - localNum) ? remoteNum - localNum : null;
+        return delta;
+      });
       chart.data.labels = labels;
-      chart.data.datasets[0].data = metrics.local || [];
-      chart.data.datasets[1].data = metrics.remote || [];
+      chart.data.datasets[0].data = deltaSeries;
       chart.update('none');
     });
   }
@@ -354,6 +498,8 @@
   async function init() {
     attachEventHandlers();
     await loadNodes();
+    await refreshMetrics();
+    await discoverNodes({ auto: true });
     await refreshMetrics();
     setInterval(refreshMetrics, 5000);
   }
