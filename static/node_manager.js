@@ -208,6 +208,7 @@
     const summaryStatusText = card.querySelector('.summary-status-text');
     const summaryHealthChip = card.querySelector('.summary-health-chip');
     const summarySyncPill = card.querySelector('[data-role="sync-pill"]');
+    const summaryRatePill = card.querySelector('[data-role="sync-rate-pill"]');
     const statusEl = card.querySelector('.status-text');
     const stats = node.status || {};
     const running = !!stats.running;
@@ -254,6 +255,10 @@
     if (summarySyncPill) {
       summarySyncPill.textContent = 'Sync —';
       summarySyncPill.removeAttribute('title');
+    }
+    if (summaryRatePill) {
+      summaryRatePill.textContent = 'Rate —';
+      summaryRatePill.removeAttribute('title');
     }
 
     setStat(card, '.stat-local', stats.local_height);
@@ -632,6 +637,7 @@
       }
 
       const summarySyncPill = card.querySelector('[data-role="sync-pill"]');
+      const summaryRatePill = card.querySelector('[data-role="sync-rate-pill"]');
       if (summarySyncPill) {
         const progress = computeSyncProgress(metrics);
         if (progress === null) {
@@ -641,6 +647,17 @@
           const formatted = `${progress.toFixed(1)}%`;
           summarySyncPill.textContent = `Sync ${formatted}`;
           summarySyncPill.title = `Local height ${metrics.local_height} of ${metrics.remote_height}`;
+        }
+      }
+      if (summaryRatePill) {
+        const rate = averageHeightRate(metrics.labels, metrics.local);
+        if (!Number.isFinite(rate) || rate <= 0) {
+          summaryRatePill.textContent = 'Rate —';
+          summaryRatePill.removeAttribute('title');
+        } else {
+          const formattedRate = rate >= 10 ? rate.toFixed(1) : rate.toFixed(2);
+          summaryRatePill.textContent = `Rate ${formattedRate}/s`;
+          summaryRatePill.title = `Approximate sync speed: ${formattedRate} blocks per second`;
         }
       }
 
