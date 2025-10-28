@@ -222,7 +222,7 @@
     }
 
     if (summaryStatusChip) {
-      summaryStatusChip.textContent = running ? 'ONLINE' : 'OFFLINE';
+      summaryStatusChip.textContent = running ? 'Online' : 'Offline';
       summaryStatusChip.classList.remove('is-online', 'is-offline');
       summaryStatusChip.classList.add(running ? 'is-online' : 'is-offline');
     }
@@ -612,7 +612,7 @@
 
       const summaryStatusChip = card.querySelector('.summary-status-chip');
       if (summaryStatusChip) {
-        summaryStatusChip.textContent = running ? 'ONLINE' : 'OFFLINE';
+        summaryStatusChip.textContent = running ? 'Online' : 'Offline';
         summaryStatusChip.classList.remove('is-online', 'is-offline');
         summaryStatusChip.classList.add(running ? 'is-online' : 'is-offline');
       }
