@@ -60,10 +60,10 @@
     if (forceOffline || !running) {
       const lowerLabel = label.toLowerCase();
       if (!label || lowerLabel === 'healthy' || lowerLabel === 'online' || forceOffline) {
-        label = 'Offline';
+        label = forceOffline ? 'Stopped' : 'Offline';
       }
       if (!code) {
-        code = 'offline';
+        code = forceOffline ? 'stopped' : 'offline';
       }
     }
     const display = label || (running ? 'Healthy' : 'Offline');
@@ -307,7 +307,7 @@
     }
 
     if (summaryStatusChip) {
-      summaryStatusChip.textContent = running ? 'Online' : 'Offline';
+      summaryStatusChip.textContent = running ? 'Running' : 'Stopped';
       summaryStatusChip.classList.remove('is-online', 'is-offline');
       summaryStatusChip.classList.add(running ? 'is-online' : 'is-offline');
     }
@@ -323,12 +323,16 @@
       } else {
         summaryHealthChip.removeAttribute('title');
       }
-      summaryHealthChip.classList.remove('health-ok', 'health-warn', 'health-bad');
+      summaryHealthChip.classList.remove('health-ok', 'health-warn', 'health-bad', 'health-stopped');
       const lower = displayHealth.toLowerCase();
       const okCodes = new Set(['healthy', 'steady', 'mining']);
       const warnCodes = new Set(['syncing', 'downloading', 'initializing', 'no_peers']);
       const badCodes = new Set(['offline', 'stalled', 'error']);
-      if (okCodes.has(code) || lower.includes('healthy') || lower.includes('mining')) {
+      if (code === 'stopped' || lower.includes('stopped')) {
+          summaryHealthChip.classList.add('health-stopped');
+        } else if (code === 'stopped' || lower.includes('stopped')) {
+          summaryHealthChip.classList.add('health-stopped');
+        } else if (okCodes.has(code) || lower.includes('healthy') || lower.includes('mining')) {
         summaryHealthChip.classList.add('health-ok');
       } else if (badCodes.has(code) || lower.includes('stall') || (!running && lower)) {
         summaryHealthChip.classList.add('health-bad');
@@ -699,7 +703,7 @@
 
       const summaryStatusChip = card.querySelector('.summary-status-chip');
       if (summaryStatusChip) {
-        summaryStatusChip.textContent = running ? 'Online' : 'Offline';
+        summaryStatusChip.textContent = running ? 'Running' : 'Stopped';
         summaryStatusChip.classList.remove('is-online', 'is-offline');
         summaryStatusChip.classList.add(running ? 'is-online' : 'is-offline');
       }
@@ -718,12 +722,14 @@
         } else {
           summaryHealthChip.removeAttribute('title');
         }
-        summaryHealthChip.classList.remove('health-ok', 'health-warn', 'health-bad');
+        summaryHealthChip.classList.remove('health-ok', 'health-warn', 'health-bad', 'health-stopped');
         const lower = displayHealth.toLowerCase();
         const okCodes = new Set(['healthy', 'steady', 'mining']);
         const warnCodes = new Set(['syncing', 'downloading', 'initializing', 'no_peers']);
         const badCodes = new Set(['offline', 'stalled', 'error']);
-        if (okCodes.has(code) || lower.includes('healthy') || lower.includes('mining')) {
+        if (code === 'stopped' || lower.includes('stopped')) {
+          summaryHealthChip.classList.add('health-stopped');
+        } else if (okCodes.has(code) || lower.includes('healthy') || lower.includes('mining')) {
           summaryHealthChip.classList.add('health-ok');
         } else if (badCodes.has(code) || lower.includes('stall') || (!running && lower)) {
           summaryHealthChip.classList.add('health-bad');
