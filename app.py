@@ -7,7 +7,7 @@ import subprocess
 import threading
 import time
 from datetime import datetime, timezone
-from decimal import Decimal, ROUND_DOWN, getcontext
+from decimal import Decimal, ROUND_UP, getcontext
 from collections import OrderedDict, deque
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
@@ -373,7 +373,7 @@ def _get_wallet_address() -> Tuple[Optional[str], Optional[str]]:
 
 
 def _format_balance_decimal(value: Decimal) -> str:
-    normalized = value.quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+    normalized = value.quantize(Decimal("0.01"), rounding=ROUND_UP)
     return f"{normalized:,.2f}"
 
 
