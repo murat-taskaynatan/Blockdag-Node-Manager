@@ -6,12 +6,29 @@
     lastRates: new Map(), // id -> last non-null sync rate
     lastProgress: new Map(), // id -> last non-null sync progress
     lastMetricsTs: 0,
+    settings: {},
+    settingsDirty: false,
   };
 
   const cardsContainer = document.getElementById('fleetCards');
   const emptyStateCard = document.getElementById('emptyFleetState');
   const cardTemplate = document.getElementById('nodeCardTemplate');
   const summaryBadge = document.getElementById('globalSummaryBadge');
+
+  const summaryTabButtons = Array.from(document.querySelectorAll('[data-summary-tab]'));
+  const summaryPanes = Array.from(document.querySelectorAll('[data-summary-pane]'));
+  const summaryActions = document.querySelector('[data-summary-view="stats"]');
+  const settingsForm = document.getElementById('settingsForm');
+  const saveSettingsBtn = document.getElementById('btnSaveSettings');
+  const settingsStatus = document.getElementById('settingsStatus');
+  let settingsStatusTimer = null;
+  const defaultSettings = {
+    liveness_auto_recover: false,
+    auto_restart_on_error: false,
+    display_wallet_balance: false,
+  };
+
+  state.settings = { ...defaultSettings };
 
   const fmt = new Intl.NumberFormat();
   const fmtTime = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -97,6 +114,120 @@
     return { display, detail, code };
   }
 
+
+function switchSummaryTab(target) {
+  const view = target && target.dataset ? target.dataset.summaryTab : null;
+  const activeView = view || 'stats';
+  summaryTabButtons.forEach((button) => {
+    const isActive = button === target || button.dataset.summaryTab === activeView;
+    button.classList.toggle('is-active', isActive);
+    button.setAttribute('aria-selected', isActive ? 'true' : 'false');
+  });
+  summaryPanes.forEach((pane) => {
+    const paneView = pane.dataset.summaryPane;
+    pane.hidden = paneView !== activeView;
+  });
+  if (summaryActions) {
+    const hide = activeView !== 'stats';
+    summaryActions.hidden = hide;
+    summaryActions.setAttribute('aria-hidden', hide ? 'true' : 'false');
+  }
+}
+
+function updateSettingsStatus(message, options = {}) {
+  if (!settingsStatus) return;
+  if (settingsStatusTimer) {
+    clearTimeout(settingsStatusTimer);
+    settingsStatusTimer = null;
+  }
+  settingsStatus.textContent = message || '';
+  settingsStatus.classList.remove('is-error', 'is-success');
+  if (options.error) {
+    settingsStatus.classList.add('is-error');
+  } else if (options.success) {
+    settingsStatus.classList.add('is-success');
+    if (message) {
+      settingsStatusTimer = window.setTimeout(() => {
+        settingsStatus.textContent = '';
+        settingsStatus.classList.remove('is-success');
+        settingsStatusTimer = null;
+      }, options.duration || 3000);
+    }
+  }
+}
+
+function applySettingsToForm(settings = {}) {
+  const merged = { ...defaultSettings, ...settings };
+  state.settings = merged;
+  state.settingsDirty = false;
+  if (settingsForm) {
+    const inputs = settingsForm.querySelectorAll('[data-setting-key]');
+    inputs.forEach((input) => {
+      const key = input.dataset.settingKey;
+      if (!key) return;
+      input.checked = !!merged[key];
+    });
+  }
+  if (saveSettingsBtn) {
+    saveSettingsBtn.disabled = true;
+  }
+  updateSettingsStatus('');
+}
+
+function markSettingsDirty() {
+  state.settingsDirty = true;
+  if (saveSettingsBtn) {
+    saveSettingsBtn.disabled = false;
+  }
+  updateSettingsStatus('Unsaved changes');
+}
+
+async function loadSettings() {
+  if (!settingsForm) {
+    return;
+  }
+  try {
+    const res = await fetch('/api/settings', { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const payload = await res.json();
+    applySettingsToForm(payload.settings || {});
+  } catch (err) {
+    console.error('[settings] failed to load', err);
+    if (!Object.keys(state.settings || {}).length) {
+      applySettingsToForm(defaultSettings);
+    }
+    updateSettingsStatus('Failed to load settings', { error: true });
+  }
+}
+
+async function saveSettings() {
+  if (!settingsForm || !state.settingsDirty) {
+    return;
+  }
+  try {
+    if (saveSettingsBtn) {
+      saveSettingsBtn.disabled = true;
+    }
+    updateSettingsStatus('Saving…');
+    const res = await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(state.settings),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const payload = await res.json();
+    applySettingsToForm(payload.settings || state.settings);
+    updateSettingsStatus('Settings saved', { success: true });
+    await loadNodes();
+  } catch (err) {
+    console.error('[settings] failed to save', err);
+    updateSettingsStatus(err.message || 'Failed to save settings', { error: true });
+    if (saveSettingsBtn) {
+      saveSettingsBtn.disabled = false;
+    }
+  }
+}
+
   async function loadNodes() {
     try {
       const res = await fetch('/api/node-manager/nodes', { cache: 'no-store' });
@@ -117,6 +248,14 @@
     const offlineEl = document.getElementById('statOffline');
     const maxLocalEl = document.getElementById('statMaxLocal');
     const maxRemoteEl = document.getElementById('statMaxRemote');
+
+    if (!state.settingsDirty && summary && summary.settings) {
+      const incoming = summary.settings || {};
+      const differs = Object.keys(defaultSettings).some((key) => !!state.settings[key] !== !!incoming[key]);
+      if (differs) {
+        applySettingsToForm(incoming);
+      }
+    }
 
     if (!summary || Object.keys(summary).length === 0) {
       summaryBadge.textContent = '—';
@@ -818,23 +957,43 @@
   }
 
   function attachEventHandlers() {
-    const refreshBtn = document.getElementById('btnRefreshFleet');
-    if (refreshBtn) {
-      refreshBtn.addEventListener('click', async () => {
-        refreshBtn.disabled = true;
-        await loadNodes();
-        await refreshMetrics();
-        refreshBtn.disabled = false;
-      });
-    }
     const discoverBtn = document.getElementById('btnDiscoverNodes');
     if (discoverBtn) {
       discoverBtn.addEventListener('click', () => discoverNodes());
+    }
+    summaryTabButtons.forEach((button) => {
+      button.addEventListener('click', () => switchSummaryTab(button));
+      button.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          switchSummaryTab(button);
+        }
+      });
+    });
+    if (settingsForm) {
+      settingsForm.addEventListener('change', (event) => {
+        const target = event.target;
+        if (target && target.matches('[data-setting-key]')) {
+          const key = target.dataset.settingKey;
+          state.settings[key] = !!target.checked;
+          markSettingsDirty();
+        }
+      });
+    }
+    if (saveSettingsBtn) {
+      saveSettingsBtn.addEventListener('click', () => {
+        void saveSettings();
+      });
     }
   }
 
   async function init() {
     attachEventHandlers();
+    const initialTab = summaryTabButtons.find((button) => button.classList.contains('is-active')) || summaryTabButtons[0] || null;
+    if (initialTab) {
+      switchSummaryTab(initialTab);
+    }
+    await loadSettings();
     await loadNodes();
     await refreshMetrics();
     await discoverNodes({ auto: true });

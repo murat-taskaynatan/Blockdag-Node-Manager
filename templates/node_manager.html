@@ -16,12 +16,32 @@
   .stack{display:grid;gap:18px}
   .summary-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}
   .summary-desc{margin:4px 0 0;color:var(--muted);font-size:13px}
-  .summary-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+  .summary-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:flex-end}
+  .summary-controls .summary-actions{display:flex;align-items:center;gap:10px}
+  .summary-tabs{display:inline-flex;align-items:center;gap:8px;padding:4px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08)}
+  .summary-tab{border:none;background:transparent;color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:6px 12px;border-radius:12px;cursor:pointer;transition:all .2s}
+  .summary-tab:hover{color:var(--text)}
+  .summary-tab.is-active{background:rgba(68,242,168,.16);color:#44f2a8;box-shadow:0 0 0 1px rgba(68,242,168,.28)}
+  .summary-body{margin-top:16px}
+  .summary-pane{display:block}
+  .summary-pane[hidden]{display:none}
+  .settings-form{display:flex;flex-direction:column;gap:14px}
+  .setting-row{display:flex;align-items:center;justify-content:space-between;gap:16px;background:rgba(255,255,255,.06);border-radius:12px;padding:14px 16px;border:1px solid rgba(255,255,255,.08)}
+  .setting-text{flex:1;display:flex;flex-direction:column;gap:4px}
+  .setting-title{font-weight:600;font-size:15px}
+  .setting-desc{color:var(--muted);font-size:13px;line-height:1.4}
+  .setting-control{display:flex;align-items:center;gap:10px}
+  .setting-control input[type="checkbox"]{width:22px;height:22px;cursor:pointer;accent-color:#44f2a8}
+  .settings-actions{display:flex;align-items:center;justify-content:flex-end;gap:14px;margin-top:6px}
+  .settings-status{color:var(--muted);font-size:13px}
+  .settings-status.is-error{color:var(--bad)}
+  .settings-status.is-success{color:var(--ok)}
   .summary-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
   .kv{background:rgba(255,255,255,.04);border-radius:12px;padding:12px 14px}
   .kv .k{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.06em}
   .kv .v{font-size:22px;font-weight:600;margin-top:6px;font-variant-numeric:tabular-nums}
   .btn{padding:.5rem .9rem;border:1px solid #3a4a7a;border-radius:10px;background:transparent;color:inherit;cursor:pointer;font-weight:600;letter-spacing:.02em;display:inline-flex;align-items:center;gap:6px}
+  #btnDiscoverNodes{padding:calc(.5rem - 2px) calc(.9rem - 2px)}
   .btn:disabled{opacity:.6;cursor:default}
   .btn--primary{background:rgba(37,211,102,.15);border-color:rgba(37,211,102,.4);color:#44f2a8}
   .btn--primary .icon{font-size:14px}
@@ -74,6 +94,10 @@
   @media (max-width:840px){
     summary.fleet-summary{flex-wrap:wrap;gap:8px}
     .summary-controls{width:100%;justify-content:flex-start}
+    .summary-controls .summary-actions{width:100%;justify-content:flex-start}
+    .summary-tabs{width:100%;justify-content:flex-start}
+    .setting-row{flex-direction:column;align-items:flex-start}
+    .setting-control{width:100%;justify-content:flex-start}
     .chart-wrap canvas{height:200px}
   }
 </style>
@@ -95,33 +119,79 @@
           <p class="summary-desc">Real-time snapshot of every node discovered on the local network.</p>
         </div>
         <div class="summary-controls">
-          <button class="btn btn--ghost" id="btnRefreshFleet">Refresh</button>
-          <button class="btn btn--primary" id="btnDiscoverNodes">
-            <span class="icon">🔍</span>
-            Search Nodes
-          </button>
+          <div class="summary-tabs" role="tablist" aria-label="Dashboard view">
+            <button class="summary-tab is-active" type="button" data-summary-tab="stats" aria-selected="true">Stats</button>
+            <button class="summary-tab" type="button" data-summary-tab="settings" aria-selected="false">Settings</button>
+          </div>
+          <div class="summary-actions" data-summary-view="stats">
+            <button class="btn btn--primary" id="btnDiscoverNodes" type="button">
+              <span class="icon">🔍</span>
+              Search Nodes
+            </button>
+          </div>
         </div>
       </div>
-      <div class="summary-stats" id="summaryStats">
-        <div class="kv">
-          <div class="k">Detected Nodes</div>
-          <div class="v" id="statNodeCount">—</div>
+      <div class="summary-body">
+        <div class="summary-pane" data-summary-pane="stats">
+          <div class="summary-stats" id="summaryStats">
+            <div class="kv">
+              <div class="k">Detected Nodes</div>
+              <div class="v" id="statNodeCount">—</div>
+            </div>
+            <div class="kv">
+              <div class="k">Online</div>
+              <div class="v" id="statOnline">—</div>
+            </div>
+            <div class="kv">
+              <div class="k">Offline</div>
+              <div class="v" id="statOffline">—</div>
+            </div>
+            <div class="kv">
+              <div class="k">Highest Local Height</div>
+              <div class="v" id="statMaxLocal">—</div>
+            </div>
+            <div class="kv">
+              <div class="k">Highest Remote Height</div>
+              <div class="v" id="statMaxRemote">—</div>
+            </div>
+          </div>
         </div>
-        <div class="kv">
-          <div class="k">Online</div>
-          <div class="v" id="statOnline">—</div>
-        </div>
-        <div class="kv">
-          <div class="k">Offline</div>
-          <div class="v" id="statOffline">—</div>
-        </div>
-        <div class="kv">
-          <div class="k">Highest Local Height</div>
-          <div class="v" id="statMaxLocal">—</div>
-        </div>
-        <div class="kv">
-          <div class="k">Highest Remote Height</div>
-          <div class="v" id="statMaxRemote">—</div>
+        <div class="summary-pane" data-summary-pane="settings" hidden>
+          <form class="settings-form" id="settingsForm">
+            <label class="setting-row">
+              <div class="setting-text">
+                <span class="setting-title">Liveness auto-recover</span>
+                <span class="setting-desc">Attempt to recover sampling when health checks fail repeatedly.</span>
+              </div>
+              <div class="setting-control">
+                <input type="checkbox" id="settingLiveness" name="liveness_auto_recover" data-setting-key="liveness_auto_recover">
+              </div>
+            </label>
+            <label class="setting-row">
+              <div class="setting-text">
+                <span class="setting-title">Auto restart on error</span>
+                <span class="setting-desc">Restart the container automatically when critical errors are detected.</span>
+              </div>
+              <div class="setting-control">
+                <input type="checkbox" id="settingAutoRestart" name="auto_restart_on_error" data-setting-key="auto_restart_on_error">
+              </div>
+            </label>
+            <label class="setting-row">
+              <div class="setting-text">
+                <span class="setting-title">Display wallet balance</span>
+                <span class="setting-desc">Show the configured wallet address and cached balance in the global badge.</span>
+              </div>
+              <div class="setting-control">
+                <input type="checkbox" id="settingShowWallet" name="display_wallet_balance" data-setting-key="display_wallet_balance">
+              </div>
+            </label>
+            <div class="settings-actions">
+              <button type="button" class="btn btn--primary" id="btnSaveSettings">
+                Save Settings
+              </button>
+              <span class="settings-status" id="settingsStatus"></span>
+            </div>
+          </form>
         </div>
       </div>
     </div>
