@@ -52,6 +52,31 @@
     return false;
   }
 
+  function renderSyncSummary(pill, progress, rate, meta = {}) {
+    if (!pill) {
+      return;
+    }
+    const hasProgress = Number.isFinite(progress);
+    const hasRate = Number.isFinite(rate) && rate > 0;
+    const progressText = hasProgress ? `${progress.toFixed(1)}%` : '—';
+    const rateValue = hasRate ? (rate >= 10 ? rate.toFixed(1) : rate.toFixed(2)) : '—';
+    pill.textContent = `Sync ${progressText}, ${rateValue} blk/s`;
+    if (hasProgress || hasRate) {
+      const local = meta.local_height ?? meta.local;
+      const remote = meta.remote_height ?? meta.remote;
+      const details = [];
+      if (hasProgress && Number.isFinite(local) && Number.isFinite(remote)) {
+        details.push(`Local ${local} of ${remote}`);
+      }
+      if (hasRate) {
+        details.push(`${rateValue} blocks/s`);
+      }
+      pill.title = details.length ? details.join(' • ') : '';
+    } else {
+      pill.removeAttribute('title');
+    }
+  }
+
   function resolveHealth(stats, running, options = {}) {
     const { forceOffline = false } = options;
     const detail = (stats.health_detail || stats.health_text || '').toString().trim();
@@ -286,7 +311,6 @@
 
     const summaryHealthChip = card.querySelector('.summary-health-chip');
     const summarySyncPill = card.querySelector('[data-role="sync-pill"]');
-    const summaryRatePill = card.querySelector('[data-role="sync-rate-pill"]');
     const statusEl = card.querySelector('.status-text');
     const stats = node.status || {};
     const running = !!stats.running;
@@ -313,28 +337,10 @@
       summaryHealthChip.classList.add(isOnline ? 'health-online' : 'health-offline');
     }
 
-    if (summarySyncPill) {
-      const cachedProgress = state.lastProgress.get(node.id);
-      if (Number.isFinite(cachedProgress)) {
-        const formatted = `${cachedProgress.toFixed(1)}%`;
-        summarySyncPill.textContent = `Sync ${formatted}`;
-        summarySyncPill.title = 'Last recorded sync progress';
-      } else {
-        summarySyncPill.textContent = 'Sync —';
-        summarySyncPill.removeAttribute('title');
-      }
-    }
-    if (summaryRatePill) {
-      const cachedRate = state.lastRates.get(node.id);
-      if (Number.isFinite(cachedRate) && cachedRate > 0) {
-        const formattedRate = cachedRate >= 10 ? cachedRate.toFixed(1) : cachedRate.toFixed(2);
-        summaryRatePill.textContent = `Rate ${formattedRate} blk/s`;
-        summaryRatePill.title = `Approximate sync speed: ${formattedRate} blocks per second`;
-      } else {
-        summaryRatePill.textContent = 'Rate —';
-        summaryRatePill.removeAttribute('title');
-      }
-    }
+    renderSyncSummary(summarySyncPill, state.lastProgress.get(node.id), state.lastRates.get(node.id), {
+      local_height: stats.local_height,
+      remote_height: stats.remote_height,
+    });
 
     setStat(card, '.stat-local', stats.local_height);
     setStat(card, '.stat-remote', stats.remote_height);
@@ -693,34 +699,22 @@
       }
 
       const summarySyncPill = card.querySelector('[data-role="sync-pill"]');
-      const summaryRatePill = card.querySelector('[data-role="sync-rate-pill"]');
-      if (summarySyncPill) {
-        const progress = computeSyncProgress(metrics);
-        if (progress === null) {
-          summarySyncPill.textContent = 'Sync —';
-          summarySyncPill.removeAttribute('title');
-        } else {
-          state.lastProgress.set(nodeId, progress);
-          const formatted = `${progress.toFixed(1)}%`;
-          summarySyncPill.textContent = `Sync ${formatted}`;
-          summarySyncPill.title = `Local height ${metrics.local_height} of ${metrics.remote_height}`;
-        }
+      let progress = computeSyncProgress(metrics);
+      if (progress === null || !Number.isFinite(progress)) {
+        progress = state.lastProgress.get(nodeId);
+      } else {
+        state.lastProgress.set(nodeId, progress);
       }
-      if (summaryRatePill) {
-        const rate = averageHeightRate(metrics.labels, metrics.local);
-        if (Number.isFinite(rate) && rate > 0) {
-          state.lastRates.set(nodeId, rate);
-        }
-        const effectiveRate = state.lastRates.get(nodeId);
-        if (Number.isFinite(effectiveRate) && effectiveRate > 0) {
-          const formattedRate = effectiveRate >= 10 ? effectiveRate.toFixed(1) : effectiveRate.toFixed(2);
-          summaryRatePill.textContent = `Rate ${formattedRate} blk/s`;
-          summaryRatePill.title = `Approximate sync speed: ${formattedRate} blocks per second`;
-        } else {
-          summaryRatePill.textContent = 'Rate —';
-          summaryRatePill.removeAttribute('title');
-        }
+      let rate = averageHeightRate(metrics.labels, metrics.local);
+      if (Number.isFinite(rate) && rate > 0) {
+        state.lastRates.set(nodeId, rate);
+      } else {
+        rate = state.lastRates.get(nodeId);
       }
+      renderSyncSummary(summarySyncPill, progress, rate, {
+        local_height: metrics.local_height,
+        remote_height: metrics.remote_height,
+      });
 
       updateStartStopButton(card.querySelector('[data-action="toggle"]'), running);
 
