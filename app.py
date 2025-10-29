@@ -7,6 +7,7 @@ import subprocess
 import threading
 import time
 from datetime import datetime, timezone
+from decimal import Decimal, ROUND_DOWN, getcontext
 from collections import OrderedDict, deque
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
@@ -32,6 +33,8 @@ try:
     requests.packages.urllib3.disable_warnings()  # type: ignore[attr-defined]
 except Exception:
     pass
+
+getcontext().prec = 50
 
 
 # ---------------------------------------------------------------------------
@@ -85,6 +88,12 @@ ENV_REMOTE_RPC_BASES = _parse_remote_rpc_bases(
 )
 DEFAULT_REMOTE_BASES = ENV_REMOTE_RPC_BASES or DEFAULT_REMOTE_RPC_BASES[:]
 
+WEI_PER_BDAG = Decimal("1000000000000000000")
+WALLET_BALANCE_CACHE_SEC = max(0.0, float(os.getenv("BDAG_BALANCE_CACHE_SEC", "60") or "60"))
+_wallet_address_cache: Dict[str, object] = {"path": None, "mtime": 0.0, "address": None}
+_wallet_balance_cache: Dict[str, object] = {"ts": 0.0, "data": None}
+
+
 
 # ---------------------------------------------------------------------------
 # General helpers
@@ -125,6 +134,9 @@ def _coerce_bool(value, default: bool = False) -> bool:
     if text in {"0", "false", "no", "off"}:
         return False
     return default
+
+
+WALLET_DISPLAY_ENABLED = _coerce_bool(os.getenv("BDAG_WALLET_DISPLAY", "0"), False)
 
 
 def _slugify(name: str) -> str:
@@ -174,6 +186,7 @@ def _extract_rpc_credentials(env: Dict[str, str]) -> Tuple[str, str]:
 
 
 def _resolve_container_rpc_base(info: dict, env: Dict[str, str]) -> Optional[str]:
+    normalized = None
     for key in (
         "BDAG_RPC_BASE",
         "BDAG_RPC_URL",
@@ -218,6 +231,32 @@ def _resolve_container_rpc_base(info: dict, env: Dict[str, str]) -> Optional[str
             host_ip = "127.0.0.1"
         return f"http://{host_ip}:{host_port}"
     return None
+
+
+def _wallet_candidate_paths() -> List[Path]:
+    candidates: List[Path] = []
+    env_path = os.getenv("BDAG_WALLET_FILE")
+    if env_path:
+        candidates.append(Path(env_path).expanduser())
+    candidates.extend(
+        [
+            Path.home() / "blockdag-scripts" / "wallet.txt",
+            Path("/home/node/blockdag/blockdag-scripts/wallet.txt"),
+            Path("/home/node/wallet.txt"),
+            Path(__file__).resolve().parent.parent / "wallet.txt",
+        ]
+    )
+    seen = set()
+    unique: List[Path] = []
+    for path in candidates:
+        if not path:
+            continue
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(path)
+    return unique
 
 
 def _list_docker_containers() -> List[str]:
@@ -293,6 +332,113 @@ DEFAULT_NODE_SETTINGS = {
     "remote_rpc_verify": _coerce_bool(os.getenv("BDAG_REMOTE_RPC_VERIFY"), False),
     "container": os.getenv("BDAG_NODE_CONTAINER", "").strip(),
 }
+
+BALANCE_RPC_BASE = _normalize_rpc_endpoint(
+    os.getenv("BDAG_BALANCE_RPC_BASE")
+    or os.getenv("BDAG_RPC_BASE")
+    or DEFAULT_NODE_SETTINGS["rpc_base"]
+)
+BALANCE_RPC_USER = os.getenv("BDAG_BALANCE_RPC_USER", DEFAULT_NODE_SETTINGS["rpc_user"])
+BALANCE_RPC_PASS = os.getenv("BDAG_BALANCE_RPC_PASS", DEFAULT_NODE_SETTINGS["rpc_pass"])
+BALANCE_RPC_TIMEOUT = float(os.getenv("BDAG_BALANCE_RPC_TIMEOUT", "6") or "6")
+BALANCE_RPC_VERIFY = _coerce_bool(os.getenv("BDAG_BALANCE_RPC_VERIFY"), DEFAULT_NODE_SETTINGS["rpc_verify"])
+
+
+def _get_wallet_address() -> Tuple[Optional[str], Optional[str]]:
+    for path in _wallet_candidate_paths():
+        try:
+            stat = path.stat()
+        except FileNotFoundError:
+            continue
+        except Exception:
+            continue
+        if stat.st_size <= 0:
+            continue
+        cached_path = _wallet_address_cache.get("path")
+        cached_mtime = _wallet_address_cache.get("mtime") or 0.0
+        if cached_path == str(path) and cached_mtime == stat.st_mtime:
+            return _wallet_address_cache.get("address"), str(path)
+        try:
+            with path.open("r", encoding="utf-8") as fh:
+                lines = [line.strip() for line in fh if line.strip()]
+        except Exception:
+            continue
+        if not lines:
+            continue
+        address = lines[-1]
+        _wallet_address_cache.update({"path": str(path), "mtime": stat.st_mtime, "address": address})
+        return address, str(path)
+    _wallet_address_cache.update({"path": None, "mtime": 0.0, "address": None})
+    return None, None
+
+
+def _format_balance_decimal(value: Decimal) -> str:
+    normalized = value.quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+    return f"{normalized:,.2f}"
+
+
+def _fetch_wallet_balance(address: str) -> dict:
+    if not BALANCE_RPC_BASE:
+        raise RuntimeError("RPC endpoint not configured")
+    payload = {
+        "jsonrpc": "2.0",
+        "method": "eth_getBalance",
+        "params": [address, "latest"],
+        "id": int(time.time()),
+    }
+    auth = None
+    if BALANCE_RPC_USER or BALANCE_RPC_PASS:
+        auth = (BALANCE_RPC_USER or "", BALANCE_RPC_PASS or "")
+    response = requests.post(
+        BALANCE_RPC_BASE,
+        json=payload,
+        timeout=BALANCE_RPC_TIMEOUT,
+        auth=auth,
+        verify=BALANCE_RPC_VERIFY,
+    )
+    response.raise_for_status()
+    data = response.json()
+    if "error" in data:
+        raise RuntimeError(str(data["error"]))
+    result = data.get("result")
+    if not isinstance(result, str):
+        raise RuntimeError("unexpected balance response")
+    balance_wei = int(result, 16)
+    balance_decimal = Decimal(balance_wei) / WEI_PER_BDAG
+    formatted = _format_balance_decimal(balance_decimal)
+    return {
+        "address": address,
+        "balance_wei": balance_wei,
+        "balance_bdag": str(balance_decimal),
+        "balance_formatted": f"{formatted} BDAG",
+        "rpc": BALANCE_RPC_BASE,
+    }
+
+
+def _get_wallet_overview() -> dict:
+    address, source = _get_wallet_address()
+    if not address:
+        return {"error": "wallet not found"}
+    now = time.time()
+    cached = _wallet_balance_cache.get("data")
+    cached_ts = float(_wallet_balance_cache.get("ts") or 0.0)
+    if (
+        cached
+        and isinstance(cached, dict)
+        and cached.get("address") == address
+        and now - cached_ts < WALLET_BALANCE_CACHE_SEC
+    ):
+        return cached
+    try:
+        info = _fetch_wallet_balance(address)
+    except Exception as exc:
+        info = {"address": address, "error": str(exc)}
+    info["source"] = source
+    info["timestamp"] = time.time()
+    info["short"] = info.get("balance_formatted", "—")
+    _wallet_balance_cache["data"] = info
+    _wallet_balance_cache["ts"] = info["timestamp"]
+    return info
 
 NODE_CONFIG_PATH = Path(
     os.getenv("BDAG_NODE_CONFIG_PATH")
@@ -559,21 +705,28 @@ def _fetch_local_height(ctx: NodeContext) -> Optional[int]:
 
 def _fetch_peer_count(ctx: NodeContext) -> Optional[int]:
     auth = (ctx.rpc_user, ctx.rpc_pass) if (ctx.rpc_user or ctx.rpc_pass) else None
-    for method in PEER_COUNT_METHODS:
-        try:
-            result = _rpc_call(
-                ctx.rpc_base,
-                method,
-                [],
-                timeout=ctx.rpc_timeout,
-                auth=auth,
-                verify=ctx.rpc_verify,
-            )
-            peers = _parse_height_value(result)
-            if peers is not None:
-                return peers
-        except Exception:
-            continue
+    def _try_peer_methods(methods: Iterable[str]) -> Optional[int]:
+        for method in methods:
+            try:
+                result = _rpc_call(
+                    ctx.rpc_base,
+                    method,
+                    [],
+                    timeout=ctx.rpc_timeout,
+                    auth=auth,
+                    verify=ctx.rpc_verify,
+                )
+                value = _parse_height_value(result)
+                if value is not None:
+                    return value
+            except Exception:
+                continue
+        return None
+
+    base_count = _try_peer_methods(PEER_COUNT_METHODS)
+    if isinstance(base_count, int) and base_count > 0:
+        return base_count
+
     try:
         info = _rpc_call(
             ctx.rpc_base,
@@ -583,21 +736,86 @@ def _fetch_peer_count(ctx: NodeContext) -> Optional[int]:
             auth=auth,
             verify=ctx.rpc_verify,
         )
+    except Exception:
+        info = None
+
+    if info is not None:
+        peer_list: List[object] = []
+        count_candidates: List[object] = []
         if isinstance(info, list):
-            return len(info)
-        if isinstance(info, dict):
+            peer_list = info
+        elif isinstance(info, dict):
+            for key in ("active", "activeCount", "connected", "connections", "count", "numPeers", "total", "peersCount"):
+                if key in info:
+                    count_candidates.append(info.get(key))
             peers_field = info.get("peers")
             if isinstance(peers_field, list):
-                return len(peers_field)
-            for key in ("count", "activeCount", "total", "numPeers"):
-                if key in info:
-                    try:
-                        return int(info[key])
-                    except Exception:
-                        continue
+                peer_list = peers_field
+            else:
+                peer_list = [info]
+
+        for candidate in count_candidates:
+            cand_val = _parse_height_value(candidate)
+            if cand_val is not None and cand_val >= 0:
+                return cand_val
+
+        if peer_list:
+            active = 0
+            statuses = {"true", "1", "connected", "active", "running", "online", "up", "ok"}
+            for peer in peer_list:
+                if isinstance(peer, dict):
+                    flags = (
+                        peer.get("active"),
+                        peer.get("state"),
+                        peer.get("connected"),
+                        peer.get("isActive"),
+                        peer.get("is_connected"),
+                        peer.get("status"),
+                    )
+                    counted = False
+                    for flag in flags:
+                        if isinstance(flag, bool):
+                            if flag:
+                                active += 1
+                                counted = True
+                                break
+                        elif isinstance(flag, (int, float)):
+                            if flag > 0:
+                                active += 1
+                                counted = True
+                                break
+                        elif isinstance(flag, str):
+                            if flag.strip().lower() in statuses:
+                                active += 1
+                                counted = True
+                                break
+                    if not counted:
+                        active += 1
+                else:
+                    active += 1
+            if active <= 0:
+                active = len(peer_list)
+            if active >= 0:
+                return int(active)
+
+    try:
+        result = _rpc_call(
+            ctx.rpc_base,
+            "getconnectioncount",
+            [],
+            timeout=ctx.rpc_timeout,
+            auth=auth,
+            verify=ctx.rpc_verify,
+        )
+        count = _parse_height_value(result)
+        if count is not None and count > 0:
+            return count
     except Exception:
         pass
-    return None
+
+    if isinstance(base_count, int) and base_count >= 0:
+        return base_count
+    return 0
 
 
 def _fetch_remote_height(ctx: NodeContext) -> Optional[int]:
@@ -780,6 +998,14 @@ def _fleet_summary(nodes: List[dict]) -> dict:
         "max_remote_height": max(remote_heights) if remote_heights else 0,
         "timestamp": time.time(),
     }
+    summary["wallet_enabled"] = WALLET_DISPLAY_ENABLED
+    if WALLET_DISPLAY_ENABLED:
+        try:
+            summary["wallet"] = _get_wallet_overview()
+        except Exception as exc:
+            summary["wallet"] = {"error": str(exc)}
+    else:
+        summary["wallet"] = None
     return summary
 
 
@@ -832,6 +1058,8 @@ def api_node_manager_nodes():
         "max_local_height": 0,
         "max_remote_height": 0,
         "timestamp": time.time(),
+        "wallet_enabled": WALLET_DISPLAY_ENABLED,
+        "wallet": _get_wallet_overview() if WALLET_DISPLAY_ENABLED else None,
     }
     return jsonify({"nodes": nodes_payload, "summary": summary})
 
