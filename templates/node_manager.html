@@ -36,16 +36,10 @@
   .summary-status-line{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted)}
   .summary-status-chip{display:inline-flex;align-items:center;gap:6px;position:relative}
   .summary-status-chip::before{content:'';width:8px;height:8px;border-radius:999px;background:var(--muted)}
-  .summary-status-chip.is-online{color:var(--ok);background:rgba(37,211,102,.12)}
-  .summary-status-chip.is-online::before{background:var(--ok)}
-  .summary-status-chip.is-offline{color:var(--bad);background:rgba(255,83,112,.18)}
-  .summary-status-chip.is-offline::before{background:var(--bad)}
   .status-chip{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:4px 11px;font-size:12px;font-weight:600;background:rgba(255,255,255,.06);color:var(--muted);letter-spacing:.05em;text-transform:none}
   .summary-health-chip{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:4px 11px;font-size:12px;font-weight:600;background:rgba(255,255,255,.06);color:var(--muted);letter-spacing:.05em;text-transform:none}
-  .summary-health-chip.health-ok{color:var(--ok);background:rgba(37,211,102,.12)}
-  .summary-health-chip.health-warn{color:var(--warn);background:rgba(255,183,77,.16)}
-  .summary-health-chip.health-bad{color:var(--bad);background:rgba(255,83,112,.18)}
-  .summary-health-chip.health-stopped{color:#f6c343;background:rgba(255,204,128,.2)}
+  .summary-health-chip.health-online{color:var(--ok);background:rgba(37,211,102,.12)}
+  .summary-health-chip.health-offline{color:var(--bad);background:rgba(255,83,112,.18)}
   .node-name{font-size:18px;font-weight:600}
   .node-meta{font-size:13px;color:var(--muted)}
   .summary-actions{display:flex;flex-direction:column;align-items:center;gap:8px}
@@ -151,8 +145,7 @@
           <span class="node-meta">—</span>
         </div>
         <div class="summary-status-line">
-          <span class="status-chip summary-status-chip">Status</span>
-          <span class="status-chip summary-health-chip">Health</span>
+          <span class="status-chip summary-health-chip">Status</span>
           <span class="sync-pill" data-role="sync-pill">Sync —</span>
           <span class="sync-pill" data-role="sync-rate-pill">Rate —</span>
         </div>

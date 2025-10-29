@@ -55,18 +55,9 @@
   function resolveHealth(stats, running, options = {}) {
     const { forceOffline = false } = options;
     const detail = (stats.health_detail || stats.health_text || '').toString().trim();
-    let label = (stats.health_label || stats.health_text || '').toString().trim();
-    let code = (stats.health_code || '').toString().trim().toLowerCase();
-    if (forceOffline || !running) {
-      const lowerLabel = label.toLowerCase();
-      if (!label || lowerLabel === 'healthy' || lowerLabel === 'online' || forceOffline) {
-        label = forceOffline ? 'Stopped' : 'Offline';
-      }
-      if (!code) {
-        code = forceOffline ? 'stopped' : 'offline';
-      }
-    }
-    const display = label || (running ? 'Healthy' : 'Offline');
+    const online = running && !forceOffline;
+    const display = online ? 'Online' : 'Offline';
+    const code = online ? 'online' : 'offline';
     return { display, detail, code };
   }
 
@@ -293,7 +284,6 @@
     card.querySelector('.node-name').textContent = workerLabel;
     card.querySelector('.node-meta').textContent = node.container || '—';
 
-    const summaryStatusChip = card.querySelector('.summary-status-chip');
     const summaryHealthChip = card.querySelector('.summary-health-chip');
     const summarySyncPill = card.querySelector('[data-role="sync-pill"]');
     const summaryRatePill = card.querySelector('[data-role="sync-rate-pill"]');
@@ -306,37 +296,21 @@
       statusEl.parentElement.classList.toggle('is-warn', !running);
     }
 
-    if (summaryStatusChip) {
-      summaryStatusChip.textContent = running ? 'Running' : 'Stopped';
-      summaryStatusChip.classList.remove('is-online', 'is-offline');
-      summaryStatusChip.classList.add(running ? 'is-online' : 'is-offline');
-    }
     const forceOfflineHeader = shouldForceOffline(stats, running, state.lastProgress.get(node.id));
     const health = resolveHealth(stats, running, { forceOffline: forceOfflineHeader });
     const displayHealth = health.display;
     const code = health.code;
     const healthDetail = health.detail;
     if (summaryHealthChip) {
-      summaryHealthChip.textContent = displayHealth || 'Health';
+      summaryHealthChip.textContent = displayHealth || 'Status';
       if (healthDetail || displayHealth) {
         summaryHealthChip.title = healthDetail || displayHealth;
       } else {
         summaryHealthChip.removeAttribute('title');
       }
-      summaryHealthChip.classList.remove('health-ok', 'health-warn', 'health-bad', 'health-stopped');
-      const lower = displayHealth.toLowerCase();
-      const okCodes = new Set(['healthy', 'steady', 'mining']);
-      const warnCodes = new Set(['syncing', 'downloading', 'initializing', 'no_peers']);
-      const badCodes = new Set(['offline', 'stalled', 'error']);
-      if (code === 'stopped' || lower.includes('stopped')) {
-        summaryHealthChip.classList.add('health-stopped');
-      } else if (okCodes.has(code) || lower.includes('healthy') || lower.includes('running') || lower.includes('mining')) {
-        summaryHealthChip.classList.add('health-ok');
-      } else if (badCodes.has(code) || lower.includes('stall') || (!running && lower)) {
-        summaryHealthChip.classList.add('health-bad');
-      } else if (warnCodes.has(code) || lower.includes('sync') || lower.includes('download')) {
-        summaryHealthChip.classList.add('health-warn');
-      }
+      const isOnline = code === 'online';
+      summaryHealthChip.classList.remove('health-online', 'health-offline');
+      summaryHealthChip.classList.add(isOnline ? 'health-online' : 'health-offline');
     }
 
     if (summarySyncPill) {
@@ -699,13 +673,6 @@
         }
       }
 
-      const summaryStatusChip = card.querySelector('.summary-status-chip');
-      if (summaryStatusChip) {
-        summaryStatusChip.textContent = running ? 'Running' : 'Stopped';
-        summaryStatusChip.classList.remove('is-online', 'is-offline');
-        summaryStatusChip.classList.add(running ? 'is-online' : 'is-offline');
-      }
-
       const summaryHealthChip = card.querySelector('.summary-health-chip');
       const previousProgress = state.lastProgress.get(nodeId);
       const forceOffline = shouldForceOffline(metrics, running, previousProgress);
@@ -714,26 +681,15 @@
       const healthDetail = health.detail;
       const code = health.code;
       if (summaryHealthChip) {
-        summaryHealthChip.textContent = displayHealth || 'Health';
+        summaryHealthChip.textContent = displayHealth || 'Status';
         if (healthDetail || displayHealth) {
           summaryHealthChip.title = healthDetail || displayHealth;
         } else {
           summaryHealthChip.removeAttribute('title');
         }
-        summaryHealthChip.classList.remove('health-ok', 'health-warn', 'health-bad', 'health-stopped');
-        const lower = displayHealth.toLowerCase();
-        const okCodes = new Set(['healthy', 'steady', 'mining']);
-        const warnCodes = new Set(['syncing', 'downloading', 'initializing', 'no_peers']);
-        const badCodes = new Set(['offline', 'stalled', 'error']);
-        if (code === 'stopped' || lower.includes('stopped')) {
-          summaryHealthChip.classList.add('health-stopped');
-        } else if (okCodes.has(code) || lower.includes('healthy') || lower.includes('running') || lower.includes('mining')) {
-          summaryHealthChip.classList.add('health-ok');
-        } else if (badCodes.has(code) || lower.includes('stall') || (!running && lower)) {
-          summaryHealthChip.classList.add('health-bad');
-        } else if (warnCodes.has(code) || lower.includes('sync') || lower.includes('download')) {
-          summaryHealthChip.classList.add('health-warn');
-        }
+        const isOnline = code === 'online';
+        summaryHealthChip.classList.remove('health-online', 'health-offline');
+        summaryHealthChip.classList.add(isOnline ? 'health-online' : 'health-offline');
       }
 
       const summarySyncPill = card.querySelector('[data-role="sync-pill"]');
