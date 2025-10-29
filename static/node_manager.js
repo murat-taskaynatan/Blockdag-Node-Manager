@@ -16,13 +16,50 @@
   const fmt = new Intl.NumberFormat();
   const fmtTime = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-  function resolveHealth(stats, running) {
+  function numberOrZero(value) {
+    const num = Number(value);
+    return Number.isFinite(num) ? num : 0;
+  }
+
+  function recentWindow(series, fallback) {
+    const values = Array.isArray(series) && series.length ? series.map(numberOrZero) : [numberOrZero(fallback)];
+    return values.length > 5 ? values.slice(-5) : values;
+  }
+
+  function shouldForceOffline(stats, running, previousProgress) {
+    if (!running) {
+      return false;
+    }
+    const localSeries = Array.isArray(stats.local) ? stats.local.map(numberOrZero) : [];
+    const remoteSeries = Array.isArray(stats.remote) ? stats.remote.map(numberOrZero) : [];
+    const hadSeriesProgress = localSeries.some((value) => value > 0);
+    const prevProgressValue = numberOrZero(previousProgress);
+    const hadProgress = hadSeriesProgress || prevProgressValue > 0;
+    const recentLocal = recentWindow(localSeries, stats.local_height);
+    const zeroedRecentLocal = recentLocal.every((value) => value <= 0);
+    const localHeight = numberOrZero(stats.local_height);
+    const zeroLocal = localHeight <= 0 && zeroedRecentLocal;
+    const recentRemote = recentWindow(remoteSeries, stats.remote_height);
+    const remotePositive = recentRemote.some((value) => value > 0) || numberOrZero(stats.remote_height) > 0;
+    const peers = numberOrZero(stats.peers);
+    const uptime = numberOrZero(stats.uptime_seconds);
+    if (hadProgress && zeroLocal && remotePositive && peers <= 0) {
+      return true;
+    }
+    if (zeroLocal && remotePositive && peers <= 0 && uptime > 180) {
+      return true;
+    }
+    return false;
+  }
+
+  function resolveHealth(stats, running, options = {}) {
+    const { forceOffline = false } = options;
     const detail = (stats.health_detail || stats.health_text || '').toString().trim();
     let label = (stats.health_label || stats.health_text || '').toString().trim();
     let code = (stats.health_code || '').toString().trim().toLowerCase();
-    if (!running) {
+    if (forceOffline || !running) {
       const lowerLabel = label.toLowerCase();
-      if (!label || lowerLabel === 'healthy' || lowerLabel === 'online') {
+      if (!label || lowerLabel === 'healthy' || lowerLabel === 'online' || forceOffline) {
         label = 'Offline';
       }
       if (!code) {
@@ -274,7 +311,8 @@
       summaryStatusChip.classList.remove('is-online', 'is-offline');
       summaryStatusChip.classList.add(running ? 'is-online' : 'is-offline');
     }
-    const health = resolveHealth(stats, running);
+    const forceOfflineHeader = shouldForceOffline(stats, running, state.lastProgress.get(node.id));
+    const health = resolveHealth(stats, running, { forceOffline: forceOfflineHeader });
     const displayHealth = health.display;
     const code = health.code;
     const healthDetail = health.detail;
@@ -667,7 +705,9 @@
       }
 
       const summaryHealthChip = card.querySelector('.summary-health-chip');
-      const health = resolveHealth(metrics, running);
+      const previousProgress = state.lastProgress.get(nodeId);
+      const forceOffline = shouldForceOffline(metrics, running, previousProgress);
+      const health = resolveHealth(metrics, running, { forceOffline });
       const displayHealth = health.display;
       const healthDetail = health.detail;
       const code = health.code;
