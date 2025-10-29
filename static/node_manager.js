@@ -298,10 +298,10 @@ async function saveSettings() {
         badgeTitle = wallet.address;
       }
     } else {
-      badgeText = 'Updated';
+      badgeText = 'updated';
     }
     if (!badgeText) {
-      badgeText = 'Updated';
+      badgeText = 'updated';
     }
     if (ts) {
       const timeText = fmtTime.format(ts);
