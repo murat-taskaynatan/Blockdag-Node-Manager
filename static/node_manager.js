@@ -441,23 +441,17 @@ async function saveSettings() {
       card.open = false;
       card.removeAttribute('open');
     }
-    const workerLabel = (() => {
-      const suffix = node.id.toString().split('-').pop();
-      const num = Number(suffix);
-      if (Number.isFinite(num) && num >= 1) {
-        return `Node Worker - ${num}`;
+    const displayLabel = (node.label && String(node.label).trim()) || node.id;
+    const metaEl = card.querySelector('.node-meta');
+    card.querySelector('.node-name').textContent = displayLabel;
+    if (metaEl) {
+      const container = node.container && String(node.container).trim();
+      if (container && container !== displayLabel) {
+        metaEl.textContent = `${container} · ${node.id}`;
+      } else {
+        metaEl.textContent = node.id;
       }
-      const digits = (node.id.match(/\d+/g) || []).map(Number).filter((n) => Number.isFinite(n));
-      if (digits.length) {
-        return `Node Worker - ${digits[0]}`;
-      }
-      const orderedKeys = Array.from(state.nodes.keys()).sort();
-      const index = orderedKeys.indexOf(node.id);
-      const ordinal = index >= 0 ? index + 1 : state.nodes.size + 1;
-      return `Node Worker - ${ordinal}`;
-    })();
-    card.querySelector('.node-name').textContent = workerLabel;
-    card.querySelector('.node-meta').textContent = node.container || '—';
+    }
 
     const summaryHealthChip = card.querySelector('.summary-health-chip');
     const summarySyncPill = card.querySelector('[data-role="sync-pill"]');
