@@ -441,51 +441,69 @@ async function saveSettings() {
       card.open = false;
       card.removeAttribute('open');
     }
-    const sortKeys = (() => {
-      const parseKey = (value) => {
-        const text = String(value || '').trim();
-        const match = text.match(/(\d+)(?!.*\d)/);
+    const orderingContext = (() => {
+      const keys = Array.from(state.nodes.keys());
+      const infoMap = new Map();
+      const baseWithExplicit = new Set();
+      keys.forEach((key) => {
+        const text = String(key || '').trim();
+        const match = text.match(/^(.*?)-(\d+)$/);
         if (match) {
-          const num = Number(match[1]);
+          const base = match[1];
+          const num = Number(match[2]);
+          infoMap.set(key, {
+            base,
+            num,
+            hasExplicit: Number.isFinite(num),
+            raw: text,
+          });
           if (Number.isFinite(num)) {
-            return { hasNum: true, num, text };
+            baseWithExplicit.add(base);
           }
+        } else {
+          infoMap.set(key, {
+            base: text,
+            num: null,
+            hasExplicit: false,
+            raw: text,
+          });
         }
-        return { hasNum: false, num: Number.POSITIVE_INFINITY, text };
-      };
-      return Array.from(state.nodes.keys()).sort((a, b) => {
-        const pa = parseKey(a);
-        const pb = parseKey(b);
-        if (pa.hasNum && pb.hasNum && pa.num !== pb.num) {
-          return pa.num - pb.num;
-        }
-        if (pa.hasNum !== pb.hasNum) {
-          return pa.hasNum ? -1 : 1;
-        }
-        return pa.text.localeCompare(pb.text);
       });
+      const sortedKeys = keys.slice().sort((a, b) => {
+        const infoA = infoMap.get(a) || { base: '', num: null, hasExplicit: false, raw: '' };
+        const infoB = infoMap.get(b) || { base: '', num: null, hasExplicit: false, raw: '' };
+        const aHasNum = infoA.hasExplicit || baseWithExplicit.has(infoA.base);
+        const bHasNum = infoB.hasExplicit || baseWithExplicit.has(infoB.base);
+        const aNum = infoA.hasExplicit ? infoA.num : (aHasNum ? 1 : Number.POSITIVE_INFINITY);
+        const bNum = infoB.hasExplicit ? infoB.num : (bHasNum ? 1 : Number.POSITIVE_INFINITY);
+        if (aHasNum && bHasNum && aNum !== bNum) {
+          return aNum - bNum;
+        }
+        if (aHasNum !== bHasNum) {
+          return aHasNum ? -1 : 1;
+        }
+        return infoA.raw.localeCompare(infoB.raw);
+      });
+      return { infoMap, baseWithExplicit, sortedKeys };
     })();
     const workerLabel = (() => {
       const idText = String(node.id || '').trim();
-      if (idText) {
-        const suffix = idText.split('-').pop();
-        const num = Number(suffix);
-        if (Number.isFinite(num) && num >= 1) {
-          return `Node Worker - ${num}`;
-        }
-        const digits = (idText.match(/\d+/g) || []).map(Number).filter((n) => Number.isFinite(n));
-        if (digits.length) {
-          return `Node Worker - ${digits[0]}`;
-        }
-      }
-      const index = sortKeys.indexOf(node.id);
+      const info = orderingContext.infoMap.get(node.id) || { base: idText, num: null, hasExplicit: false };
+      const hasBaseNumbers = orderingContext.baseWithExplicit.has(info.base);
+      const explicitNum = info.hasExplicit && Number.isFinite(info.num) ? info.num : null;
+      const assignedNum = explicitNum ?? (hasBaseNumbers ? 1 : null);
+      const index = orderingContext.sortedKeys.indexOf(node.id);
       const ordinal = index >= 0 ? index + 1 : state.nodes.size + 1;
-      return `Node Worker - ${ordinal}`;
+      const finalNumber = assignedNum ?? ordinal;
+      return `Node Worker - ${finalNumber}`;
     })();
     card.querySelector('.node-name').textContent = workerLabel;
     const metaEl = card.querySelector('.node-meta');
     if (metaEl) {
-      metaEl.textContent = (node.container && String(node.container).trim()) || (node.label && String(node.label).trim()) || '—';
+      const info = orderingContext.infoMap.get(node.id);
+      const baseLabel = (node.label && String(node.label).trim()) || (info && info.base) || String(node.id || '').trim();
+      const container = (node.container && String(node.container).trim()) || '';
+      metaEl.textContent = container && container !== baseLabel ? `${container} · ${baseLabel}` : baseLabel;
     }
 
     const summaryHealthChip = card.querySelector('.summary-health-chip');
