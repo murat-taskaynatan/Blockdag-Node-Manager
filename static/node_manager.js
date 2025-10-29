@@ -38,8 +38,7 @@
     const maxRemoteEl = document.getElementById('statMaxRemote');
 
     if (!summary || Object.keys(summary).length === 0) {
-      summaryBadge.textContent = 'Wallet: —';
-      summaryBadge.removeAttribute('title');
+      summaryBadge.textContent = 'No data';
       countEl.textContent = onlineEl.textContent = offlineEl.textContent = maxLocalEl.textContent = maxRemoteEl.textContent = '—';
       return;
     }
@@ -54,34 +53,9 @@
     maxLocalEl.textContent = summary.max_local_height !== undefined ? fmt.format(summary.max_local_height) : '—';
     maxRemoteEl.textContent = summary.max_remote_height !== undefined ? fmt.format(summary.max_remote_height) : '—';
 
-    const wallet = summary.wallet || {};
     const ts = summary.timestamp ? new Date(summary.timestamp * 1000) : null;
-    let badgeText = '—';
-    let badgeTitle = '';
-    if (wallet) {
-      if (wallet.error) {
-        badgeText = wallet.error;
-      } else if (wallet.balance_formatted) {
-        badgeText = wallet.short || wallet.balance_formatted;
-        if (wallet.address) {
-          badgeTitle = wallet.address;
-        }
-      } else if (wallet.address) {
-        badgeText = '(fetching…)';
-        badgeTitle = wallet.address;
-      }
-    }
-    if (ts) {
-      badgeText += ` · ${fmtTime.format(ts)}`;
-    }
-    summaryBadge.textContent = badgeText;
-    if (badgeTitle) {
-      summaryBadge.title = badgeTitle;
-    } else if (wallet && wallet.address) {
-      summaryBadge.title = wallet.address;
-    } else {
-      summaryBadge.removeAttribute('title');
-    }
+    const suffix = ts ? ` · ${fmtTime.format(ts)}` : '';
+    summaryBadge.textContent = `${fmt.format(count)} node${count === 1 ? '' : 's'}${suffix}`;
   }
 
   function syncCards(nodes) {
