@@ -70,10 +70,10 @@
         badgeTitle = wallet.address;
       }
     } else {
-      badgeText = 'Last Seen';
+      badgeText = 'last seen';
     }
     if (!badgeText) {
-      badgeText = 'Last Seen';
+      badgeText = 'last seen';
     }
     if (ts) {
       const timeText = fmtTime.format(ts);
