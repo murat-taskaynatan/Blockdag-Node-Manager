@@ -1,0 +1,5 @@
+{
+  "liveness_auto_recover": false,
+  "auto_restart_on_error": false,
+  "display_wallet_balance": false
+}

@@ -136,7 +136,59 @@ def _coerce_bool(value, default: bool = False) -> bool:
     return default
 
 
-WALLET_DISPLAY_ENABLED = _coerce_bool(os.getenv("BDAG_WALLET_DISPLAY", "0"), False)
+
+SETTINGS_PATH = Path(__file__).resolve().parent / "config" / "settings.json"
+DEFAULT_SETTINGS: Dict[str, bool] = {
+    "liveness_auto_recover": False,
+    "auto_restart_on_error": False,
+    "display_wallet_balance": _coerce_bool(os.getenv("BDAG_WALLET_DISPLAY", "0"), False),
+}
+_SETTINGS_LOCK = threading.Lock()
+_SETTINGS_CACHE: Dict[str, bool] = {}
+
+
+def _load_settings_file() -> Dict[str, bool]:
+    merged = DEFAULT_SETTINGS.copy()
+    if SETTINGS_PATH.exists():
+        try:
+            with SETTINGS_PATH.open("r", encoding="utf-8") as handle:
+                payload = json.load(handle)
+        except Exception as exc:
+            app.logger.warning("failed to read settings file %s: %s", SETTINGS_PATH, exc)
+            payload = {}
+        if isinstance(payload, dict):
+            for key, default in DEFAULT_SETTINGS.items():
+                if key in payload:
+                    merged[key] = _coerce_bool(payload[key], default)
+    return merged
+
+
+def get_settings() -> Dict[str, bool]:
+    with _SETTINGS_LOCK:
+        if not _SETTINGS_CACHE:
+            _SETTINGS_CACHE.update(_load_settings_file())
+        return dict(_SETTINGS_CACHE)
+
+
+def update_settings(updates: Dict[str, object]) -> Dict[str, bool]:
+    filtered: Dict[str, bool] = {}
+    for key, default in DEFAULT_SETTINGS.items():
+        if key in updates:
+            filtered[key] = _coerce_bool(updates[key], default)
+    if not filtered:
+        return get_settings()
+    with _SETTINGS_LOCK:
+        if not _SETTINGS_CACHE:
+            _SETTINGS_CACHE.update(_load_settings_file())
+        _SETTINGS_CACHE.update(filtered)
+        try:
+            SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+            with SETTINGS_PATH.open("w", encoding="utf-8") as handle:
+                json.dump(_SETTINGS_CACHE, handle, indent=2, sort_keys=True)
+        except Exception as exc:
+            app.logger.error("failed to persist settings file %s: %s", SETTINGS_PATH, exc)
+        return dict(_SETTINGS_CACHE)
+
 
 
 def _slugify(name: str) -> str:
@@ -998,8 +1050,11 @@ def _fleet_summary(nodes: List[dict]) -> dict:
         "max_remote_height": max(remote_heights) if remote_heights else 0,
         "timestamp": time.time(),
     }
-    summary["wallet_enabled"] = WALLET_DISPLAY_ENABLED
-    if WALLET_DISPLAY_ENABLED:
+    settings = get_settings()
+    wallet_enabled = bool(settings.get("display_wallet_balance"))
+    summary["wallet_enabled"] = wallet_enabled
+    summary["settings"] = settings
+    if wallet_enabled:
         try:
             summary["wallet"] = _get_wallet_overview()
         except Exception as exc:
@@ -1051,16 +1106,10 @@ def api_node_manager_nodes():
                 "status": ctx.snapshot(include_series=False),
             }
         )
-    summary = _fleet_summary(nodes_payload) if nodes_payload else {
-        "count": 0,
-        "running": 0,
-        "offline": 0,
-        "max_local_height": 0,
-        "max_remote_height": 0,
-        "timestamp": time.time(),
-        "wallet_enabled": WALLET_DISPLAY_ENABLED,
-        "wallet": _get_wallet_overview() if WALLET_DISPLAY_ENABLED else None,
-    }
+    if nodes_payload:
+        summary = _fleet_summary(nodes_payload)
+    else:
+        summary = _fleet_summary([])
     return jsonify({"nodes": nodes_payload, "summary": summary})
 
 
@@ -1079,6 +1128,18 @@ def api_node_manager_metrics():
         ctx.sample(force=True)
         response[ctx.id] = ctx.snapshot(include_series=True)
     return jsonify({"nodes": response, "timestamp": time.time()})
+
+
+
+@app.route("/api/settings", methods=["GET", "POST"])
+def api_settings():
+    if request.method == "GET":
+        return jsonify({"settings": get_settings()})
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body, dict):
+        return jsonify({"ok": False, "error": "invalid payload"}), 400
+    updated = update_settings(body)
+    return jsonify({"ok": True, "settings": updated})
 
 
 @app.route("/api/node-manager/discover", methods=["POST"])
