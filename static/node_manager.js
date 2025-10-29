@@ -26,6 +26,17 @@
     return values.length > 5 ? values.slice(-5) : values;
   }
 
+  function isRunningFlag(value) {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value > 0;
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (!normalized) return false;
+      return ['true', '1', 'running', 'online', 'yes', 'up', 'active'].includes(normalized);
+    }
+    return false;
+  }
+
   function shouldForceOffline(stats, running, previousProgress) {
     if (!running) {
       return false;
@@ -60,7 +71,7 @@
     const hasRate = Number.isFinite(rate) && rate > 0;
     const progressText = hasProgress ? `${progress.toFixed(1)}%` : '—';
     const rateValue = hasRate ? (rate >= 10 ? rate.toFixed(1) : rate.toFixed(2)) : '—';
-    pill.textContent = `Sync ${progressText}, ${rateValue} blk/s`;
+    pill.textContent = `Synced ${progressText} ${rateValue} blk/s`;
     if (hasProgress || hasRate) {
       const local = meta.local_height ?? meta.local;
       const remote = meta.remote_height ?? meta.remote;
@@ -313,15 +324,17 @@
     const summarySyncPill = card.querySelector('[data-role="sync-pill"]');
     const statusEl = card.querySelector('.status-text');
     const stats = node.status || {};
-    const running = !!stats.running;
+    entry.meta.status = stats;
+    const rawRunning = isRunningFlag(stats.running);
+    const forceOfflineHeader = shouldForceOffline(stats, rawRunning, state.lastProgress.get(node.id));
+    const effectiveRunning = rawRunning && !forceOfflineHeader;
     if (statusEl) {
       statusEl.textContent = '';
-      statusEl.parentElement.classList.toggle('is-ok', running);
-      statusEl.parentElement.classList.toggle('is-warn', !running);
+      statusEl.parentElement.classList.toggle('is-ok', rawRunning);
+      statusEl.parentElement.classList.toggle('is-warn', !rawRunning);
     }
 
-    const forceOfflineHeader = shouldForceOffline(stats, running, state.lastProgress.get(node.id));
-    const health = resolveHealth(stats, running, { forceOffline: forceOfflineHeader });
+    const health = resolveHealth(stats, rawRunning, { forceOffline: forceOfflineHeader });
     const displayHealth = health.display;
     const code = health.code;
     const healthDetail = health.detail;
@@ -347,7 +360,15 @@
     setStat(card, '.stat-delta', stats.height_delta, { sign: true });
     setStat(card, '.stat-peers', stats.peers);
     updateUptime(card, stats.uptime_seconds);
-    updateStartStopButton(card.querySelector('[data-action="toggle"]'), running);
+    updateStartStopButton(card.querySelector('[data-action="toggle"]'), effectiveRunning, {
+      rawRunning,
+      forcedOffline: forceOfflineHeader,
+    });
+    if (entry.meta && entry.meta.status) {
+      entry.meta.status.raw_running = rawRunning;
+      entry.meta.status.forced_offline = forceOfflineHeader;
+      entry.meta.status.effective_running = effectiveRunning;
+    }
   }
 
   function setStat(card, selector, value, opts = {}) {
@@ -545,12 +566,34 @@
     });
   }
 
-  function updateStartStopButton(btn, running) {
+  function updateStartStopButton(btn, running, options = {}) {
     if (!btn) return;
-    btn.dataset.running = running ? '1' : '0';
-    btn.innerHTML = running ? '<span class="icon">⏹</span>' : '<span class="icon">▶</span>';
-    btn.setAttribute('aria-label', running ? 'Stop node' : 'Start node');
-    btn.title = running ? 'Stop container' : 'Start container';
+    const { rawRunning = running, forcedOffline = false } = options;
+    const effectiveRunning = running === true;
+    let action = 'start';
+    if (effectiveRunning) {
+      action = 'stop';
+    } else if (rawRunning && forcedOffline) {
+      action = 'restart';
+    }
+    btn.dataset.running = effectiveRunning ? '1' : '0';
+    btn.dataset.rawRunning = rawRunning ? '1' : '0';
+    btn.dataset.action = action;
+    let icon = '▶';
+    let aria = 'Start node';
+    let title = 'Start container';
+    if (action === 'stop') {
+      icon = '⏹';
+      aria = 'Stop node';
+      title = 'Stop container';
+    } else if (action === 'restart') {
+      icon = '▶';
+      aria = 'Restart node';
+      title = 'Restart container';
+    }
+    btn.innerHTML = `<span class="icon">${icon}</span>`;
+    btn.setAttribute('aria-label', aria);
+    btn.title = title;
   }
 
   async function startStopNode(nodeId, btn) {
@@ -560,8 +603,16 @@
     const container = meta.container || meta.id;
     if (!container) return;
     const status = meta.status || {};
-    const running = !!status.running;
-    const action = running ? 'docker_stop' : 'docker_start';
+    const rawRunning = isRunningFlag(status.running);
+    const previousProgress = state.lastProgress.get(nodeId);
+    const forcedOffline = shouldForceOffline(status, rawRunning, previousProgress);
+    const effectiveRunning = rawRunning && !forcedOffline;
+    let action = 'docker_start';
+    if (effectiveRunning) {
+      action = 'docker_stop';
+    } else if (rawRunning && forcedOffline) {
+      action = 'docker_restart';
+    }
     if (btn) btn.disabled = true;
     try {
       const res = await fetch('/api/control', {
@@ -660,7 +711,6 @@
       const card = entry.card;
 
       entry.meta = entry.meta || {};
-      entry.meta.status = { ...(entry.meta.status || {}), ...metrics };
 
       setStat(card, '.stat-local', metrics.local_height);
       setStat(card, '.stat-remote', metrics.remote_height);
@@ -668,11 +718,11 @@
       setStat(card, '.stat-peers', metrics.peers);
       updateUptime(card, metrics.uptime_seconds);
 
-      const running = !!metrics.running;
+      const rawRunning = isRunningFlag(metrics.running);
       const nodeStatusEl = card.querySelector('.node-status');
       if (nodeStatusEl) {
-        nodeStatusEl.classList.toggle('is-ok', running);
-        nodeStatusEl.classList.toggle('is-warn', !running);
+        nodeStatusEl.classList.toggle('is-ok', rawRunning);
+        nodeStatusEl.classList.toggle('is-warn', !rawRunning);
         const textEl = nodeStatusEl.querySelector('.status-text');
         if (textEl) {
           textEl.textContent = '';
@@ -681,8 +731,9 @@
 
       const summaryHealthChip = card.querySelector('.summary-health-chip');
       const previousProgress = state.lastProgress.get(nodeId);
-      const forceOffline = shouldForceOffline(metrics, running, previousProgress);
-      const health = resolveHealth(metrics, running, { forceOffline });
+      const forceOffline = shouldForceOffline(metrics, rawRunning, previousProgress);
+      const effectiveRunning = rawRunning && !forceOffline;
+      const health = resolveHealth(metrics, rawRunning, { forceOffline });
       const displayHealth = health.display;
       const healthDetail = health.detail;
       const code = health.code;
@@ -716,7 +767,17 @@
         remote_height: metrics.remote_height,
       });
 
-      updateStartStopButton(card.querySelector('[data-action="toggle"]'), running);
+      updateStartStopButton(card.querySelector('[data-action="toggle"]'), effectiveRunning, {
+        rawRunning,
+        forcedOffline: forceOffline,
+      });
+      entry.meta.status = {
+        ...(entry.meta.status || {}),
+        ...metrics,
+        raw_running: rawRunning,
+        forced_offline: forceOffline,
+        effective_running: effectiveRunning,
+      };
 
       const tsEl = card.querySelector('.stat-updated');
       if (tsEl) {
