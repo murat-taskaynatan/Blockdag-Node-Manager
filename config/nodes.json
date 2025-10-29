@@ -1,9 +1,1 @@
-[
-  {
-    "id": "primary",
-    "label": "Primary Node",
-    "container": "",
-    "rpc_base": "${BDAG_RPC_BASE:-https://rpc.awakening.bdagscan.com}",
-    "remote_rpc_bases": "${BDAG_REMOTE_RPC_BASES:-https://rpc.awakening.bdagscan.com}"
-  }
-]
+[]
