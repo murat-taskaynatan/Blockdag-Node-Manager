@@ -38,7 +38,8 @@
     const maxRemoteEl = document.getElementById('statMaxRemote');
 
     if (!summary || Object.keys(summary).length === 0) {
-      summaryBadge.textContent = 'No data';
+      summaryBadge.textContent = '—';
+      summaryBadge.removeAttribute('title');
       countEl.textContent = onlineEl.textContent = offlineEl.textContent = maxLocalEl.textContent = maxRemoteEl.textContent = '—';
       return;
     }
@@ -53,9 +54,35 @@
     maxLocalEl.textContent = summary.max_local_height !== undefined ? fmt.format(summary.max_local_height) : '—';
     maxRemoteEl.textContent = summary.max_remote_height !== undefined ? fmt.format(summary.max_remote_height) : '—';
 
+    const walletEnabled = !!summary.wallet_enabled;
+    const wallet = walletEnabled ? summary.wallet || {} : null;
     const ts = summary.timestamp ? new Date(summary.timestamp * 1000) : null;
-    const suffix = ts ? ` · ${fmtTime.format(ts)}` : '';
-    summaryBadge.textContent = `${fmt.format(count)} node${count === 1 ? '' : 's'}${suffix}`;
+    let badgeText = '—';
+    let badgeTitle = '';
+    if (walletEnabled) {
+      if (wallet.error) {
+        badgeText = wallet.error;
+      } else if (wallet.balance_formatted) {
+        badgeText = wallet.short || wallet.balance_formatted;
+        badgeTitle = wallet.address || '';
+      } else if (wallet.address) {
+        badgeText = '(fetching…)';
+        badgeTitle = wallet.address;
+      }
+    } else {
+      badgeText = 'Balance display disabled';
+    }
+    if (ts) {
+      badgeText += ` · ${fmtTime.format(ts)}`;
+    }
+    summaryBadge.textContent = badgeText;
+    if (badgeTitle) {
+      summaryBadge.title = badgeTitle;
+    } else if (wallet && wallet.address) {
+      summaryBadge.title = wallet.address;
+    } else {
+      summaryBadge.removeAttribute('title');
+    }
   }
 
   function syncCards(nodes) {
@@ -468,8 +495,9 @@
             grid: { color: 'rgba(255,255,255,0.06)' },
           },
           y: {
-            ticks: { color: '#7681a8', callback: (val) => fmt.format(val) },
+            ticks: { color: '#7681a8', callback: (val) => fmt.format(val), align: 'inner', crossAlign: 'near' },
             grid: { color: 'rgba(255,255,255,0.06)' },
+            position: 'right',
           },
         },
       },
