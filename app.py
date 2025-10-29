@@ -151,11 +151,14 @@ def _expand_env_placeholders(value: str) -> str:
     return _ENV_VAR_PATTERN.sub(repl, value)
 
 
+DEFAULT_RPC_FALLBACK = "https://rpc.awakening.bdagscan.com"
+
+
 def _normalize_rpc_endpoint(endpoint: Optional[str]) -> str:
     text = _expand_env_placeholders(endpoint or "").strip()
     if text and "://" not in text:
         text = f"http://{text}"
-    return text.rstrip("/") or "http://127.0.0.1:18545"
+    return text.rstrip("/") or DEFAULT_RPC_FALLBACK
 
 
 def _coerce_bool(value, default: bool = False) -> bool:
@@ -408,7 +411,7 @@ def _discover_docker_nodes() -> List[dict]:
 DEFAULT_NODE_SETTINGS = {
     "id": "primary",
     "label": "Primary Node",
-    "rpc_base": os.getenv("BDAG_RPC_BASE", "http://127.0.0.1:18545"),
+    "rpc_base": os.getenv("BDAG_RPC_BASE", DEFAULT_RPC_FALLBACK),
     "rpc_user": os.getenv("BDAG_RPC_USER", ""),
     "rpc_pass": os.getenv("BDAG_RPC_PASS", ""),
     "rpc_timeout": float(os.getenv("BDAG_RPC_TIMEOUT", "2.5") or "2.5"),
