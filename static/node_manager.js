@@ -16,6 +16,23 @@
   const fmt = new Intl.NumberFormat();
   const fmtTime = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
+  function resolveHealth(stats, running) {
+    const detail = (stats.health_detail || stats.health_text || '').toString().trim();
+    let label = (stats.health_label || stats.health_text || '').toString().trim();
+    let code = (stats.health_code || '').toString().trim().toLowerCase();
+    if (!running) {
+      const lowerLabel = label.toLowerCase();
+      if (!label || lowerLabel === 'healthy' || lowerLabel === 'online') {
+        label = 'Offline';
+      }
+      if (!code) {
+        code = 'offline';
+      }
+    }
+    const display = label || (running ? 'Healthy' : 'Offline');
+    return { display, detail, code };
+  }
+
   async function loadNodes() {
     try {
       const res = await fetch('/api/node-manager/nodes', { cache: 'no-store' });
@@ -257,10 +274,10 @@
       summaryStatusChip.classList.remove('is-online', 'is-offline');
       summaryStatusChip.classList.add(running ? 'is-online' : 'is-offline');
     }
-    const healthDetail = (stats.health_detail || stats.health_text || '').toString().trim();
-    const healthLabel = (stats.health_label || stats.health_text || '').toString().trim();
-    const displayHealth = healthLabel || (running ? 'Healthy' : 'Offline');
-    const code = (stats.health_code || '').toString().toLowerCase();
+    const health = resolveHealth(stats, running);
+    const displayHealth = health.display;
+    const code = health.code;
+    const healthDetail = health.detail;
     if (summaryHealthChip) {
       summaryHealthChip.textContent = displayHealth || 'Health';
       if (healthDetail || displayHealth) {
@@ -650,10 +667,10 @@
       }
 
       const summaryHealthChip = card.querySelector('.summary-health-chip');
-      const healthLabel = (metrics.health_label || metrics.health_text || '').toString().trim();
-      const healthDetail = (metrics.health_detail || metrics.health_text || '').toString().trim();
-      const displayHealth = healthLabel || (running ? 'Healthy' : 'Offline');
-      const code = (metrics.health_code || '').toString().toLowerCase();
+      const health = resolveHealth(metrics, running);
+      const displayHealth = health.display;
+      const healthDetail = health.detail;
+      const code = health.code;
       if (summaryHealthChip) {
         summaryHealthChip.textContent = displayHealth || 'Health';
         if (healthDetail || displayHealth) {
