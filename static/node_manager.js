@@ -70,7 +70,7 @@
         badgeTitle = wallet.address;
       }
     } else {
-      badgeText = 'Balance display disabled';
+      badgeText = '—';
     }
     if (ts) {
       badgeText += ` · ${fmtTime.format(ts)}`;
