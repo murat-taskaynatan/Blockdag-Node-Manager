@@ -720,20 +720,20 @@
         } else {
           summaryHealthChip.removeAttribute('title');
         }
-      summaryHealthChip.classList.remove('health-ok', 'health-warn', 'health-bad', 'health-stopped');
-      const lower = displayHealth.toLowerCase();
-      const okCodes = new Set(['healthy', 'steady', 'mining']);
-      const warnCodes = new Set(['syncing', 'downloading', 'initializing', 'no_peers']);
-      const badCodes = new Set(['offline', 'stalled', 'error']);
-      if (code === 'stopped' || lower.includes('stopped')) {
-        summaryHealthChip.classList.add('health-stopped');
-      } else if (okCodes.has(code) || lower.includes('healthy') || lower.includes('running') || lower.includes('mining')) {
-        summaryHealthChip.classList.add('health-ok');
-      } else if (badCodes.has(code) || lower.includes('stall') || (!running && lower)) {
-        summaryHealthChip.classList.add('health-bad');
-      } else if (warnCodes.has(code) || lower.includes('sync') || lower.includes('download')) {
-        summaryHealthChip.classList.add('health-warn');
-      }
+        summaryHealthChip.classList.remove('health-ok', 'health-warn', 'health-bad', 'health-stopped');
+        const lower = displayHealth.toLowerCase();
+        const okCodes = new Set(['healthy', 'steady', 'mining']);
+        const warnCodes = new Set(['syncing', 'downloading', 'initializing', 'no_peers']);
+        const badCodes = new Set(['offline', 'stalled', 'error']);
+        if (code === 'stopped' || lower.includes('stopped')) {
+          summaryHealthChip.classList.add('health-stopped');
+        } else if (okCodes.has(code) || lower.includes('healthy') || lower.includes('running') || lower.includes('mining')) {
+          summaryHealthChip.classList.add('health-ok');
+        } else if (badCodes.has(code) || lower.includes('stall') || (!running && lower)) {
+          summaryHealthChip.classList.add('health-bad');
+        } else if (warnCodes.has(code) || lower.includes('sync') || lower.includes('download')) {
+          summaryHealthChip.classList.add('health-warn');
+        }
       }
 
       const summarySyncPill = card.querySelector('[data-role="sync-pill"]');
