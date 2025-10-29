@@ -290,10 +290,10 @@ async function saveSettings() {
         badgeTitle = wallet.address;
       }
     } else {
-      badgeText = 'Last Seen';
+      badgeText = 'Last seen';
     }
     if (!badgeText) {
-      badgeText = 'Last Seen';
+      badgeText = 'Last seen';
     }
     if (ts) {
       const timeText = fmtTime.format(ts);
