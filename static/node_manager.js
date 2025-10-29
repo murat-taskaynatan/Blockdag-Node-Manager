@@ -57,7 +57,7 @@
     const walletEnabled = !!summary.wallet_enabled;
     const wallet = walletEnabled ? summary.wallet || {} : null;
     const ts = summary.timestamp ? new Date(summary.timestamp * 1000) : null;
-    let badgeText = '—';
+    let badgeText = '';
     let badgeTitle = '';
     if (walletEnabled) {
       if (wallet.error) {
@@ -70,10 +70,14 @@
         badgeTitle = wallet.address;
       }
     } else {
-      badgeText = '—';
+      badgeText = 'Last Seen';
+    }
+    if (!badgeText) {
+      badgeText = 'Last Seen';
     }
     if (ts) {
-      badgeText += ` · ${fmtTime.format(ts)}`;
+      const timeText = fmtTime.format(ts);
+      badgeText = badgeText ? `${badgeText} · ${timeText}` : timeText;
     }
     summaryBadge.textContent = badgeText;
     if (badgeTitle) {
