@@ -441,16 +441,51 @@ async function saveSettings() {
       card.open = false;
       card.removeAttribute('open');
     }
-    const displayLabel = (node.label && String(node.label).trim()) || node.id;
-    const metaEl = card.querySelector('.node-meta');
-    card.querySelector('.node-name').textContent = displayLabel;
-    if (metaEl) {
-      const container = node.container && String(node.container).trim();
-      if (container && container !== displayLabel) {
-        metaEl.textContent = `${container} · ${node.id}`;
-      } else {
-        metaEl.textContent = node.id;
+    const sortKeys = (() => {
+      const parseKey = (value) => {
+        const text = String(value || '').trim();
+        const match = text.match(/(\d+)(?!.*\d)/);
+        if (match) {
+          const num = Number(match[1]);
+          if (Number.isFinite(num)) {
+            return { hasNum: true, num, text };
+          }
+        }
+        return { hasNum: false, num: Number.POSITIVE_INFINITY, text };
+      };
+      return Array.from(state.nodes.keys()).sort((a, b) => {
+        const pa = parseKey(a);
+        const pb = parseKey(b);
+        if (pa.hasNum && pb.hasNum && pa.num !== pb.num) {
+          return pa.num - pb.num;
+        }
+        if (pa.hasNum !== pb.hasNum) {
+          return pa.hasNum ? -1 : 1;
+        }
+        return pa.text.localeCompare(pb.text);
+      });
+    })();
+    const workerLabel = (() => {
+      const idText = String(node.id || '').trim();
+      if (idText) {
+        const suffix = idText.split('-').pop();
+        const num = Number(suffix);
+        if (Number.isFinite(num) && num >= 1) {
+          return `Node Worker - ${num}`;
+        }
+        const digits = (idText.match(/\d+/g) || []).map(Number).filter((n) => Number.isFinite(n));
+        if (digits.length) {
+          return `Node Worker - ${digits[0]}`;
+        }
       }
+      const index = sortKeys.indexOf(node.id);
+      const ordinal = index >= 0 ? index + 1 : state.nodes.size + 1;
+      return `Node Worker - ${ordinal}`;
+    })();
+    card.querySelector('.node-name').textContent = workerLabel;
+    const metaEl = card.querySelector('.node-meta');
+    if (metaEl) {
+      metaEl.textContent = (node.container && String(node.container).trim()) || (node.label && String(node.label).trim()) || '—';
     }
 
     const summaryHealthChip = card.querySelector('.summary-health-chip');
