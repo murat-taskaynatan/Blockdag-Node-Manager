@@ -45,6 +45,41 @@ WINDOW = max(12, int(os.getenv("BDAG_WINDOW", "240") or "240"))
 
 DOCKER_BIN = shutil.which("docker")
 
+LOG_ERROR_THRESHOLD = max(1, int(os.getenv("BDAG_LOG_ERROR_THRESHOLD", "10") or "10"))
+LOG_ERROR_CHECK_SEC = max(1.0, float(os.getenv("BDAG_LOG_ERROR_CHECK_SEC", "15") or "15"))
+LOG_ERROR_RESTART_COOLDOWN_SEC = max(
+    30.0,
+    float(
+        os.getenv("BDAG_LOG_ERROR_COOLDOWN_SEC", os.getenv("BDAG_LOG_ERROR_RESTART_COOLDOWN_SEC", "300"))
+        or 300
+    ),
+)
+LOG_ERROR_TAIL = max(10, min(int(os.getenv("BDAG_LOG_ERROR_TAIL", "80") or "80"), 200))
+LOG_ERROR_PATTERN = re.compile(r"\berror\b", re.IGNORECASE)
+
+LIVENESS_RECOVER_COOLDOWN_SEC = max(
+    60.0, float(os.getenv("BDAG_LIVENESS_RECOVER_COOLDOWN_SEC", "900") or "900")
+)
+_liveness_patterns_raw = [
+    part.strip().lower()
+    for part in str(os.getenv("BDAG_LIVENESS_RECOVER_PATTERNS", "") or "").split(",")
+    if part.strip()
+]
+if _liveness_patterns_raw:
+    LIVENESS_FAILSAFE_PATTERNS = tuple(dict.fromkeys(_liveness_patterns_raw))
+else:
+    LIVENESS_FAILSAFE_PATTERNS = (
+        "liveness probe exceeded timeout",
+        "liveness probe failed",
+        "forcing shutdown url=http://127.0.0.1:6061/healthz",
+    )
+
+LOG_CACHE_SEC = max(1.0, float(os.getenv("BDAG_LOG_CACHE_SEC", "2") or "2"))
+ANSI_ESCAPE_RE = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
+_LOG_POLICY_LOCK = threading.Lock()
+_LOG_POLICY_STATE: Dict[str, Dict[str, object]] = {}
+_RECENT_LOGS_CACHE: Dict[Tuple[str, int], Dict[str, object]] = {}
+
 
 # ---------------------------------------------------------------------------
 # Remote RPC defaults
@@ -632,6 +667,136 @@ class NodeContext:
         return metrics
 
 
+def _purge_policy_state(container: Optional[str]) -> None:
+    if not container:
+        return
+    with _LOG_POLICY_LOCK:
+        _LOG_POLICY_STATE.pop(container, None)
+        keys = [key for key in _RECENT_LOGS_CACHE.keys() if key[0] == container]
+        for key in keys:
+            _RECENT_LOGS_CACHE.pop(key, None)
+
+
+def _get_recent_logs(limit: int, container: str) -> List[str]:
+    if not container or not DOCKER_BIN:
+        return []
+    try:
+        limit_int = max(1, min(int(limit), 200))
+    except Exception:
+        limit_int = LOG_ERROR_TAIL
+    key = (container, limit_int)
+    now = time.time()
+    with _LOG_POLICY_LOCK:
+        cached = _RECENT_LOGS_CACHE.get(key)
+        cached_ts = float(cached.get("ts", 0.0)) if cached else 0.0
+        if cached and now - cached_ts < LOG_CACHE_SEC and isinstance(cached.get("lines"), list):
+            return list(cached["lines"])
+    try:
+        out = subprocess.check_output(
+            [DOCKER_BIN, "logs", "--tail", str(limit_int), "--timestamps", container],
+            stderr=subprocess.STDOUT,
+            text=True,
+            timeout=5,
+        )
+        raw_lines = [line.rstrip() for line in out.splitlines() if line.strip()]
+        lines = [ANSI_ESCAPE_RE.sub("", line) for line in raw_lines]
+    except Exception:
+        lines = []
+    with _LOG_POLICY_LOCK:
+        _RECENT_LOGS_CACHE[key] = {"ts": now, "lines": lines}
+    return list(lines)
+
+
+def _restart_container_for_policy(ctx: "NodeContext", reason: str) -> bool:
+    if not ctx or not ctx.container:
+        return False
+    result = docker_action(ctx.container, "restart")
+    if result.get("ok"):
+        try:
+            app.logger.warning(
+                "Auto restart triggered for node %s (%s): %s",
+                ctx.id,
+                ctx.container,
+                reason,
+            )
+        except Exception:
+            pass
+        return True
+    error_message = result.get("error") or result.get("output") or "unknown error"
+    try:
+        app.logger.error(
+            "Auto restart failed for node %s (%s): %s",
+            ctx.id,
+            ctx.container,
+            error_message,
+        )
+    except Exception:
+        pass
+    return False
+
+
+def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
+    if not ctx or not ctx.container or not DOCKER_BIN:
+        return
+    if not ctx.running:
+        return
+    enable_error_restart = bool(settings.get("auto_restart_on_error"))
+    enable_liveness = bool(settings.get("liveness_auto_recover"))
+    if not (enable_error_restart or enable_liveness):
+        return
+    now = time.time()
+    with _LOG_POLICY_LOCK:
+        state = _LOG_POLICY_STATE.setdefault(
+            ctx.container,
+            {"last_check": 0.0, "error_streak": 0, "last_restart": 0.0, "last_liveness": 0.0},
+        )
+        last_check = float(state.get("last_check", 0.0))
+        if now - last_check < LOG_ERROR_CHECK_SEC:
+            return
+        state["last_check"] = now
+    lines = _get_recent_logs(LOG_ERROR_TAIL, ctx.container)
+    if not lines:
+        with _LOG_POLICY_LOCK:
+            state["error_streak"] = 0
+        return
+    if enable_liveness:
+        for raw_line in reversed(lines):
+            text_lower = str(raw_line).strip().lower()
+            if any(pattern in text_lower for pattern in LIVENESS_FAILSAFE_PATTERNS):
+                with _LOG_POLICY_LOCK:
+                    last_liveness = float(state.get("last_liveness", 0.0))
+                    last_restart = float(state.get("last_restart", 0.0))
+                    if now - last_liveness < LIVENESS_RECOVER_COOLDOWN_SEC:
+                        state["error_streak"] = 0
+                        return
+                    state["last_liveness"] = now
+                if _restart_container_for_policy(ctx, "liveness probe failure detected in logs"):
+                    with _LOG_POLICY_LOCK:
+                        state["last_restart"] = now
+                        state["error_streak"] = 0
+                return
+    if not enable_error_restart:
+        return
+    streak = 0
+    for raw_line in reversed(lines):
+        text = str(raw_line)
+        if LOG_ERROR_PATTERN.search(text):
+            streak += 1
+        else:
+            break
+    with _LOG_POLICY_LOCK:
+        state["error_streak"] = streak
+        last_restart = float(state.get("last_restart", 0.0))
+    if streak < LOG_ERROR_THRESHOLD:
+        return
+    if now - last_restart < LOG_ERROR_RESTART_COOLDOWN_SEC:
+        return
+    if _restart_container_for_policy(ctx, f"{streak} consecutive error log lines"):
+        with _LOG_POLICY_LOCK:
+            state["last_restart"] = time.time()
+            state["error_streak"] = 0
+
+
 def _load_node_configs() -> tuple[List[dict], bool]:
     has_file = NODE_CONFIG_PATH.exists()
     if not has_file:
@@ -994,6 +1159,7 @@ def refresh_discovered_nodes() -> Tuple[List[str], List[str], List[str]]:
     added: List[str] = []
     removed: List[str] = []
     updated: List[str] = []
+    removed_containers: List[str] = []
     if not DOCKER_BIN:
         return added, removed, updated
     with _discovery_lock:
@@ -1027,7 +1193,11 @@ def refresh_discovered_nodes() -> Tuple[List[str], List[str], List[str]]:
         for node_id, ctx in list(NODES.items()):
             if ctx.auto_discovered and ctx.container and ctx.container not in seen_containers:
                 removed.append(node_id)
+                removed_containers.append(ctx.container)
                 NODES.pop(node_id, None)
+
+    for container in removed_containers:
+        _purge_policy_state(container)
 
     return added, removed, updated
 
@@ -1095,8 +1265,10 @@ def node_manager_view():
 @app.route("/api/node-manager/nodes")
 def api_node_manager_nodes():
     nodes_payload = []
+    settings = get_settings()
     for ctx in NODES.values():
         ctx.sample()
+        _apply_node_policies(ctx, settings)
         nodes_payload.append(
             {
                 "id": ctx.id,
@@ -1121,11 +1293,13 @@ def api_node_manager_metrics():
     else:
         node_ids = list(NODES.keys())
     response = {}
+    settings = get_settings()
     for node_id in node_ids:
         ctx = NODES.get(node_id)
         if not ctx:
             continue
         ctx.sample(force=True)
+        _apply_node_policies(ctx, settings)
         response[ctx.id] = ctx.snapshot(include_series=True)
     return jsonify({"nodes": response, "timestamp": time.time()})
 
