@@ -105,14 +105,22 @@
     }
   }
 
-  function resolveHealth(stats, running, options = {}) {
-    const { forceOffline = false } = options;
-    const detail = (stats.health_detail || stats.health_text || '').toString().trim();
-    const online = running && !forceOffline;
-    const display = online ? 'Online' : 'Offline';
-    const code = online ? 'online' : 'offline';
-    return { display, detail, code };
+function resolveHealth(stats, running, options = {}) {
+  const { forceOffline = false } = options;
+  const detail = (stats.health_detail || stats.health_text || '').toString().trim();
+  let display = 'Offline';
+  let code = 'offline';
+  if (running) {
+    if (forceOffline) {
+      display = 'Stalled';
+      code = 'warn';
+    } else {
+      display = 'Online';
+      code = 'online';
+    }
   }
+  return { display, detail, code };
+}
 
 
 function switchSummaryTab(target) {
@@ -514,16 +522,19 @@ async function saveSettings() {
     const rawRunning = isRunningFlag(stats.running);
     const forceOfflineHeader = shouldForceOffline(stats, rawRunning, state.lastProgress.get(node.id));
     const effectiveRunning = rawRunning && !forceOfflineHeader;
-    if (statusEl) {
-      statusEl.textContent = '';
-      statusEl.parentElement.classList.toggle('is-ok', rawRunning);
-      statusEl.parentElement.classList.toggle('is-warn', !rawRunning);
-    }
-
     const health = resolveHealth(stats, rawRunning, { forceOffline: forceOfflineHeader });
     const displayHealth = health.display;
     const code = health.code;
     const healthDetail = health.detail;
+    if (statusEl) {
+      statusEl.textContent = displayHealth;
+      statusEl.parentElement.classList.remove('is-ok', 'is-warn');
+      if (code === 'online') {
+        statusEl.parentElement.classList.add('is-ok');
+      } else if (code === 'warn') {
+        statusEl.parentElement.classList.add('is-warn');
+      }
+    }
     if (summaryHealthChip) {
       summaryHealthChip.textContent = displayHealth || 'Status';
       if (healthDetail || displayHealth) {
@@ -531,9 +542,14 @@ async function saveSettings() {
       } else {
         summaryHealthChip.removeAttribute('title');
       }
-      const isOnline = code === 'online';
-      summaryHealthChip.classList.remove('health-online', 'health-offline');
-      summaryHealthChip.classList.add(isOnline ? 'health-online' : 'health-offline');
+      summaryHealthChip.classList.remove('health-online', 'health-offline', 'health-warn');
+      if (code === 'online') {
+        summaryHealthChip.classList.add('health-online');
+      } else if (code === 'warn') {
+        summaryHealthChip.classList.add('health-warn');
+      } else {
+        summaryHealthChip.classList.add('health-offline');
+      }
     }
 
     renderSyncSummary(summarySyncPill, state.lastProgress.get(node.id), state.lastRates.get(node.id), {
