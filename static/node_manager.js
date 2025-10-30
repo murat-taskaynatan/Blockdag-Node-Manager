@@ -8,6 +8,14 @@
     lastMetricsTs: 0,
     settings: {},
     settingsDirty: false,
+    snapshots: {
+      items: [],
+      locations: [],
+      dir: '',
+      job: null,
+    },
+    snapshotsLoaded: false,
+    snapshotStatus: { text: '', level: '' },
   };
 
   const cardsContainer = document.getElementById('fleetCards');
@@ -21,7 +29,16 @@
   const settingsForm = document.getElementById('settingsForm');
   const saveSettingsBtn = document.getElementById('btnSaveSettings');
   const settingsStatus = document.getElementById('settingsStatus');
+  const snapshotList = document.getElementById('snapshotList');
+  const snapshotStatus = document.getElementById('snapshotStatus');
+  const snapshotLocation = document.getElementById('snapshotLocation');
+  const snapshotLocationsEl = document.getElementById('snapshotLocations');
+  const snapshotEmptyState = document.getElementById('snapshotEmptyState');
+  const snapshotCreateBtn = document.getElementById('btnCreateSnapshot');
+  const snapshotRefreshBtn = document.getElementById('btnRefreshSnapshots');
+  const snapshotScanBtn = document.getElementById('btnScanSnapshots');
   let settingsStatusTimer = null;
+  let snapshotPollTimer = null;
   const defaultSettings = {
     liveness_auto_recover: false,
     auto_restart_on_error: false,
@@ -32,6 +49,7 @@
 
   const fmt = new Intl.NumberFormat();
   const fmtTime = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const fmtDateTime = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 
   function numberOrZero(value) {
     const num = Number(value);
@@ -41,6 +59,317 @@
   function recentWindow(series, fallback) {
     const values = Array.isArray(series) && series.length ? series.map(numberOrZero) : [numberOrZero(fallback)];
     return values.length > 5 ? values.slice(-5) : values;
+  }
+
+  function formatBytes(bytes) {
+    const value = Number(bytes);
+    if (!Number.isFinite(value) || value < 0) return '—';
+    if (value === 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const index = Math.min(units.length - 1, Math.floor(Math.log(value) / Math.log(1024)));
+    const scaled = value / 1024 ** index;
+    const precision = scaled >= 100 ? 0 : scaled >= 10 ? 1 : 2;
+    return `${scaled.toFixed(precision)} ${units[index]}`;
+  }
+
+  function formatSnapshotDate(value) {
+    if (!value) return '—';
+    try {
+      const date = typeof value === 'string' ? new Date(value) : value;
+      if (Number.isNaN(Number(date))) return '—';
+      return fmtDateTime.format(date);
+    } catch (_) {
+      return String(value);
+    }
+  }
+
+  function setBusy(btn, busy, text) {
+    if (!btn) return;
+    if (busy) {
+      if (!btn.dataset.originalText) {
+        btn.dataset.originalText = btn.textContent;
+      }
+      if (text) {
+        btn.textContent = text;
+      }
+      btn.disabled = true;
+      btn.dataset.busy = '1';
+    } else {
+      if (btn.dataset.originalText) {
+        btn.textContent = btn.dataset.originalText;
+      }
+      btn.disabled = false;
+      delete btn.dataset.busy;
+    }
+  }
+
+  function scheduleSnapshotPoll(active) {
+    if (active) {
+      if (snapshotPollTimer) return;
+      snapshotPollTimer = window.setInterval(() => {
+        void loadSnapshots({ silent: true });
+      }, 5000);
+    } else if (snapshotPollTimer) {
+      clearInterval(snapshotPollTimer);
+      snapshotPollTimer = null;
+    }
+  }
+
+  function setSnapshotStatus(message, options = {}) {
+    const level = options.level || '';
+    state.snapshotStatus = { text: message || '', level };
+    if (!snapshotStatus) return;
+    snapshotStatus.classList.remove('is-ok', 'is-warn', 'is-error');
+    if (!message) {
+      snapshotStatus.textContent = '';
+      return;
+    }
+    snapshotStatus.textContent = message;
+    if (level) {
+      snapshotStatus.classList.add(`is-${level}`);
+    }
+  }
+
+  function renderSnapshotLocations(locations) {
+    if (!snapshotLocationsEl) return;
+    if (!Array.isArray(locations) || !locations.length) {
+      snapshotLocationsEl.hidden = true;
+      snapshotLocationsEl.textContent = '';
+      return;
+    }
+    const summary = locations
+      .slice(0, 3)
+      .map((entry) => {
+        const path = entry && entry.path ? entry.path : '';
+        const count = Number(entry && entry.count);
+        return count ? `${path} (${count})` : path;
+      })
+      .filter(Boolean);
+    if (!summary.length) {
+      snapshotLocationsEl.hidden = true;
+      snapshotLocationsEl.textContent = '';
+      return;
+    }
+    snapshotLocationsEl.hidden = false;
+    snapshotLocationsEl.textContent = `Other locations: ${summary.join(', ')}`;
+  }
+
+  function renderSnapshots() {
+    const snapshotsState = state.snapshots || {};
+    const items = Array.isArray(snapshotsState.items) ? snapshotsState.items : [];
+    const dir = snapshotsState.dir || '';
+    const job = snapshotsState.job || null;
+    const locations = Array.isArray(snapshotsState.locations) ? snapshotsState.locations : [];
+    if (snapshotLocation) {
+      snapshotLocation.textContent = dir || '—';
+    }
+    renderSnapshotLocations(locations);
+    if (!snapshotList) {
+      return;
+    }
+    snapshotList.innerHTML = '';
+    if (!items.length) {
+      if (snapshotEmptyState) {
+        snapshotEmptyState.hidden = false;
+        snapshotList.appendChild(snapshotEmptyState);
+      }
+    } else {
+      if (snapshotEmptyState) {
+        snapshotEmptyState.hidden = true;
+      }
+      items.forEach((item) => {
+        if (!item || !item.name) return;
+        const entry = document.createElement('div');
+        entry.className = 'snapshot-item';
+
+        const main = document.createElement('div');
+        main.className = 'snapshot-item__main';
+
+        const nameEl = document.createElement('span');
+        nameEl.className = 'snapshot-item__name';
+        nameEl.textContent = item.name;
+        main.appendChild(nameEl);
+
+        const metaEl = document.createElement('span');
+        metaEl.className = 'snapshot-item__meta';
+        const metaParts = [];
+        if (item.modified) {
+          metaParts.push(formatSnapshotDate(item.modified));
+        }
+        if (Number.isFinite(Number(item.size))) {
+          metaParts.push(formatBytes(item.size));
+        }
+        metaEl.textContent = metaParts.length ? metaParts.join(' • ') : '—';
+        main.appendChild(metaEl);
+
+        entry.appendChild(main);
+
+        const actions = document.createElement('div');
+        actions.className = 'snapshot-item__actions';
+        const deleteBtn = document.createElement('button');
+        deleteBtn.type = 'button';
+        deleteBtn.className = 'btn btn--ghost';
+        deleteBtn.dataset.snapshotAction = 'delete';
+        deleteBtn.dataset.snapshotName = item.name;
+        deleteBtn.textContent = 'Delete';
+        if (job && job.active) {
+          deleteBtn.disabled = true;
+        }
+        actions.appendChild(deleteBtn);
+        entry.appendChild(actions);
+
+        snapshotList.appendChild(entry);
+      });
+    }
+
+    const jobActive = job && job.active;
+    if (jobActive) {
+      setSnapshotStatus(job.message || 'Snapshot job running…', { level: 'warn' });
+      scheduleSnapshotPoll(true);
+    } else if (job && job.status && job.message) {
+      const levelMap = { completed: 'ok', error: 'error', cancelled: 'warn' };
+      const level = levelMap[job.status] || '';
+      setSnapshotStatus(job.message, { level });
+      scheduleSnapshotPoll(false);
+    } else if (state.snapshotStatus && state.snapshotStatus.text) {
+      setSnapshotStatus(state.snapshotStatus.text, { level: state.snapshotStatus.level });
+      scheduleSnapshotPoll(false);
+    } else {
+      setSnapshotStatus('');
+      scheduleSnapshotPoll(false);
+    }
+
+    if (snapshotCreateBtn && !snapshotCreateBtn.dataset.busy) {
+      snapshotCreateBtn.disabled = !!jobActive;
+    }
+    if (snapshotRefreshBtn && !snapshotRefreshBtn.dataset.busy) {
+      snapshotRefreshBtn.disabled = false;
+    }
+    if (snapshotScanBtn && !snapshotScanBtn.dataset.busy) {
+      snapshotScanBtn.disabled = !!jobActive;
+    }
+  }
+
+  async function loadSnapshots(options = {}) {
+    const { silent = false } = options;
+    if (!silent) {
+      setSnapshotStatus('Loading snapshots…', { level: 'warn' });
+    }
+    try {
+      const res = await fetch('/api/snapshots', { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const payload = await res.json();
+      state.snapshots = {
+        items: Array.isArray(payload.snapshots) ? payload.snapshots : [],
+        locations: Array.isArray(payload.locations) ? payload.locations : [],
+        dir: payload.directory || '',
+        job: payload.job || null,
+      };
+      if (payload.status && payload.status.text) {
+        state.snapshotStatus = {
+          text: payload.status.text,
+          level: payload.status.level || '',
+        };
+      } else if (!silent) {
+        state.snapshotStatus = { text: 'Snapshots refreshed.', level: 'ok' };
+      }
+      state.snapshotsLoaded = true;
+      renderSnapshots();
+      if (!silent && state.snapshotStatus.text) {
+        setSnapshotStatus(state.snapshotStatus.text, { level: state.snapshotStatus.level });
+      }
+    } catch (err) {
+      const message = err && err.message ? err.message : 'Failed to load snapshots';
+      if (!silent) {
+        setSnapshotStatus(message, { level: 'error' });
+      }
+    }
+  }
+
+  async function createSnapshot() {
+    if (!snapshotCreateBtn || snapshotCreateBtn.dataset.busy) return;
+    setSnapshotStatus('Starting snapshot…', { level: 'warn' });
+    setBusy(snapshotCreateBtn, true, 'Working…');
+    try {
+      const res = await fetch('/api/snapshots/create', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || payload.ok === false) {
+        throw new Error(payload && payload.error ? payload.error : `HTTP ${res.status}`);
+      }
+      if (payload.job) {
+        state.snapshots.job = payload.job;
+      }
+      const message = payload.message || 'Snapshot started.';
+      setSnapshotStatus(message, { level: 'warn' });
+      await loadSnapshots({ silent: true });
+    } catch (err) {
+      setSnapshotStatus(err && err.message ? err.message : 'Failed to start snapshot', { level: 'error' });
+    } finally {
+      setBusy(snapshotCreateBtn, false);
+    }
+  }
+
+  async function scanSnapshots() {
+    if (!snapshotScanBtn || snapshotScanBtn.dataset.busy) return;
+    setSnapshotStatus('Scanning snapshot locations…', { level: 'warn' });
+    setBusy(snapshotScanBtn, true, 'Scanning…');
+    try {
+      const res = await fetch('/api/snapshots/scan', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || payload.ok === false) {
+        throw new Error(payload && payload.error ? payload.error : `HTTP ${res.status}`);
+      }
+      state.snapshotStatus = {
+        text: payload.message || 'Snapshot locations updated.',
+        level: 'ok',
+      };
+      await loadSnapshots({ silent: true });
+      setSnapshotStatus(state.snapshotStatus.text, { level: 'ok' });
+    } catch (err) {
+      setSnapshotStatus(err && err.message ? err.message : 'Snapshot scan failed', { level: 'error' });
+    } finally {
+      setBusy(snapshotScanBtn, false);
+    }
+  }
+
+  async function refreshSnapshots() {
+    await loadSnapshots();
+  }
+
+  async function deleteSnapshot(name, btn) {
+    if (!name) return;
+    if (btn && btn.dataset.busy) return;
+    setSnapshotStatus(`Deleting ${name}…`, { level: 'warn' });
+    setBusy(btn, true, 'Deleting…');
+    try {
+      const res = await fetch('/api/snapshots/delete', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || payload.ok === false) {
+        throw new Error(payload && payload.error ? payload.error : `HTTP ${res.status}`);
+      }
+      state.snapshotStatus = {
+        text: payload.message || `Deleted ${name}`,
+        level: 'ok',
+      };
+      await loadSnapshots({ silent: true });
+      setSnapshotStatus(state.snapshotStatus.text, { level: 'ok' });
+    } catch (err) {
+      setSnapshotStatus(err && err.message ? err.message : `Failed to delete ${name}`, { level: 'error' });
+    } finally {
+      setBusy(btn, false);
+    }
   }
 
   function isRunningFlag(value) {
@@ -175,6 +504,9 @@ function switchSummaryTab(target) {
     const hide = activeView !== 'stats';
     summaryActions.hidden = hide;
     summaryActions.setAttribute('aria-hidden', hide ? 'true' : 'false');
+  }
+  if (activeView === 'snapshots' && !state.snapshotsLoaded) {
+    void loadSnapshots();
   }
 }
 
@@ -999,7 +1331,7 @@ async function saveSettings() {
         nodeStatusEl.classList.toggle('is-warn', code !== 'online');
         const textEl = nodeStatusEl.querySelector('.status-text');
         if (textEl) {
-          textEl.textContent = displayHealth || '';
+          textEl.textContent = healthDetail || '';
         }
       }
       if (summaryHealthChip) {
@@ -1126,6 +1458,32 @@ async function saveSettings() {
         void saveSettings();
       });
     }
+    if (snapshotCreateBtn) {
+      snapshotCreateBtn.addEventListener('click', () => {
+        void createSnapshot();
+      });
+    }
+    if (snapshotRefreshBtn) {
+      snapshotRefreshBtn.addEventListener('click', () => {
+        void refreshSnapshots();
+      });
+    }
+    if (snapshotScanBtn) {
+      snapshotScanBtn.addEventListener('click', () => {
+        void scanSnapshots();
+      });
+    }
+    if (snapshotList) {
+      snapshotList.addEventListener('click', (event) => {
+        const target = event.target.closest('[data-snapshot-action]');
+        if (!target) return;
+        const action = target.dataset.snapshotAction;
+        if (action === 'delete') {
+          const name = target.dataset.snapshotName;
+          void deleteSnapshot(name, target);
+        }
+      });
+    }
   }
 
   async function init() {
@@ -1137,6 +1495,7 @@ async function saveSettings() {
     await loadSettings();
     await loadNodes();
     await refreshMetrics();
+    await loadSnapshots({ silent: true });
     await discoverNodes({ auto: true });
     await refreshMetrics();
     setInterval(refreshMetrics, 5000);
@@ -1145,6 +1504,9 @@ async function saveSettings() {
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) {
       refreshMetrics();
+      if (state.snapshotsLoaded) {
+        void loadSnapshots({ silent: true });
+      }
     }
   });
 

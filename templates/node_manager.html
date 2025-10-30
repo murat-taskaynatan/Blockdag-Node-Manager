@@ -23,7 +23,7 @@
   .summary-desc{margin:4px 0 0;color:var(--muted);font-size:13px}
   .summary-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:flex-end}
   .summary-controls .summary-actions{display:flex;align-items:center;gap:10px}
-  .summary-tabs{display:inline-flex;align-items:center;gap:8px;padding:4px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08)}
+  .summary-tabs{display:inline-flex;align-items:center;gap:8px;padding:4px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);flex-wrap:wrap}
   .summary-tab{border:none;background:transparent;color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:6px 12px;border-radius:12px;cursor:pointer;transition:all .2s}
   .summary-tab:hover{color:var(--text)}
   .summary-tab.is-active{background:rgba(68,242,168,.16);color:#44f2a8;box-shadow:0 0 0 1px rgba(68,242,168,.28)}
@@ -80,6 +80,26 @@
   .sync-pill--eta.is-ok{background:rgba(68,242,168,.16);color:#44f2a8}
   .sync-pill--eta.is-warn{background:rgba(255,183,77,.18);color:#ffb74d}
   .sync-pill--eta.is-danger{background:rgba(255,83,112,.18);color:#ff5370}
+  .snapshot-card{background:rgba(255,255,255,.05);border-radius:14px;padding:18px;box-shadow:0 6px 24px rgba(0,0,0,.18);display:flex;flex-direction:column;gap:16px}
+  .snapshot-header{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  .snapshot-title{font-size:18px;font-weight:600}
+  .snapshot-desc{margin:4px 0 0;font-size:13px;color:var(--muted)}
+  .snapshot-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .snapshot-actions .btn{min-width:0}
+  .snapshot-meta{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--muted)}
+  .snapshot-location{font-weight:600;color:var(--text)}
+  .snapshot-status{font-size:13px}
+  .snapshot-status.is-ok{color:var(--ok)}
+  .snapshot-status.is-warn{color:var(--warn)}
+  .snapshot-status.is-error{color:var(--bad)}
+  .snapshot-list{display:flex;flex-direction:column;gap:10px}
+  .snapshot-item{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px}
+  .snapshot-item__main{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0}
+  .snapshot-item__name{font-weight:600;color:var(--text);word-break:break-all}
+  .snapshot-item__meta{font-size:12px;color:var(--muted)}
+  .snapshot-item__actions{display:flex;align-items:center;gap:8px}
+  .snapshot-empty{font-size:13px;color:var(--muted);padding:12px;border:1px dashed rgba(255,255,255,.14);border-radius:12px;text-align:center}
+  .snapshot-locations{font-size:12px;color:var(--muted)}
 .icon-btn{width:41px;height:41px;border-radius:14px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.03);color:inherit;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background .2s,border .2s,color .2s}
 .icon-btn:hover:not(:disabled){background:rgba(255,255,255,.08)}
 .icon-btn .icon{display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:17px;line-height:1;transform:none}
@@ -146,6 +166,7 @@
             <div class="summary-tabs" role="tablist" aria-label="Dashboard view">
               <button class="summary-tab is-active" type="button" data-summary-tab="stats" aria-selected="true">Stats</button>
               <button class="summary-tab" type="button" data-summary-tab="settings" aria-selected="false">Settings</button>
+              <button class="summary-tab" type="button" data-summary-tab="snapshots" aria-selected="false">Snapshots</button>
             </div>
           </div>
       </div>
@@ -210,6 +231,38 @@
               <span class="settings-status" id="settingsStatus"></span>
             </div>
           </form>
+        </div>
+        <div class="summary-pane" data-summary-pane="snapshots" hidden>
+          <div class="snapshot-card">
+            <div class="snapshot-header">
+              <div>
+                <div class="snapshot-title">Snapshots</div>
+                <p class="snapshot-desc">Manage compressed snapshots of your chain data for quick recovery.</p>
+              </div>
+              <div class="snapshot-actions">
+                <button type="button" class="btn btn--primary" id="btnCreateSnapshot">
+                  <span class="icon">📸</span>
+                  Create Snapshot
+                </button>
+                <button type="button" class="btn btn--ghost" id="btnRefreshSnapshots">
+                  <span class="icon">🔄</span>
+                  Refresh
+                </button>
+                <button type="button" class="btn btn--ghost" id="btnScanSnapshots">
+                  <span class="icon">🧭</span>
+                  Rescan Locations
+                </button>
+              </div>
+            </div>
+            <div class="snapshot-meta">
+              <div>Active location: <span class="snapshot-location" id="snapshotLocation">—</span></div>
+              <div class="snapshot-locations" id="snapshotLocations" hidden></div>
+              <div class="snapshot-status" id="snapshotStatus"></div>
+            </div>
+            <div class="snapshot-list" id="snapshotList">
+              <div class="snapshot-empty" id="snapshotEmptyState">No snapshots yet. Create one to capture the current chain state.</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
