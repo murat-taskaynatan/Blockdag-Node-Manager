@@ -22,6 +22,8 @@
   const emptyStateCard = document.getElementById('emptyFleetState');
   const cardTemplate = document.getElementById('nodeCardTemplate');
   const summaryBadge = document.getElementById('globalSummaryBadge');
+  const summaryDynamicTitle = document.getElementById('summaryDynamicTitle');
+  const summaryDynamicDesc = document.getElementById('summaryDynamicDesc');
 
   const summaryTabButtons = Array.from(document.querySelectorAll('[data-summary-tab]'));
   const summaryPanes = Array.from(document.querySelectorAll('[data-summary-pane]'));
@@ -31,10 +33,10 @@
   const settingsStatus = document.getElementById('settingsStatus');
   const snapshotList = document.getElementById('snapshotList');
   const snapshotStatus = document.getElementById('snapshotStatus');
+  const snapshotLocationWrap = document.getElementById('snapshotLocationWrap');
   const snapshotLocation = document.getElementById('snapshotLocation');
   const snapshotLocationsEl = document.getElementById('snapshotLocations');
   const snapshotEmptyState = document.getElementById('snapshotEmptyState');
-  const snapshotCreateBtn = document.getElementById('btnCreateSnapshot');
   const snapshotRefreshBtn = document.getElementById('btnRefreshSnapshots');
   const snapshotScanBtn = document.getElementById('btnScanSnapshots');
   let settingsStatusTimer = null;
@@ -154,16 +156,62 @@
     snapshotLocationsEl.textContent = `Other locations: ${summary.join(', ')}`;
   }
 
+  function updateSnapshotButtons() {
+    const job = (state.snapshots && state.snapshots.job) || null;
+    const jobActive = !!(job && job.active);
+    const jobDetails = (job && job.details) || {};
+    const jobNode = jobDetails && jobDetails.node;
+    state.nodes.forEach((entry) => {
+      if (!entry || !entry.card || !entry.meta) return;
+      const btn = entry.card.querySelector('[data-action="node-snapshot"]');
+      if (!btn) return;
+      const nodeId = entry.meta.id;
+      const label = entry.meta.label || nodeId || 'node';
+      let title = `Create snapshot for ${label}`;
+      let disabled = false;
+      if (btn.dataset.busy === '1') {
+        disabled = true;
+      }
+      if (state.snapshots && state.snapshots.job && state.snapshots.job.active) {
+        disabled = true;
+        if (jobNode && jobNode === nodeId) {
+          title = `Snapshot running for ${label}`;
+          btn.classList.add('is-busy');
+        } else {
+          title = 'Snapshot in progress';
+          btn.classList.remove('is-busy');
+        }
+      } else {
+        btn.classList.remove('is-busy');
+      }
+      btn.disabled = disabled;
+      btn.title = title;
+      btn.setAttribute('aria-label', title);
+    });
+  }
+
   function renderSnapshots() {
     const snapshotsState = state.snapshots || {};
     const items = Array.isArray(snapshotsState.items) ? snapshotsState.items : [];
     const dir = snapshotsState.dir || '';
     const job = snapshotsState.job || null;
     const locations = Array.isArray(snapshotsState.locations) ? snapshotsState.locations : [];
-    if (snapshotLocation) {
-      snapshotLocation.textContent = dir || '—';
+    const hasSnapshots = items.length > 0;
+    if (snapshotLocation && snapshotLocationWrap) {
+      if (hasSnapshots && dir) {
+        snapshotLocation.textContent = dir;
+        snapshotLocationWrap.hidden = false;
+      } else {
+        snapshotLocation.textContent = '—';
+        snapshotLocationWrap.hidden = true;
+      }
     }
-    renderSnapshotLocations(locations);
+    if (hasSnapshots) {
+      renderSnapshotLocations(locations);
+    } else if (snapshotLocationsEl) {
+      snapshotLocationsEl.hidden = true;
+      snapshotLocationsEl.textContent = '';
+    }
     if (!snapshotList) {
       return;
     }
@@ -177,21 +225,18 @@
       if (snapshotEmptyState) {
         snapshotEmptyState.hidden = true;
       }
-      items.forEach((item) => {
+      items.slice(0, 6).forEach((item) => {
         if (!item || !item.name) return;
-        const entry = document.createElement('div');
-        entry.className = 'snapshot-item';
-
-        const main = document.createElement('div');
-        main.className = 'snapshot-item__main';
+        const tile = document.createElement('div');
+        tile.className = 'snapshot-tile';
 
         const nameEl = document.createElement('span');
-        nameEl.className = 'snapshot-item__name';
+        nameEl.className = 'snapshot-tile__name';
         nameEl.textContent = item.name;
-        main.appendChild(nameEl);
+        tile.appendChild(nameEl);
 
         const metaEl = document.createElement('span');
-        metaEl.className = 'snapshot-item__meta';
+        metaEl.className = 'snapshot-tile__meta';
         const metaParts = [];
         if (item.modified) {
           metaParts.push(formatSnapshotDate(item.modified));
@@ -200,25 +245,9 @@
           metaParts.push(formatBytes(item.size));
         }
         metaEl.textContent = metaParts.length ? metaParts.join(' • ') : '—';
-        main.appendChild(metaEl);
+        tile.appendChild(metaEl);
 
-        entry.appendChild(main);
-
-        const actions = document.createElement('div');
-        actions.className = 'snapshot-item__actions';
-        const deleteBtn = document.createElement('button');
-        deleteBtn.type = 'button';
-        deleteBtn.className = 'btn btn--ghost';
-        deleteBtn.dataset.snapshotAction = 'delete';
-        deleteBtn.dataset.snapshotName = item.name;
-        deleteBtn.textContent = 'Delete';
-        if (job && job.active) {
-          deleteBtn.disabled = true;
-        }
-        actions.appendChild(deleteBtn);
-        entry.appendChild(actions);
-
-        snapshotList.appendChild(entry);
+        snapshotList.appendChild(tile);
       });
     }
 
@@ -239,15 +268,14 @@
       scheduleSnapshotPoll(false);
     }
 
-    if (snapshotCreateBtn && !snapshotCreateBtn.dataset.busy) {
-      snapshotCreateBtn.disabled = !!jobActive;
-    }
     if (snapshotRefreshBtn && !snapshotRefreshBtn.dataset.busy) {
-      snapshotRefreshBtn.disabled = false;
+      snapshotRefreshBtn.disabled = !!jobActive;
     }
     if (snapshotScanBtn && !snapshotScanBtn.dataset.busy) {
       snapshotScanBtn.disabled = !!jobActive;
     }
+
+    updateSnapshotButtons();
   }
 
   async function loadSnapshots(options = {}) {
@@ -286,15 +314,25 @@
     }
   }
 
-  async function createSnapshot() {
-    if (!snapshotCreateBtn || snapshotCreateBtn.dataset.busy) return;
-    setSnapshotStatus('Starting snapshot…', { level: 'warn' });
-    setBusy(snapshotCreateBtn, true, 'Working…');
+  async function createNodeSnapshot(nodeId, btn) {
+    if (!nodeId) return;
+    const activeJob = state.snapshots && state.snapshots.job && state.snapshots.job.active;
+    if (activeJob) {
+      setSnapshotStatus('A snapshot job is already in progress.', { level: 'warn' });
+      updateSnapshotButtons();
+      return;
+    }
+    if (btn) {
+      setBusy(btn, true, 'Working…');
+    }
     try {
+      const entry = state.nodes.get(nodeId);
+      const label = entry && entry.meta ? (entry.meta.label || entry.meta.id || nodeId) : nodeId;
+      setSnapshotStatus(`Starting snapshot for ${label}…`, { level: 'warn' });
       const res = await fetch('/api/snapshots/create', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ node: nodeId }),
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok || payload.ok === false) {
@@ -303,13 +341,16 @@
       if (payload.job) {
         state.snapshots.job = payload.job;
       }
-      const message = payload.message || 'Snapshot started.';
+      const message = payload.message || `Snapshot started for ${label}`;
       setSnapshotStatus(message, { level: 'warn' });
       await loadSnapshots({ silent: true });
     } catch (err) {
       setSnapshotStatus(err && err.message ? err.message : 'Failed to start snapshot', { level: 'error' });
     } finally {
-      setBusy(snapshotCreateBtn, false);
+      if (btn) {
+        setBusy(btn, false);
+      }
+      updateSnapshotButtons();
     }
   }
 
@@ -342,34 +383,6 @@
 
   async function refreshSnapshots() {
     await loadSnapshots();
-  }
-
-  async function deleteSnapshot(name, btn) {
-    if (!name) return;
-    if (btn && btn.dataset.busy) return;
-    setSnapshotStatus(`Deleting ${name}…`, { level: 'warn' });
-    setBusy(btn, true, 'Deleting…');
-    try {
-      const res = await fetch('/api/snapshots/delete', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name }),
-      });
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok || payload.ok === false) {
-        throw new Error(payload && payload.error ? payload.error : `HTTP ${res.status}`);
-      }
-      state.snapshotStatus = {
-        text: payload.message || `Deleted ${name}`,
-        level: 'ok',
-      };
-      await loadSnapshots({ silent: true });
-      setSnapshotStatus(state.snapshotStatus.text, { level: 'ok' });
-    } catch (err) {
-      setSnapshotStatus(err && err.message ? err.message : `Failed to delete ${name}`, { level: 'error' });
-    } finally {
-      setBusy(btn, false);
-    }
   }
 
   function isRunningFlag(value) {
@@ -505,6 +518,25 @@ function switchSummaryTab(target) {
     summaryActions.hidden = hide;
     summaryActions.setAttribute('aria-hidden', hide ? 'true' : 'false');
   }
+  if (summaryDynamicTitle && summaryDynamicDesc) {
+    const copy = {
+      stats: {
+        title: 'Global Stats',
+        desc: 'Real-time snapshot of every node discovered on the local network.',
+      },
+      settings: {
+        title: 'Settings',
+        desc: 'Configure automatic recovery and display preferences for the fleet.',
+      },
+      snapshots: {
+        title: 'Snapshots',
+        desc: 'Latest archived snapshots. Use the camera icons on nodes to capture more.',
+      },
+    };
+    const next = copy[activeView] || copy.stats;
+    summaryDynamicTitle.textContent = next.title;
+    summaryDynamicDesc.textContent = next.desc;
+  }
   if (activeView === 'snapshots' && !state.snapshotsLoaded) {
     void loadSnapshots();
   }
@@ -609,8 +641,17 @@ async function saveSettings() {
       const res = await fetch('/api/node-manager/nodes', { cache: 'no-store' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const payload = await res.json();
-      renderSummary(payload.summary || {});
-      syncCards(payload.nodes || []);
+      const nodes = Array.isArray(payload.nodes) ? payload.nodes : [];
+      const stalled = nodes.reduce((count, node) => {
+        if (!node || !node.id) return count;
+        const stats = node.status || {};
+        const rawRunning = isRunningFlag(stats.running);
+        const forced = shouldForceOffline(stats, rawRunning, state.lastProgress.get(node.id));
+        return forced ? count + 1 : count;
+      }, 0);
+      const summary = { ...(payload.summary || {}), stalled };
+      renderSummary(summary);
+      syncCards(nodes);
       toggleEmptyState();
     } catch (err) {
       console.error('[fleet] failed to load nodes', err);
@@ -622,6 +663,7 @@ async function saveSettings() {
     const countEl = document.getElementById('statNodeCount');
     const onlineEl = document.getElementById('statOnline');
     const offlineEl = document.getElementById('statOffline');
+    const stalledEl = document.getElementById('statStalled');
     const maxLocalEl = document.getElementById('statMaxLocal');
     const maxRemoteEl = document.getElementById('statMaxRemote');
 
@@ -637,16 +679,19 @@ async function saveSettings() {
       summaryBadge.textContent = '—';
       summaryBadge.removeAttribute('title');
       countEl.textContent = onlineEl.textContent = offlineEl.textContent = maxLocalEl.textContent = maxRemoteEl.textContent = '—';
+      if (stalledEl) stalledEl.textContent = '—';
       return;
     }
 
     const count = summary.count ?? 0;
     const online = summary.running ?? 0;
     const offline = summary.offline ?? Math.max(count - online, 0);
+    const stalled = summary.stalled ?? 0;
 
     countEl.textContent = fmt.format(count);
     onlineEl.textContent = fmt.format(online);
     offlineEl.textContent = fmt.format(offline);
+    if (stalledEl) stalledEl.textContent = fmt.format(stalled);
     maxLocalEl.textContent = summary.max_local_height !== undefined ? fmt.format(summary.max_local_height) : '—';
     maxRemoteEl.textContent = summary.max_remote_height !== undefined ? fmt.format(summary.max_remote_height) : '—';
 
@@ -716,6 +761,7 @@ async function saveSettings() {
         state.lastProgress.delete(nodeId);
       }
     });
+    updateSnapshotButtons();
   }
 
   function toggleEmptyState() {
@@ -780,6 +826,18 @@ async function saveSettings() {
       toggleBtn.addEventListener('mousedown', (event) => event.stopPropagation());
       toggleBtn.addEventListener('mouseup', (event) => event.stopPropagation());
       toggleBtn.title = 'Start/Stop container';
+    }
+    const snapshotBtn = details.querySelector('[data-action="node-snapshot"]');
+    if (snapshotBtn) {
+      const handler = async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        await createNodeSnapshot(node.id, snapshotBtn);
+      };
+      snapshotBtn.addEventListener('click', handler);
+      snapshotBtn.addEventListener('mousedown', (event) => event.stopPropagation());
+      snapshotBtn.addEventListener('mouseup', (event) => event.stopPropagation());
+      snapshotBtn.title = 'Create snapshot';
     }
     cardsContainer.appendChild(details);
     state.nodes.set(node.id, { card: details, meta: node });
@@ -1458,11 +1516,6 @@ async function saveSettings() {
         void saveSettings();
       });
     }
-    if (snapshotCreateBtn) {
-      snapshotCreateBtn.addEventListener('click', () => {
-        void createSnapshot();
-      });
-    }
     if (snapshotRefreshBtn) {
       snapshotRefreshBtn.addEventListener('click', () => {
         void refreshSnapshots();
@@ -1471,17 +1524,6 @@ async function saveSettings() {
     if (snapshotScanBtn) {
       snapshotScanBtn.addEventListener('click', () => {
         void scanSnapshots();
-      });
-    }
-    if (snapshotList) {
-      snapshotList.addEventListener('click', (event) => {
-        const target = event.target.closest('[data-snapshot-action]');
-        if (!target) return;
-        const action = target.dataset.snapshotAction;
-        if (action === 'delete') {
-          const name = target.dataset.snapshotName;
-          void deleteSnapshot(name, target);
-        }
       });
     }
   }

@@ -41,10 +41,10 @@
   .settings-status{color:var(--muted);font-size:13px}
   .settings-status.is-error{color:var(--bad)}
   .settings-status.is-success{color:var(--ok)}
-  .summary-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
-  .kv{background:rgba(255,255,255,.04);border-radius:12px;padding:12px 14px}
-  .kv .k{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.06em}
-  .kv .v{font-size:22px;font-weight:600;margin-top:6px;font-variant-numeric:tabular-nums}
+  .summary-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+  .kv{background:rgba(255,255,255,.04);border-radius:12px;padding:10px 12px}
+  .kv .k{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em;line-height:1.2}
+  .kv .v{font-size:18px;font-weight:600;margin-top:4px;font-variant-numeric:tabular-nums}
   .btn{padding:.5rem .9rem;border:1px solid #3a4a7a;border-radius:10px;background:transparent;color:inherit;cursor:pointer;font-weight:600;letter-spacing:.02em;display:inline-flex;align-items:center;gap:6px}
   .btn:disabled{opacity:.6;cursor:default}
   .btn--primary{background:rgba(37,211,102,.15);border-color:rgba(37,211,102,.4);color:#44f2a8}
@@ -86,20 +86,18 @@
   .snapshot-desc{margin:4px 0 0;font-size:13px;color:var(--muted)}
   .snapshot-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   .snapshot-actions .btn{min-width:0}
-  .snapshot-meta{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--muted)}
+  .snapshot-meta{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
   .snapshot-location{font-weight:600;color:var(--text)}
   .snapshot-status{font-size:13px}
   .snapshot-status.is-ok{color:var(--ok)}
   .snapshot-status.is-warn{color:var(--warn)}
   .snapshot-status.is-error{color:var(--bad)}
-  .snapshot-list{display:flex;flex-direction:column;gap:10px}
-  .snapshot-item{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px}
-  .snapshot-item__main{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0}
-  .snapshot-item__name{font-weight:600;color:var(--text);word-break:break-all}
-  .snapshot-item__meta{font-size:12px;color:var(--muted)}
-  .snapshot-item__actions{display:flex;align-items:center;gap:8px}
-  .snapshot-empty{font-size:13px;color:var(--muted);padding:12px;border:1px dashed rgba(255,255,255,.14);border-radius:12px;text-align:center}
   .snapshot-locations{font-size:12px;color:var(--muted)}
+  .snapshot-latest-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+  .snapshot-tile{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:6px}
+  .snapshot-tile__name{font-weight:600;color:var(--text);word-break:break-word}
+  .snapshot-tile__meta{font-size:12px;color:var(--muted)}
+  .snapshot-empty{font-size:13px;color:var(--muted);padding:12px;border:1px dashed rgba(255,255,255,.14);border-radius:12px;text-align:center}
 .icon-btn{width:41px;height:41px;border-radius:14px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.03);color:inherit;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background .2s,border .2s,color .2s}
 .icon-btn:hover:not(:disabled){background:rgba(255,255,255,.08)}
 .icon-btn .icon{display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:17px;line-height:1;transform:none}
@@ -108,6 +106,9 @@
 .icon-btn.play[data-running="1"] .icon{transform:none}
 .icon-btn.play.is-stalled{color:#ffb74d;border-color:rgba(255,183,77,.4)}
 .icon-btn.play.is-stalled:hover:not(:disabled){background:rgba(255,183,77,.12)}
+.icon-btn.snapshot{color:#44f2a8;border-color:rgba(68,242,168,.35)}
+.icon-btn.snapshot:hover:not(:disabled){background:rgba(68,242,168,.14)}
+.icon-btn.snapshot[disabled]{opacity:.6;cursor:default}
 
   .icon-btn[disabled]{opacity:.5;cursor:default}
   .fleet-body{padding:0 18px 18px;display:grid;gap:12px}
@@ -159,8 +160,8 @@
     <div class="card summary-card">
       <div class="summary-header">
         <div>
-          <div class="title">Global Stats</div>
-          <p class="summary-desc">Real-time snapshot of every node discovered on the local network.</p>
+          <div class="title" id="summaryDynamicTitle">Global Stats</div>
+          <p class="summary-desc" id="summaryDynamicDesc">Real-time snapshot of every node discovered on the local network.</p>
         </div>
           <div class="summary-controls">
             <div class="summary-tabs" role="tablist" aria-label="Dashboard view">
@@ -184,6 +185,10 @@
             <div class="kv">
               <div class="k">Offline</div>
               <div class="v" id="statOffline">—</div>
+            </div>
+            <div class="kv">
+              <div class="k">Stalled</div>
+              <div class="v" id="statStalled">—</div>
             </div>
             <div class="kv">
               <div class="k">Highest Local Height</div>
@@ -237,13 +242,9 @@
             <div class="snapshot-header">
               <div>
                 <div class="snapshot-title">Snapshots</div>
-                <p class="snapshot-desc">Manage compressed snapshots of your chain data for quick recovery.</p>
+                <p class="snapshot-desc">Latest snapshots for quick recovery. Use node actions above to capture more.</p>
               </div>
               <div class="snapshot-actions">
-                <button type="button" class="btn btn--primary" id="btnCreateSnapshot">
-                  <span class="icon">📸</span>
-                  Create Snapshot
-                </button>
                 <button type="button" class="btn btn--ghost" id="btnRefreshSnapshots">
                   <span class="icon">🔄</span>
                   Refresh
@@ -255,12 +256,14 @@
               </div>
             </div>
             <div class="snapshot-meta">
-              <div>Active location: <span class="snapshot-location" id="snapshotLocation">—</span></div>
+              <span class="snapshot-location-wrap" id="snapshotLocationWrap">
+                Active location: <span class="snapshot-location" id="snapshotLocation">—</span>
+              </span>
               <div class="snapshot-locations" id="snapshotLocations" hidden></div>
-              <div class="snapshot-status" id="snapshotStatus"></div>
+              <span class="snapshot-status" id="snapshotStatus"></span>
             </div>
-            <div class="snapshot-list" id="snapshotList">
-              <div class="snapshot-empty" id="snapshotEmptyState">No snapshots yet. Create one to capture the current chain state.</div>
+            <div class="snapshot-latest-grid" id="snapshotList">
+              <div class="snapshot-empty" id="snapshotEmptyState">No snapshots yet. Use the camera icon on a node to capture one.</div>
             </div>
           </div>
         </div>
@@ -298,6 +301,9 @@
         <div class="button-row">
           <button class="icon-btn play" data-role="toggle" data-action="toggle" aria-label="Pause sampling">
             <span class="icon">⏹</span>
+          </button>
+          <button class="icon-btn snapshot" data-action="node-snapshot" aria-label="Create snapshot">
+            <span class="icon">📸</span>
           </button>
         </div>
       </div>
