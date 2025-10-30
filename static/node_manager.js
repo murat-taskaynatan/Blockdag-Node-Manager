@@ -208,6 +208,15 @@
         if (Number.isFinite(Number(item.size))) {
           metaParts.push(formatBytes(item.size));
         }
+        if (item.name) {
+          const match = item.name.match(/\.([0-9]+)\.tar$/);
+          if (match && match[1]) {
+            const heightNum = Number(match[1]);
+            if (Number.isFinite(heightNum) && heightNum >= 0) {
+              metaParts.push(`height ${heightNum}`);
+            }
+          }
+        }
         metaEl.textContent = metaParts.length ? metaParts.join(' • ') : '—';
         tile.appendChild(metaEl);
 
