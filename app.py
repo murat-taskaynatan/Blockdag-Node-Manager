@@ -68,6 +68,7 @@ LOG_ERROR_RESTART_COOLDOWN_SEC = max(
         or 300
     ),
 )
+AUTO_RESTART_INTERVAL_SEC = LOG_ERROR_RESTART_COOLDOWN_SEC
 LOG_ERROR_TAIL = max(10, min(int(os.getenv("BDAG_LOG_ERROR_TAIL", "80") or "80"), 200))
 LOG_ERROR_PATTERN = re.compile(r"\berror\b", re.IGNORECASE)
 
@@ -196,6 +197,7 @@ SNAPSHOT_MAX = SNAPSHOT_MAX_DEFAULT
 DEFAULT_SETTINGS: Dict[str, object] = {
     "liveness_auto_recover": False,
     "auto_restart_on_error": False,
+    "auto_restart_hours": 0,
     "display_wallet_balance": _coerce_bool(os.getenv("BDAG_WALLET_DISPLAY", "0"), False),
     "snapshot_max": SNAPSHOT_MAX_DEFAULT,
     "wallet_address": str(os.getenv("BDAG_WALLET_ADDRESS", "")).strip(),
@@ -221,6 +223,7 @@ def _coerce_setting(key: str, value):
 
 def _apply_runtime_settings(settings: Dict[str, object]) -> None:
     global SNAPSHOT_MAX
+    global AUTO_RESTART_INTERVAL_SEC
     snapshot_limit = settings.get("snapshot_max")
     if isinstance(snapshot_limit, int) and snapshot_limit >= 0:
         SNAPSHOT_MAX = snapshot_limit
@@ -232,6 +235,11 @@ def _apply_runtime_settings(settings: Dict[str, object]) -> None:
     elif _wallet_address_cache.get("path") == "settings":
         _wallet_address_cache.update({"path": None, "mtime": 0.0, "address": None})
     _wallet_balance_cache.update({"ts": 0.0, "data": None})
+    interval_hours = settings.get("auto_restart_hours")
+    if isinstance(interval_hours, int) and interval_hours > 0:
+        AUTO_RESTART_INTERVAL_SEC = max(300.0, float(interval_hours) * 3600.0)
+    else:
+        AUTO_RESTART_INTERVAL_SEC = LOG_ERROR_RESTART_COOLDOWN_SEC
 
 
 def _load_settings_file() -> Dict[str, bool]:
@@ -1549,6 +1557,9 @@ class NodeContext:
         self.height_series: deque = deque(maxlen=WINDOW)
         self.remote_series: deque = deque(maxlen=WINDOW)
         self.peers_series: deque = deque(maxlen=WINDOW)
+        self.rpc_latency_series: deque = deque(maxlen=WINDOW)
+        self.block_rate_series: deque = deque(maxlen=WINDOW)
+        self.sync_progress_series: deque = deque(maxlen=WINDOW)
         self.last_metrics: Optional[dict] = None
         self.last_sample_ts: float = 0.0
         self.running: bool = False
@@ -1611,6 +1622,9 @@ class NodeContext:
             "remote_height": 0,
             "height_delta": 0,
             "peers": 0,
+            "rpc_latency_ms": None,
+            "block_rate_per_sec": None,
+            "sync_progress": None,
             "running": self.running,
             "container_running": False,
             "container_exists": False,
@@ -1629,15 +1643,37 @@ class NodeContext:
                 and self.last_metrics is not None
             ):
                 return dict(self.last_metrics)
+            previous = dict(self.last_metrics) if self.last_metrics is not None else None
         metrics, remote_series_value = _collect_node_metrics(self)
         with self.lock:
             self.last_sample_ts = now
             self.running = metrics["running"]
+            if previous:
+                prev_ts = int(previous.get("last_updated") or 0)
+                curr_ts = int(metrics.get("last_updated") or prev_ts)
+                dt_ms = curr_ts - prev_ts
+                if dt_ms > 0:
+                    delta_blocks = int(metrics.get("local_height") or 0) - int(previous.get("local_height") or 0)
+                    if delta_blocks >= 0:
+                        metrics["block_rate_per_sec"] = delta_blocks / (dt_ms / 1000.0)
+                elif "block_rate_per_sec" not in metrics:
+                    metrics["block_rate_per_sec"] = None
+            metrics.setdefault("block_rate_per_sec", None)
+            local_height = int(metrics.get("local_height") or 0)
+            remote_height = metrics.get("remote_height")
+            if isinstance(remote_height, (int, float)) and remote_height > 0:
+                progress = max(0.0, min(100.0, (local_height / float(remote_height)) * 100.0))
+                metrics["sync_progress"] = progress
+            else:
+                metrics["sync_progress"] = None
             self.last_metrics = dict(metrics)
             ts = metrics["last_updated"]
             self.height_series.append((ts, metrics["local_height"]))
             self.remote_series.append((ts, remote_series_value))
             self.peers_series.append((ts, metrics["peers"]))
+            self.rpc_latency_series.append((ts, metrics.get("rpc_latency_ms")))
+            self.block_rate_series.append((ts, metrics.get("block_rate_per_sec")))
+            self.sync_progress_series.append((ts, metrics.get("sync_progress")))
             return dict(self.last_metrics)
 
     def snapshot(self, *, include_series: bool = False) -> dict:
@@ -1651,9 +1687,27 @@ class NodeContext:
                 remote = [
                     remote_lookup.get(ts) if remote_lookup.get(ts) is not None else None for ts in labels
                 ]
+                peers_lookup = {ts: val for ts, val in self.peers_series}
+                latency_lookup = {ts: val for ts, val in self.rpc_latency_series}
+                block_lookup = {ts: val for ts, val in self.block_rate_series}
+                progress_lookup = {ts: val for ts, val in self.sync_progress_series}
+                peers_series = [peers_lookup.get(ts) if peers_lookup.get(ts) is not None else None for ts in labels]
+                latency_series = [
+                    latency_lookup.get(ts) if latency_lookup.get(ts) is not None else None for ts in labels
+                ]
+                block_series = [
+                    block_lookup.get(ts) if block_lookup.get(ts) is not None else None for ts in labels
+                ]
+                progress_series = [
+                    progress_lookup.get(ts) if progress_lookup.get(ts) is not None else None for ts in labels
+                ]
                 metrics["labels"] = labels
                 metrics["local"] = local
                 metrics["remote"] = remote
+                metrics["peers_series"] = peers_series
+                metrics["rpc_latency_series"] = latency_series
+                metrics["block_rate_series"] = block_series
+                metrics["sync_progress_series"] = progress_series
         return metrics
 
 
@@ -1779,7 +1833,7 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
         last_restart = float(state.get("last_restart", 0.0))
     if streak < LOG_ERROR_THRESHOLD:
         return
-    if now - last_restart < LOG_ERROR_RESTART_COOLDOWN_SEC:
+    if now - last_restart < AUTO_RESTART_INTERVAL_SEC:
         return
     if _restart_container_for_policy(ctx, f"{streak} consecutive error log lines"):
         with _LOG_POLICY_LOCK:
@@ -2105,13 +2159,24 @@ def _container_state(name: str) -> Tuple[bool, bool, Optional[float]]:
 
 def _collect_node_metrics(ctx: NodeContext) -> Tuple[dict, Optional[int]]:
     now_ms = int(time.time() * 1000)
+    start_local = time.perf_counter()
     try:
         local_height = _fetch_local_height(ctx)
     except Exception:
         local_height = None
-    try:
-        remote_height = _fetch_remote_height(ctx)
-    except Exception:
+    finally:
+        local_latency_ms = (time.perf_counter() - start_local) * 1000.0
+    has_remote = bool(ctx.remote_rpc_bases)
+    remote_latency_ms = None
+    if has_remote:
+        start_remote = time.perf_counter()
+        try:
+            remote_height = _fetch_remote_height(ctx)
+        except Exception:
+            remote_height = None
+        finally:
+            remote_latency_ms = (time.perf_counter() - start_remote) * 1000.0
+    else:
         remote_height = None
     try:
         peers = _fetch_peer_count(ctx)
@@ -2133,6 +2198,10 @@ def _collect_node_metrics(ctx: NodeContext) -> Tuple[dict, Optional[int]]:
         "remote_height": remote_display,
         "height_delta": int(remote_display - local_val),
         "peers": peers_val,
+        "rpc_latency_ms": local_latency_ms if local_latency_ms >= 0 else None,
+        "remote_latency_ms": remote_latency_ms if remote_latency_ms is not None and remote_latency_ms >= 0 else None,
+        "block_rate_per_sec": None,
+        "sync_progress": None,
         "running": effective_running,
         "container_running": bool(running),
         "container_exists": bool(exists),
@@ -2241,7 +2310,7 @@ def _resolve_node(node_id: Optional[str]) -> NodeContext:
 # ---------------------------------------------------------------------------
 # API endpoints
 # ---------------------------------------------------------------------------
-APP_VERSION = os.getenv("BDAG_MANAGER_VERSION", "v1.0.0").strip() or "v1.0.0"
+APP_VERSION = os.getenv("BDAG_MANAGER_VERSION", "v1.3.0").strip() or "v1.3.0"
 
 
 @app.route("/healthz")
@@ -2295,6 +2364,30 @@ def api_node_manager_metrics():
         _apply_node_policies(ctx, settings)
         response[ctx.id] = ctx.snapshot(include_series=True)
     return jsonify({"nodes": response, "timestamp": time.time()})
+
+
+@app.route("/api/node-manager/logs")
+def api_node_manager_logs():
+    node_id = request.args.get("node") or None
+    limit_param = request.args.get("limit")
+    try:
+        limit = max(1, min(int(limit_param), 200)) if limit_param is not None else LOG_ERROR_TAIL
+    except Exception:
+        limit = LOG_ERROR_TAIL
+    ctx = _resolve_node(node_id)
+    container = ctx.container or ""
+    if not container:
+        return jsonify({"node": ctx.id, "container": container, "lines": [], "limit": limit, "timestamp": time.time()})
+    lines = _get_recent_logs(limit, container)
+    return jsonify(
+        {
+            "node": ctx.id,
+            "container": container,
+            "lines": lines,
+            "limit": limit,
+            "timestamp": time.time(),
+        }
+    )
 
 
 
