@@ -127,6 +127,12 @@
     if (level) {
       snapshotStatus.classList.add(`is-${level}`);
     }
+    if (level === 'ok') {
+      window.clearTimeout(setSnapshotStatus._timer);
+      setSnapshotStatus._timer = window.setTimeout(() => {
+        setSnapshotStatus('');
+      }, 10000);
+    }
   }
 
   function updateSnapshotButtons() {
