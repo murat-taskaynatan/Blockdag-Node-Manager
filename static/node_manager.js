@@ -80,28 +80,64 @@
     return false;
   }
 
-  function renderSyncSummary(pill, progress, rate, meta = {}) {
-    if (!pill) {
-      return;
-    }
-    const hasProgress = Number.isFinite(progress);
-    const hasRate = Number.isFinite(rate) && rate > 0;
-    const progressText = hasProgress ? `${progress.toFixed(1)}%` : '—';
-    const rateValue = hasRate ? (rate >= 10 ? rate.toFixed(1) : rate.toFixed(2)) : '—';
-    pill.textContent = `Synced ${progressText} ${rateValue} blk/s`;
-    if (hasProgress || hasRate) {
-      const local = meta.local_height ?? meta.local;
-      const remote = meta.remote_height ?? meta.remote;
+  function renderSyncChips(chips, options = {}) {
+    if (!chips) return;
+    const { progressChip, rateChip, etaChip } = chips;
+    const {
+      progress,
+      rate,
+      etaInfo,
+      meta = {},
+    } = options;
+    const local = meta.local_height ?? meta.local;
+    const remote = meta.remote_height ?? meta.remote;
+    if (progressChip) {
+      const hasProgress = Number.isFinite(progress);
+      const progressValue = hasProgress ? progress : null;
+      const progressText = hasProgress ? `${progressValue.toFixed(1)}%` : '—';
+      progressChip.textContent = `Synced ${progressText}`;
+      progressChip.classList.remove('is-ok', 'is-warn', 'is-danger');
+      if (hasProgress) {
+        let progressVariant = 'danger';
+        if (progressValue >= 95) {
+          progressVariant = 'ok';
+        } else if (progressValue >= 70) {
+          progressVariant = 'warn';
+        }
+        progressChip.classList.add(`is-${progressVariant}`);
+      }
       const details = [];
       if (hasProgress && Number.isFinite(local) && Number.isFinite(remote)) {
-        details.push(`Local ${local} of ${remote}`);
+        details.push(`Local ${fmt.format(local)} of ${fmt.format(remote)}`);
       }
+      if (details.length) {
+        progressChip.title = details.join(' • ');
+      } else {
+        progressChip.removeAttribute('title');
+      }
+    }
+    if (rateChip) {
+      const hasRate = Number.isFinite(rate) && rate > 0;
+      const rateValue = hasRate ? (rate >= 10 ? rate.toFixed(1) : rate.toFixed(2)) : '—';
+      rateChip.textContent = `Rate ${rateValue} blk/s`;
       if (hasRate) {
-        details.push(`${rateValue} blocks/s`);
+        rateChip.title = `${rateValue} blocks per second`;
+      } else {
+        rateChip.removeAttribute('title');
       }
-      pill.title = details.length ? details.join(' • ') : '';
-    } else {
-      pill.removeAttribute('title');
+    }
+    if (etaChip) {
+      etaChip.classList.remove('is-ok', 'is-warn', 'is-danger');
+      if (etaInfo && etaInfo.text) {
+        etaChip.textContent = etaInfo.text;
+        if (etaInfo.variant) {
+          etaChip.classList.add(`is-${etaInfo.variant}`);
+        }
+        etaChip.title = etaInfo.hint || etaInfo.text;
+      } else {
+        etaChip.textContent = 'ETA —';
+        etaChip.removeAttribute('title');
+      }
     }
   }
 
@@ -401,7 +437,7 @@ async function saveSettings() {
       });
     }
 
-    const toggleBtn = details.querySelector('[data-action="toggle"]');
+    const toggleBtn = details.querySelector('[data-role="toggle"]');
     if (toggleBtn) {
       const handler = async (event) => {
         event.preventDefault();
@@ -413,19 +449,6 @@ async function saveSettings() {
       toggleBtn.addEventListener('mouseup', (event) => event.stopPropagation());
       toggleBtn.title = 'Start/Stop container';
     }
-    const restartBtn = details.querySelector('[data-action="restart"]');
-    if (restartBtn) {
-      const handler = async (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        await restartNode(node.id);
-      };
-      restartBtn.addEventListener('click', handler);
-      restartBtn.addEventListener('mousedown', (event) => event.stopPropagation());
-      restartBtn.addEventListener('mouseup', (event) => event.stopPropagation());
-      restartBtn.title = 'Restart container';
-    }
-
     cardsContainer.appendChild(details);
     state.nodes.set(node.id, { card: details, meta: node });
     updateCardHeader(node);
@@ -515,14 +538,24 @@ async function saveSettings() {
     }
 
     const summaryHealthChip = card.querySelector('.summary-health-chip');
-    const summarySyncPill = card.querySelector('[data-role="sync-pill"]');
+    const syncChips = {
+      progressChip: card.querySelector('[data-role="sync-progress"]'),
+      rateChip: card.querySelector('[data-role="sync-rate"]'),
+      etaChip: card.querySelector('[data-role="sync-eta"]'),
+    };
     const statusEl = card.querySelector('.status-text');
     const stats = node.status || {};
     entry.meta.status = stats;
-    const rawRunning = isRunningFlag(stats.running);
-    const forceOfflineHeader = shouldForceOffline(stats, rawRunning, state.lastProgress.get(node.id));
-    const effectiveRunning = rawRunning && !forceOfflineHeader;
-    const health = resolveHealth(stats, rawRunning, { forceOffline: forceOfflineHeader });
+    const containerRunning = isRunningFlag(
+      stats.container_running ?? stats.raw_running ?? stats.running
+    );
+    const effectiveRunning = isRunningFlag(stats.running);
+    const forceOfflineHeader = shouldForceOffline(
+      stats,
+      containerRunning,
+      state.lastProgress.get(node.id)
+    );
+    const health = resolveHealth(stats, containerRunning, { forceOffline: forceOfflineHeader });
     const displayHealth = health.display;
     const code = health.code;
     const healthDetail = health.detail;
@@ -552,9 +585,14 @@ async function saveSettings() {
       }
     }
 
-    renderSyncSummary(summarySyncPill, state.lastProgress.get(node.id), state.lastRates.get(node.id), {
-      local_height: stats.local_height,
-      remote_height: stats.remote_height,
+    renderSyncChips(syncChips, {
+      progress: state.lastProgress.get(node.id),
+      rate: state.lastRates.get(node.id),
+      etaInfo: stats.eta_info || null,
+      meta: {
+        local_height: stats.local_height,
+        remote_height: stats.remote_height,
+      },
     });
 
     setStat(card, '.stat-local', stats.local_height);
@@ -562,13 +600,14 @@ async function saveSettings() {
     setStat(card, '.stat-delta', stats.height_delta, { sign: true });
     setStat(card, '.stat-peers', stats.peers);
     updateUptime(card, stats.uptime_seconds);
-    updateStartStopButton(card.querySelector('[data-action="toggle"]'), effectiveRunning, {
-      rawRunning,
+    updateStartStopButton(card.querySelector('[data-role="toggle"]'), containerRunning, {
+      effectiveRunning,
       forcedOffline: forceOfflineHeader,
     });
     if (entry.meta && entry.meta.status) {
-      entry.meta.status.raw_running = rawRunning;
+      entry.meta.status.container_running = containerRunning;
       entry.meta.status.forced_offline = forceOfflineHeader;
+      entry.meta.status.running = effectiveRunning;
       entry.meta.status.effective_running = effectiveRunning;
     }
   }
@@ -685,15 +724,27 @@ async function saveSettings() {
       return null;
     }
     if (remaining <= 0) {
-      return { text: 'Fully synced', variant: 'ok' };
+      return {
+        text: 'Fully synced',
+        variant: 'ok',
+        hint: 'Local height matches remote height.',
+      };
     }
     const rate = averageHeightRate(metrics.labels, metrics.local);
     if (!Number.isFinite(rate) || rate <= 0) {
-      return { text: 'ETA pending…', variant: null };
+      return {
+        text: 'ETA pending…',
+        variant: null,
+        hint: 'Waiting for sufficient block data to estimate rate.',
+      };
     }
     const etaSec = remaining / rate;
     if (!Number.isFinite(etaSec) || etaSec <= 0 || etaSec > 86400 * 30) {
-      return { text: 'ETA pending…', variant: null };
+      return {
+        text: 'ETA pending…',
+        variant: null,
+        hint: 'Rate data is insufficient to estimate ETA.',
+      };
     }
     const pretty = formatEtaDuration(etaSec);
     let variant = 'warn';
@@ -702,22 +753,28 @@ async function saveSettings() {
     } else if (etaSec >= 21600) {
       variant = 'danger';
     }
-    return { text: `ETA ~ ${pretty}`, variant };
+    const rateValue = rate >= 10 ? rate.toFixed(1) : rate.toFixed(2);
+    return {
+      text: `ETA ~ ${pretty}`,
+      variant,
+      hint: `Approximately ${fmt.format(Math.max(remaining, 0))} blocks remaining at ${rateValue} blk/s.`,
+    };
   }
 
   function updateEta(card, metrics) {
-    const etaEl = card.querySelector('.stat-eta');
-    if (!etaEl) return;
-    etaEl.classList.remove('is-ok', 'is-warn', 'is-danger');
     const info = computeEtaInfo(metrics);
+    const etaEl = card.querySelector('.stat-eta');
+    if (!etaEl) return info;
+    etaEl.classList.remove('is-ok', 'is-warn', 'is-danger');
     if (!info) {
       etaEl.textContent = '—';
-      return;
+      return null;
     }
     etaEl.textContent = info.text;
     if (info.variant) {
       etaEl.classList.add(`is-${info.variant}`);
     }
+    return info;
   }
 
   function createChart(ctx) {
@@ -768,30 +825,30 @@ async function saveSettings() {
     });
   }
 
-  function updateStartStopButton(btn, running, options = {}) {
+  function updateStartStopButton(btn, containerRunning, options = {}) {
     if (!btn) return;
-    const { rawRunning = running, forcedOffline = false } = options;
-    const effectiveRunning = running === true;
+    const { effectiveRunning = containerRunning, forcedOffline = false } = options;
     let action = 'start';
-    if (effectiveRunning) {
+    if (containerRunning && !forcedOffline) {
       action = 'stop';
-    } else if (rawRunning && forcedOffline) {
+    } else if (containerRunning && forcedOffline) {
       action = 'restart';
     }
-    btn.dataset.running = effectiveRunning ? '1' : '0';
-    btn.dataset.rawRunning = rawRunning ? '1' : '0';
+    btn.dataset.running = containerRunning ? '1' : '0';
+    btn.dataset.effectiveRunning = effectiveRunning ? '1' : '0';
     btn.dataset.action = action;
+    btn.classList.toggle('is-stalled', Boolean(containerRunning && forcedOffline));
     let icon = '▶';
     let aria = 'Start node';
     let title = 'Start container';
-    if (action === 'stop') {
+    if (action === 'restart') {
+      icon = '⟳';
+      aria = 'Restart node';
+      title = 'Restart container (stalled detection)';
+    } else if (containerRunning) {
       icon = '⏹';
       aria = 'Stop node';
       title = 'Stop container';
-    } else if (action === 'restart') {
-      icon = '▶';
-      aria = 'Restart node';
-      title = 'Restart container';
     }
     btn.innerHTML = `<span class="icon">${icon}</span>`;
     btn.setAttribute('aria-label', aria);
@@ -805,15 +862,42 @@ async function saveSettings() {
     const container = meta.container || meta.id;
     if (!container) return;
     const status = meta.status || {};
-    const rawRunning = isRunningFlag(status.running);
+    const containerRunning = isRunningFlag(
+      status.container_running ?? status.raw_running ?? status.running
+    );
+    const effectiveRunning = isRunningFlag(status.running);
     const previousProgress = state.lastProgress.get(nodeId);
-    const forcedOffline = shouldForceOffline(status, rawRunning, previousProgress);
-    const effectiveRunning = rawRunning && !forcedOffline;
+    const forcedOffline = shouldForceOffline(status, containerRunning, previousProgress);
     let action = 'docker_start';
-    if (effectiveRunning) {
+    if (containerRunning && !forcedOffline) {
       action = 'docker_stop';
-    } else if (rawRunning && forcedOffline) {
+    } else if (containerRunning && forcedOffline) {
       action = 'docker_restart';
+    }
+    const optimisticState = (() => {
+      if (action === 'docker_start' || action === 'docker_restart') {
+        return { containerRunning: true, effectiveRunning: true, forcedOffline: false };
+      }
+      if (action === 'docker_stop') {
+        return { containerRunning: false, effectiveRunning: false, forcedOffline: false };
+      }
+      return null;
+    })();
+    if (btn && optimisticState) {
+      updateStartStopButton(btn, optimisticState.containerRunning, {
+        effectiveRunning: optimisticState.effectiveRunning,
+        forcedOffline: optimisticState.forcedOffline,
+      });
+    }
+    if (optimisticState) {
+      entry.meta.status = {
+        ...(entry.meta.status || {}),
+        ...status,
+        container_running: optimisticState.containerRunning,
+        running: optimisticState.effectiveRunning,
+        effective_running: optimisticState.effectiveRunning,
+        forced_offline: optimisticState.forcedOffline,
+      };
     }
     if (btn) btn.disabled = true;
     try {
@@ -829,28 +913,6 @@ async function saveSettings() {
       if (btn) btn.disabled = false;
       await loadNodes();
       await refreshMetrics();
-    }
-  }
-
-  async function restartNode(nodeId) {
-    const entry = state.nodes.get(nodeId);
-    if (!entry) return;
-    const meta = entry.meta || {};
-    const container = meta.container || meta.id;
-    if (!container) return;
-    const btn = entry.card.querySelector('[data-action="restart"]');
-    if (btn) btn.disabled = true;
-    try {
-      const res = await fetch('/api/control', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ action: 'docker_restart', container, node: nodeId }),
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    } catch (err) {
-      console.error('[fleet] restart failed', err);
-    } finally {
-      if (btn) btn.disabled = false;
     }
   }
 
@@ -920,25 +982,26 @@ async function saveSettings() {
       setStat(card, '.stat-peers', metrics.peers);
       updateUptime(card, metrics.uptime_seconds);
 
-      const rawRunning = isRunningFlag(metrics.running);
-      const nodeStatusEl = card.querySelector('.node-status');
-      if (nodeStatusEl) {
-        nodeStatusEl.classList.toggle('is-ok', rawRunning);
-        nodeStatusEl.classList.toggle('is-warn', !rawRunning);
-        const textEl = nodeStatusEl.querySelector('.status-text');
-        if (textEl) {
-          textEl.textContent = '';
-        }
-      }
-
+      const containerRunning = isRunningFlag(
+        metrics.container_running ?? metrics.raw_running ?? metrics.running
+      );
+      const effectiveRunning = isRunningFlag(metrics.running);
       const summaryHealthChip = card.querySelector('.summary-health-chip');
       const previousProgress = state.lastProgress.get(nodeId);
-      const forceOffline = shouldForceOffline(metrics, rawRunning, previousProgress);
-      const effectiveRunning = rawRunning && !forceOffline;
-      const health = resolveHealth(metrics, rawRunning, { forceOffline });
+      const forceOffline = shouldForceOffline(metrics, containerRunning, previousProgress);
+      const health = resolveHealth(metrics, containerRunning, { forceOffline });
       const displayHealth = health.display;
       const healthDetail = health.detail;
       const code = health.code;
+      const nodeStatusEl = card.querySelector('.node-status');
+      if (nodeStatusEl) {
+        nodeStatusEl.classList.toggle('is-ok', code === 'online');
+        nodeStatusEl.classList.toggle('is-warn', code !== 'online');
+        const textEl = nodeStatusEl.querySelector('.status-text');
+        if (textEl) {
+          textEl.textContent = displayHealth || '';
+        }
+      }
       if (summaryHealthChip) {
         summaryHealthChip.textContent = displayHealth || 'Status';
         if (healthDetail || displayHealth) {
@@ -946,12 +1009,21 @@ async function saveSettings() {
         } else {
           summaryHealthChip.removeAttribute('title');
         }
-        const isOnline = code === 'online';
-        summaryHealthChip.classList.remove('health-online', 'health-offline');
-        summaryHealthChip.classList.add(isOnline ? 'health-online' : 'health-offline');
+        summaryHealthChip.classList.remove('health-online', 'health-offline', 'health-warn');
+        if (code === 'online') {
+          summaryHealthChip.classList.add('health-online');
+        } else if (code === 'warn') {
+          summaryHealthChip.classList.add('health-warn');
+        } else {
+          summaryHealthChip.classList.add('health-offline');
+        }
       }
 
-      const summarySyncPill = card.querySelector('[data-role="sync-pill"]');
+      const syncChips = {
+        progressChip: card.querySelector('[data-role="sync-progress"]'),
+        rateChip: card.querySelector('[data-role="sync-rate"]'),
+        etaChip: card.querySelector('[data-role="sync-eta"]'),
+      };
       let progress = computeSyncProgress(metrics);
       if (progress === null || !Number.isFinite(progress)) {
         progress = state.lastProgress.get(nodeId);
@@ -964,21 +1036,29 @@ async function saveSettings() {
       } else {
         rate = state.lastRates.get(nodeId);
       }
-      renderSyncSummary(summarySyncPill, progress, rate, {
-        local_height: metrics.local_height,
-        remote_height: metrics.remote_height,
+      const etaInfo = updateEta(card, metrics);
+      renderSyncChips(syncChips, {
+        progress,
+        rate,
+        etaInfo,
+        meta: {
+          local_height: metrics.local_height,
+          remote_height: metrics.remote_height,
+        },
       });
 
-      updateStartStopButton(card.querySelector('[data-action="toggle"]'), effectiveRunning, {
-        rawRunning,
+      updateStartStopButton(card.querySelector('[data-role="toggle"]'), containerRunning, {
+        effectiveRunning,
         forcedOffline: forceOffline,
       });
       entry.meta.status = {
         ...(entry.meta.status || {}),
         ...metrics,
-        raw_running: rawRunning,
+        container_running: containerRunning,
         forced_offline: forceOffline,
         effective_running: effectiveRunning,
+        running: effectiveRunning,
+        eta_info: etaInfo || null,
       };
 
       const tsEl = card.querySelector('.stat-updated');
@@ -986,8 +1066,6 @@ async function saveSettings() {
         const ts = metrics.last_updated ? new Date(metrics.last_updated) : new Date(now);
         tsEl.textContent = fmtTime.format(ts);
       }
-
-      updateEta(card, metrics);
 
       if (state.paused.has(nodeId)) {
         return;

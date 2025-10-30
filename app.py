@@ -627,6 +627,8 @@ class NodeContext:
             "height_delta": 0,
             "peers": 0,
             "running": self.running,
+            "container_running": False,
+            "container_exists": False,
             "uptime_seconds": None,
             "last_updated": int(time.time() * 1000),
         }
@@ -1139,13 +1141,16 @@ def _collect_node_metrics(ctx: NodeContext) -> Tuple[dict, Optional[int]]:
     remote_val = int(remote_height) if isinstance(remote_height, int) and remote_height >= 0 else None
     peers_val = int(peers) if isinstance(peers, int) and peers >= 0 else 0
     remote_display = remote_val if remote_val is not None else local_val
-    effective_running = running if exists else bool(not ctx.container)
+    has_activity = local_val > 0 or peers_val > 0
+    effective_running = running if exists else has_activity
     metrics = {
         "local_height": local_val,
         "remote_height": remote_display,
         "height_delta": int(remote_display - local_val),
         "peers": peers_val,
         "running": effective_running,
+        "container_running": bool(running),
+        "container_exists": bool(exists),
         "uptime_seconds": uptime_seconds,
         "last_updated": now_ms,
     }
