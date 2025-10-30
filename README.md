@@ -31,7 +31,7 @@ export FLASK_APP=app.py
 flask run --host=0.0.0.0 --port=8080
 ```
 
-Navigate to `http://localhost:8080/` to open the UI.
+Navigate to `http://localhost:8081/` to open the UI.
 
 ## Configuration
 Node definitions live in `config/nodes.json`. Each entry can specify:
