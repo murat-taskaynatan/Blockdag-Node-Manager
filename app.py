@@ -190,13 +190,48 @@ def _coerce_bool(value, default: bool = False) -> bool:
 
 
 SETTINGS_PATH = Path(__file__).resolve().parent / "config" / "settings.json"
-DEFAULT_SETTINGS: Dict[str, bool] = {
+SNAPSHOT_MAX_DEFAULT = max(0, int(os.getenv("BDAG_SNAPSHOT_MAX", "0") or 0))
+SNAPSHOT_MAX = SNAPSHOT_MAX_DEFAULT
+
+DEFAULT_SETTINGS: Dict[str, object] = {
     "liveness_auto_recover": False,
     "auto_restart_on_error": False,
     "display_wallet_balance": _coerce_bool(os.getenv("BDAG_WALLET_DISPLAY", "0"), False),
+    "snapshot_max": SNAPSHOT_MAX_DEFAULT,
+    "wallet_address": str(os.getenv("BDAG_WALLET_ADDRESS", "")).strip(),
 }
 _SETTINGS_LOCK = threading.Lock()
-_SETTINGS_CACHE: Dict[str, bool] = {}
+_SETTINGS_CACHE: Dict[str, object] = {}
+
+
+def _coerce_setting(key: str, value):
+    default = DEFAULT_SETTINGS.get(key)
+    if isinstance(default, bool):
+        return _coerce_bool(value, default)
+    if isinstance(default, int):
+        try:
+            coerced = int(value)
+        except Exception:
+            return default
+        return max(0, coerced)
+    if isinstance(default, str):
+        return str(value or "").strip()
+    return value if value is not None else default
+
+
+def _apply_runtime_settings(settings: Dict[str, object]) -> None:
+    global SNAPSHOT_MAX
+    snapshot_limit = settings.get("snapshot_max")
+    if isinstance(snapshot_limit, int) and snapshot_limit >= 0:
+        SNAPSHOT_MAX = snapshot_limit
+    else:
+        SNAPSHOT_MAX = SNAPSHOT_MAX_DEFAULT
+    override_address = str(settings.get("wallet_address") or "").strip()
+    if override_address:
+        _wallet_address_cache.update({"path": "settings", "mtime": time.time(), "address": override_address})
+    elif _wallet_address_cache.get("path") == "settings":
+        _wallet_address_cache.update({"path": None, "mtime": 0.0, "address": None})
+    _wallet_balance_cache.update({"ts": 0.0, "data": None})
 
 
 def _load_settings_file() -> Dict[str, bool]:
@@ -211,28 +246,30 @@ def _load_settings_file() -> Dict[str, bool]:
         if isinstance(payload, dict):
             for key, default in DEFAULT_SETTINGS.items():
                 if key in payload:
-                    merged[key] = _coerce_bool(payload[key], default)
+                    merged[key] = _coerce_setting(key, payload[key])
+    _apply_runtime_settings(merged)
     return merged
 
 
-def get_settings() -> Dict[str, bool]:
+def get_settings() -> Dict[str, object]:
     with _SETTINGS_LOCK:
         if not _SETTINGS_CACHE:
             _SETTINGS_CACHE.update(_load_settings_file())
         return dict(_SETTINGS_CACHE)
 
 
-def update_settings(updates: Dict[str, object]) -> Dict[str, bool]:
-    filtered: Dict[str, bool] = {}
+def update_settings(updates: Dict[str, object]) -> Dict[str, object]:
+    filtered: Dict[str, object] = {}
     for key, default in DEFAULT_SETTINGS.items():
         if key in updates:
-            filtered[key] = _coerce_bool(updates[key], default)
+            filtered[key] = _coerce_setting(key, updates[key])
     if not filtered:
         return get_settings()
     with _SETTINGS_LOCK:
         if not _SETTINGS_CACHE:
             _SETTINGS_CACHE.update(_load_settings_file())
         _SETTINGS_CACHE.update(filtered)
+        _apply_runtime_settings(_SETTINGS_CACHE)
         try:
             SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
             with SETTINGS_PATH.open("w", encoding="utf-8") as handle:
@@ -400,7 +437,6 @@ LEGACY_SNAPSHOT_PATTERNS = [
     "blockdag-chaindata-*.tar.gz",
     f"{SNAPSHOT_PREFIX}-*.tar.gz",
 ]
-SNAPSHOT_MAX = max(0, int(os.getenv("BDAG_SNAPSHOT_MAX", "0") or 0))
 
 _SNAPSHOT_DIR_LOCK = threading.Lock()
 _SNAPSHOT_JOB_LOCK = threading.Lock()
@@ -569,6 +605,41 @@ def _run_command_with_progress(command: List[str], dest_path: Path, *, total_byt
             process.stderr and process.stderr.close()
         except Exception:
             pass
+
+
+def _parse_snapshot_height(name: str) -> Optional[int]:
+    if not name:
+        return None
+    match = re.search(r"\.(\d+)\.tar(?:\.gz)?$", name)
+    if not match:
+        return None
+    try:
+        return int(match.group(1))
+    except Exception:
+        return None
+
+
+def _select_snapshot_for_restore() -> Optional[Path]:
+    directory = _ensure_snapshot_dir()
+    snapshots = list_snapshots()
+    directory = _ensure_snapshot_dir()
+    best_path: Optional[Path] = None
+    best_height = -1
+    fallback: Optional[Path] = None
+    for entry in snapshots:
+        name = entry.get("name")
+        if not name:
+            continue
+        path = directory / name
+        if not path.exists():
+            continue
+        height = _parse_snapshot_height(name)
+        if height is not None and height > best_height:
+            best_height = height
+            best_path = path
+        if fallback is None:
+            fallback = path
+    return best_path or fallback
 
 
 def _stop_container(name: Optional[str], timeout: int = 90) -> bool:
@@ -1028,6 +1099,7 @@ def _start_snapshot_job(node_id: Optional[str]) -> Tuple[bool, str, Dict[str, ob
         height = last_metrics.get("local_height")
         if isinstance(height, int) and height >= 0:
             details["height"] = height
+    details["mode"] = "snapshot"
     with _SNAPSHOT_JOB_LOCK:
         if _SNAPSHOT_JOB_STATE.get("active"):
             return False, "Snapshot already in progress", _snapshot_job_snapshot()
@@ -1047,6 +1119,188 @@ def _start_snapshot_job(node_id: Optional[str]) -> Tuple[bool, str, Dict[str, ob
     thread.start()
     label = details.get("label") or details.get("node")
     message = f"Snapshot started for {label}" if label else "Snapshot started"
+    return True, message, _snapshot_job_snapshot()
+
+
+def _run_restore_job(details: Dict[str, object]) -> None:
+    container = (details or {}).get("container") if details else None
+    restart_required = False
+    snapshot_path: Optional[Path] = None
+    data_dir = _normalize_path(details.get("data_dir")) if details else None
+    backup_dir: Optional[Path] = None
+    try:
+        directory = _ensure_snapshot_dir()
+        snapshot_name = (details or {}).get("snapshot") if details else None
+        if snapshot_name:
+            snapshot_path = _normalize_path(directory / snapshot_name)
+        else:
+            snapshot_path = _select_snapshot_for_restore()
+            if snapshot_path:
+                details["snapshot"] = snapshot_path.name
+        if not snapshot_path or not snapshot_path.exists():
+            raise RuntimeError("No snapshots available to restore.")
+        if not data_dir:
+            data_dir = _normalize_path(SNAPSHOT_DATA_DIR)
+        if not data_dir:
+            raise RuntimeError("Restore data directory not configured.")
+        if container and DOCKER_BIN:
+            try:
+                restart_required = _stop_container(container)
+            except Exception as exc:
+                raise RuntimeError(f"Failed to stop container {container}: {exc}")
+        parent_dir = data_dir.parent
+        if not parent_dir.exists():
+            parent_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.utcnow().strftime("%Y%m%d.%H%M%S")
+        backup_name = f"{data_dir.name}.pre-restore.{timestamp}"
+        if DOCKER_BIN:
+            script = (
+                "set -e\n"
+                "cd /volume\n"
+                f"if [ -d '{data_dir.name}' ]; then mv '{data_dir.name}' '{backup_name}'; fi\n"
+                f"mkdir -p '{data_dir.name}'\n"
+                f"tar -xf '/backup/{snapshot_path.name}' -C '{data_dir.name}'\n"
+            )
+            command = [
+                DOCKER_BIN,
+                "run",
+                "--rm",
+                "--init",
+                "-u",
+                "0",
+                "-v",
+                f"{parent_dir}:/volume",
+                "-v",
+                f"{snapshot_path.parent}:/backup:ro",
+                "busybox",
+                "sh",
+                "-c",
+                script,
+            ]
+            try:
+                subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            except subprocess.CalledProcessError as exc:
+                raise RuntimeError(exc.stderr or exc.stdout or str(exc))
+        else:
+            temp_dir = parent_dir / f"restore-{timestamp}"
+            if temp_dir.exists():
+                shutil.rmtree(temp_dir, ignore_errors=True)
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            command = ["tar", "-xf", str(snapshot_path), "-C", str(temp_dir)]
+            try:
+                subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            except subprocess.CalledProcessError as exc:
+                raise RuntimeError(exc.stderr or exc.stdout or str(exc))
+            if data_dir.exists():
+                backup_dir = parent_dir / backup_name
+                shutil.move(str(data_dir), str(backup_dir))
+            shutil.move(str(temp_dir), str(data_dir))
+        backup_dir = parent_dir / backup_name if (parent_dir / backup_name).exists() else backup_dir
+        if backup_dir and backup_dir.exists():
+            details["backup"] = str(backup_dir)
+        message = f"Snapshot {snapshot_path.name} restored"
+        label = details.get("label") or details.get("node")
+        if label:
+            message = f"Snapshot {snapshot_path.name} restored to {label}"
+        status = "completed"
+    except Exception as exc:
+        status = "error"
+        message = f"Snapshot restore failed: {exc}"
+        if DOCKER_BIN and data_dir:
+            try:
+                revert_script = (
+                    "cd /volume\n"
+                    f"if [ -d '{backup_name}' ] && [ ! -d '{data_dir.name}' ]; then mv '{backup_name}' '{data_dir.name}'; fi\n"
+                )
+                subprocess.run(
+                    [
+                        DOCKER_BIN,
+                        "run",
+                        "--rm",
+                        "--init",
+                        "-u",
+                        "0",
+                        "-v",
+                        f"{parent_dir}:/volume",
+                        "busybox",
+                        "sh",
+                        "-c",
+                        revert_script,
+                    ],
+                    check=False,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+            except Exception:
+                pass
+        elif backup_dir and data_dir and not data_dir.exists():
+            try:
+                shutil.move(str(backup_dir), str(data_dir))
+            except Exception:
+                pass
+    finally:
+        if restart_required:
+            try:
+                _start_container(container)
+                details.setdefault("restart", True)
+            except Exception as exc:
+                with _SNAPSHOT_JOB_LOCK:
+                    _SNAPSHOT_JOB_STATE.setdefault("warnings", []).append(str(exc))
+        elif container:
+            details.setdefault("restart", False)
+        _snapshot_progress_update(None)
+        with _SNAPSHOT_JOB_LOCK:
+            _SNAPSHOT_JOB_STATE.update(
+                {
+                    "active": False,
+                    "status": status,
+                    "message": message,
+                    "details": {**(details or {}), "path": details.get("snapshot")},
+                    "ended": time.time(),
+                }
+            )
+
+
+def _start_restore_job(node_id: Optional[str]) -> Tuple[bool, str, Dict[str, object]]:
+    details: Dict[str, object] = {}
+    target_ctx: Optional["NodeContext"]
+    if node_id:
+        target_ctx = _resolve_node(node_id)
+    else:
+        target_ctx = _resolve_node(None)
+    if target_ctx:
+        details["node"] = target_ctx.id
+        if target_ctx.container:
+            details["container"] = target_ctx.container
+        if target_ctx.chain_data_dir:
+            details["data_dir"] = str(target_ctx.chain_data_dir)
+        if target_ctx.label:
+            details["label"] = target_ctx.label
+    snapshot_path = _select_snapshot_for_restore()
+    if not snapshot_path or not snapshot_path.exists():
+        return False, "No snapshots available to restore.", _snapshot_job_snapshot()
+    details["snapshot"] = snapshot_path.name
+    details["mode"] = "restore"
+    with _SNAPSHOT_JOB_LOCK:
+        if _SNAPSHOT_JOB_STATE.get("active"):
+            return False, "Snapshot already in progress", _snapshot_job_snapshot()
+        _SNAPSHOT_JOB_STATE.pop("progress", None)
+        _SNAPSHOT_JOB_STATE.update(
+            {
+                "active": True,
+                "status": "running",
+                "message": "Snapshot restore running…",
+                "details": details,
+                "started": time.time(),
+                "ended": None,
+                "warnings": [],
+            }
+        )
+    thread = threading.Thread(target=_run_restore_job, args=(details,), daemon=True)
+    thread.start()
+    label = details.get("label") or details.get("node")
+    message = f"Snapshot restore started for {label}" if label else "Snapshot restore started"
     return True, message, _snapshot_job_snapshot()
 
 
@@ -1145,6 +1399,13 @@ BALANCE_RPC_VERIFY = _coerce_bool(os.getenv("BDAG_BALANCE_RPC_VERIFY"), DEFAULT_
 
 
 def _get_wallet_address() -> Tuple[Optional[str], Optional[str]]:
+    override = str(get_settings().get("wallet_address") or "").strip()
+    if override:
+        cached_address = _wallet_address_cache.get("address")
+        cached_path = _wallet_address_cache.get("path")
+        if cached_path != "settings" or cached_address != override:
+            _wallet_address_cache.update({"path": "settings", "mtime": 0.0, "address": override})
+        return override, "settings"
     for path in _wallet_candidate_paths():
         try:
             stat = path.stat()
@@ -2108,6 +2369,17 @@ def api_snapshots_scan():
             "snapshots": list_snapshots(),
         }
     )
+
+
+@app.route("/api/snapshots/restore", methods=["POST"])
+def api_snapshots_restore():
+    body = request.get_json(silent=True) or {}
+    node_id = body.get("node")
+    ok, message, job = _start_restore_job(str(node_id) if node_id else None)
+    if not ok:
+        status = 409 if job and job.get("active") else 400
+        return jsonify({"ok": False, "error": message, "job": job}), status
+    return jsonify({"ok": True, "message": message, "job": job})
 
 
 @app.route("/api/snapshots/delete", methods=["POST"])

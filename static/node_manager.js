@@ -36,19 +36,29 @@
   const snapshotEmptyState = document.getElementById('snapshotEmptyState');
   const snapshotRefreshBtn = document.getElementById('btnRefreshSnapshots');
   const snapshotScanBtn = document.getElementById('btnScanSnapshots');
+  const walletAddressValue = document.getElementById('walletAddressValue');
+  const walletBalanceValue = document.getElementById('walletBalanceValue');
+  const walletUpdatedValue = document.getElementById('walletUpdatedValue');
+  const walletHistoryList = document.getElementById('walletHistoryList');
+  const walletHistoryEmpty = document.getElementById('walletHistoryEmpty');
+  const walletPane = document.getElementById('walletPane');
   let settingsStatusTimer = null;
   let snapshotPollTimer = null;
   const defaultSettings = {
     liveness_auto_recover: false,
     auto_restart_on_error: false,
     display_wallet_balance: false,
+    snapshot_max: 0,
   };
 
   state.settings = { ...defaultSettings };
+  state.walletHistory = [];
+  state.lastWalletSnapshot = null;
 
   const fmt = new Intl.NumberFormat();
   const fmtTime = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const fmtDateTime = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  const fmtShortDateTime = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
   function numberOrZero(value) {
     const num = Number(value);
@@ -105,8 +115,8 @@
   function setBusy(btn, busy, text) {
     if (!btn) return;
     if (busy) {
-      if (!btn.dataset.originalText) {
-        btn.dataset.originalText = btn.textContent;
+      if (!btn.dataset.originalHtml) {
+        btn.dataset.originalHtml = btn.innerHTML;
       }
       if (text) {
         btn.textContent = text;
@@ -114,8 +124,9 @@
       btn.disabled = true;
       btn.dataset.busy = '1';
     } else {
-      if (btn.dataset.originalText) {
-        btn.textContent = btn.dataset.originalText;
+      if (btn.dataset.originalHtml !== undefined) {
+        btn.innerHTML = btn.dataset.originalHtml;
+        delete btn.dataset.originalHtml;
       }
       btn.disabled = false;
       delete btn.dataset.busy;
@@ -156,6 +167,74 @@
     }
   }
 
+  function formatWalletTimestamp(ms) {
+    if (!Number.isFinite(ms)) {
+      return '—';
+    }
+    try {
+      return fmtDateTime.format(new Date(ms));
+    } catch (err) {
+      return '—';
+    }
+  }
+
+  function updateWalletPane(wallet, { enabled = false, timestamp = Date.now() } = {}) {
+    if (!walletPane) return;
+    const hasWallet = enabled && wallet && wallet.address;
+    if (walletPane) {
+      walletPane.classList.toggle('is-disabled', !enabled);
+    }
+    const displayAddress = hasWallet ? wallet.address : '—';
+    const displayBalance = hasWallet
+      ? wallet.balance_formatted || wallet.short || (wallet.balance_bdag ? `${wallet.balance_bdag} BDAG` : '—')
+      : '—';
+    const updatedMs = hasWallet && Number.isFinite(timestamp) ? timestamp * 1000 : NaN;
+    const updatedText = hasWallet ? formatWalletTimestamp(updatedMs) : '—';
+    if (walletAddressValue) walletAddressValue.textContent = displayAddress;
+    if (walletBalanceValue) walletBalanceValue.textContent = displayBalance;
+    if (walletUpdatedValue) walletUpdatedValue.textContent = updatedText;
+
+    if (walletHistoryList && walletHistoryEmpty) {
+      if (wallet && Array.isArray(wallet.history) && wallet.history.length) {
+        state.walletHistory = wallet.history
+          .map((entry) => ({
+            hash: entry.hash || entry.txid || 'unknown',
+            amount: entry.amount,
+            direction: entry.direction || 'in',
+            timestamp: entry.timestamp ? entry.timestamp * 1000 : Date.now(),
+          }))
+          .slice(0, 25);
+        walletHistoryEmpty.hidden = true;
+        walletHistoryList.hidden = false;
+        walletHistoryList.innerHTML = state.walletHistory
+          .map((entry) => {
+            const timeText = fmtShortDateTime.format(new Date(entry.timestamp));
+            const direction = entry.direction === 'out' ? 'Sent' : 'Received';
+            const amount = Number.isFinite(entry.amount)
+              ? `${entry.amount} BDAG`
+              : entry.amount || '—';
+            const hash = entry.hash || '—';
+            const shortHash = hash.length > 18 ? `${hash.slice(0, 10)}…${hash.slice(-6)}` : hash;
+            return `<li><span class="balance">${direction} ${amount}</span><span class="time">${timeText} · ${shortHash}</span></li>`;
+          })
+          .join('');
+      } else {
+        state.walletHistory = [];
+        walletHistoryList.hidden = true;
+        walletHistoryEmpty.hidden = false;
+        walletHistoryEmpty.textContent = enabled
+          ? 'No wallet transactions captured yet.'
+          : 'Wallet monitoring disabled in settings.';
+      }
+    }
+
+    state.lastWalletSnapshot = {
+      wallet: wallet ? JSON.parse(JSON.stringify(wallet)) : null,
+      enabled,
+      timestamp,
+    };
+  }
+
   function updateSnapshotButtons() {
     const job = (state.snapshots && state.snapshots.job) || null;
     const jobActive = !!(job && job.active);
@@ -164,11 +243,18 @@
     state.nodes.forEach((entry) => {
       if (!entry || !entry.card || !entry.meta) return;
       const btn = entry.card.querySelector('[data-action="node-snapshot"]');
+      const restoreBtn = entry.card.querySelector('[data-action="node-restore"]');
       if (!btn) return;
       const nodeId = entry.meta.id;
       const label = entry.meta.label || nodeId || 'node';
       let title = `Create snapshot for ${label}`;
       let disabled = false;
+      if (btn.classList.contains('is-busy')) {
+        btn.classList.remove('is-busy');
+      }
+      if (restoreBtn && restoreBtn.classList.contains('is-busy')) {
+        restoreBtn.classList.remove('is-busy');
+      }
       if (btn.dataset.busy === '1') {
         disabled = true;
       }
@@ -187,10 +273,16 @@
           if (speedText) parts.push(speedText);
           if (etaText) parts.push(`ETA ${etaText}`);
           const progressText = parts.length ? ` (${parts.join(' • ')})` : '';
-          title = `Snapshot running for ${label}${progressText}`;
-          btn.classList.add('is-busy');
+          const mode = jobDetails.mode || 'snapshot';
+          const verb = mode === 'restore' ? 'Restore' : 'Snapshot';
+          title = `${verb} running for ${label}${progressText}`;
+          if (mode === 'restore' && restoreBtn) {
+            restoreBtn.classList.add('is-busy');
+          } else {
+            btn.classList.add('is-busy');
+          }
         } else {
-          title = 'Snapshot in progress';
+          title = jobDetails.mode === 'restore' ? 'Restore in progress' : 'Snapshot in progress';
           btn.classList.remove('is-busy');
         }
       } else {
@@ -199,6 +291,12 @@
       btn.disabled = disabled;
       btn.title = title;
       btn.setAttribute('aria-label', title);
+      if (restoreBtn) {
+        restoreBtn.disabled = !!jobActive;
+        if (!jobActive) {
+          restoreBtn.classList.remove('is-busy');
+        }
+      }
 
       const toggleBtn = entry.card.querySelector('[data-role="toggle"]');
       if (toggleBtn) {
@@ -298,13 +396,15 @@
           : null;
       const etaText = formatDurationShort(progress.eta_seconds);
       const pieces = [];
-      if (pctText) pieces.push(pctText);
-      if (speedText) pieces.push(speedText);
+      if (pctText) pieces.push(`${pctText} complete`);
+      if (speedText) pieces.push(`Read speed ${speedText}`);
       if (etaText) pieces.push(`ETA ${etaText}`);
       const label = jobDetails.label || jobDetails.node || '';
-      let message = job.message || 'Snapshot job running…';
+      const mode = jobDetails.mode || 'snapshot';
+      const baseMessage = mode === 'restore' ? 'Restore job running…' : 'Snapshot job running…';
+      let message = job.message || baseMessage;
       if (label && !message.toLowerCase().includes(label.toLowerCase())) {
-        message = `Snapshot running for ${label}`;
+        message = mode === 'restore' ? `Restore running for ${label}` : `Snapshot running for ${label}`;
       }
       if (pieces.length) {
         const suffix = pieces.join(' • ');
@@ -450,6 +550,47 @@
     await loadSnapshots();
   }
 
+  async function restoreNodeSnapshot(nodeId, btn) {
+    if (!nodeId) return;
+    const activeJob = state.snapshots && state.snapshots.job && state.snapshots.job.active;
+    if (activeJob) {
+      setSnapshotStatus('A snapshot job is already in progress.', { level: 'warn' });
+      updateSnapshotButtons();
+      return;
+    }
+    if (btn && btn.dataset.busy) return;
+    if (btn) {
+      setBusy(btn, true, 'Restoring…');
+    }
+    try {
+      const entry = state.nodes.get(nodeId);
+      const label = entry && entry.meta ? (entry.meta.label || entry.meta.id || nodeId) : nodeId;
+      setSnapshotStatus(`Restoring snapshot for ${label}…`, { level: 'warn' });
+      const res = await fetch('/api/snapshots/restore', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ node: nodeId }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || payload.ok === false) {
+        throw new Error(payload && payload.error ? payload.error : `HTTP ${res.status}`);
+      }
+      if (payload.job) {
+        state.snapshots.job = payload.job;
+      }
+      const message = payload.message || `Snapshot restore started for ${label}`;
+      setSnapshotStatus(message, { level: 'warn' });
+      await loadSnapshots({ silent: true });
+    } catch (err) {
+      setSnapshotStatus(err && err.message ? err.message : 'Failed to start restore', { level: 'error' });
+    } finally {
+      if (btn) {
+        setBusy(btn, false);
+      }
+      updateSnapshotButtons();
+    }
+  }
+
   async function deleteSnapshot(name, btn) {
     if (!name) return;
     if (btn && btn.dataset.busy) return;
@@ -531,7 +672,7 @@
       progressChip.classList.remove('is-ok', 'is-warn', 'is-danger');
       if (hasProgress) {
         let progressVariant = 'danger';
-        if (progressValue >= 95) {
+        if (progressValue >= 99.9) {
           progressVariant = 'ok';
         } else if (progressValue >= 70) {
           progressVariant = 'warn';
@@ -622,10 +763,17 @@ function switchSummaryTab(target) {
         title: 'Snapshots',
         desc: 'Latest archived snapshots for quick recovery.',
       },
+      wallet: {
+        title: 'Wallet',
+        desc: 'Wallet address, balance, and recent history collected from node snapshots.',
+      },
     };
     const next = copy[activeView] || copy.stats;
     summaryDynamicTitle.textContent = next.title;
     summaryDynamicDesc.textContent = next.desc;
+  }
+  if (activeView === 'wallet' && state.lastWalletSnapshot) {
+    updateWalletPane(state.lastWalletSnapshot.wallet, state.lastWalletSnapshot);
   }
   if (activeView === 'snapshots' && !state.snapshotsLoaded) {
     void loadSnapshots();
@@ -656,14 +804,30 @@ function updateSettingsStatus(message, options = {}) {
 
 function applySettingsToForm(settings = {}) {
   const merged = { ...defaultSettings, ...settings };
-  state.settings = merged;
+  state.settings = { ...merged };
   state.settingsDirty = false;
   if (settingsForm) {
     const inputs = settingsForm.querySelectorAll('[data-setting-key]');
     inputs.forEach((input) => {
       const key = input.dataset.settingKey;
       if (!key) return;
-      input.checked = !!merged[key];
+      const type = input.dataset.settingType || input.type;
+      if (type === 'number') {
+        const raw = merged[key];
+        const value = Number(raw);
+        const safeValue = Number.isFinite(value) && value >= 0 ? value : Number(defaultSettings[key] || 0);
+        input.value = safeValue;
+        state.settings[key] = safeValue;
+      } else if (type === 'text') {
+        const raw = merged[key];
+        const value = typeof raw === 'string' ? raw : raw == null ? '' : String(raw);
+        input.value = value;
+        state.settings[key] = value;
+      } else {
+        const checked = !!merged[key];
+        input.checked = checked;
+        state.settings[key] = checked;
+      }
     });
   }
   if (saveSettingsBtn) {
@@ -759,7 +923,16 @@ async function saveSettings() {
 
     if (!state.settingsDirty && summary && summary.settings) {
       const incoming = summary.settings || {};
-      const differs = Object.keys(defaultSettings).some((key) => !!state.settings[key] !== !!incoming[key]);
+      const differs = Object.keys(defaultSettings).some((key) => {
+        if (typeof defaultSettings[key] === 'number') {
+          const currentValue = Number(state.settings[key] ?? defaultSettings[key] ?? 0);
+          const incomingValue = Number(incoming[key] ?? defaultSettings[key] ?? 0);
+          return Number.isFinite(currentValue) && Number.isFinite(incomingValue)
+            ? currentValue !== incomingValue
+            : false;
+        }
+        return !!state.settings[key] !== !!incoming[key];
+      });
       if (differs) {
         applySettingsToForm(incoming);
       }
@@ -788,6 +961,7 @@ async function saveSettings() {
     const walletEnabled = !!summary.wallet_enabled;
     const wallet = walletEnabled ? summary.wallet || {} : null;
     const ts = summary.timestamp ? new Date(summary.timestamp * 1000) : null;
+    updateWalletPane(wallet, { enabled: walletEnabled, timestamp: summary.timestamp });
     let badgeText = '';
     let badgeTitle = '';
     if (walletEnabled) {
@@ -928,6 +1102,18 @@ async function saveSettings() {
       snapshotBtn.addEventListener('mousedown', (event) => event.stopPropagation());
       snapshotBtn.addEventListener('mouseup', (event) => event.stopPropagation());
       snapshotBtn.title = 'Create snapshot';
+    }
+    const restoreBtn = details.querySelector('[data-action="node-restore"]');
+    if (restoreBtn) {
+      const handler = async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        await restoreNodeSnapshot(node.id, restoreBtn);
+      };
+      restoreBtn.addEventListener('click', handler);
+      restoreBtn.addEventListener('mousedown', (event) => event.stopPropagation());
+      restoreBtn.addEventListener('mouseup', (event) => event.stopPropagation());
+      restoreBtn.title = 'Restore snapshot';
     }
     cardsContainer.appendChild(details);
     state.nodes.set(node.id, { card: details, meta: node });
@@ -1604,7 +1790,21 @@ async function saveSettings() {
         const target = event.target;
         if (target && target.matches('[data-setting-key]')) {
           const key = target.dataset.settingKey;
-          state.settings[key] = !!target.checked;
+          const type = target.dataset.settingType || target.type;
+          if (type === 'number') {
+            let value = Number.parseInt(target.value, 10);
+            if (!Number.isFinite(value) || value < 0) {
+              value = 0;
+            }
+            target.value = value;
+            state.settings[key] = value;
+          } else if (type === 'text') {
+            const value = target.value.trim();
+            target.value = value;
+            state.settings[key] = value;
+          } else {
+            state.settings[key] = !!target.checked;
+          }
           markSettingsDirty();
         }
       });
