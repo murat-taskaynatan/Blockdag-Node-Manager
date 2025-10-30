@@ -220,6 +220,20 @@
         metaEl.textContent = metaParts.length ? metaParts.join(' • ') : '—';
         tile.appendChild(metaEl);
 
+        const actions = document.createElement('div');
+        actions.className = 'snapshot-tile__actions';
+        const deleteBtn = document.createElement('button');
+        deleteBtn.type = 'button';
+        deleteBtn.className = 'snapshot-tile__delete';
+        deleteBtn.dataset.snapshotAction = 'delete';
+        deleteBtn.dataset.snapshotName = item.name;
+        deleteBtn.textContent = 'Delete';
+        if (job && job.active) {
+          deleteBtn.disabled = true;
+        }
+        actions.appendChild(deleteBtn);
+        tile.appendChild(actions);
+
         snapshotList.appendChild(tile);
       });
     }
@@ -246,6 +260,12 @@
     }
     if (snapshotScanBtn && !snapshotScanBtn.dataset.busy) {
       snapshotScanBtn.disabled = !!jobActive;
+    }
+
+    if (snapshotList) {
+      snapshotList.querySelectorAll('[data-snapshot-action="delete"]').forEach((btn) => {
+        btn.disabled = !!jobActive;
+      });
     }
 
     updateSnapshotButtons();
@@ -356,6 +376,34 @@
 
   async function refreshSnapshots() {
     await loadSnapshots();
+  }
+
+  async function deleteSnapshot(name, btn) {
+    if (!name) return;
+    if (btn && btn.dataset.busy) return;
+    setSnapshotStatus(`Deleting ${name}…`, { level: 'warn' });
+    setBusy(btn, true, 'Deleting…');
+    try {
+      const res = await fetch('/api/snapshots/delete', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || payload.ok === false) {
+        throw new Error(payload && payload.error ? payload.error : `HTTP ${res.status}`);
+      }
+      state.snapshotStatus = {
+        text: payload.message || `Deleted ${name}`,
+        level: 'ok',
+      };
+      await loadSnapshots({ silent: true });
+      setSnapshotStatus(state.snapshotStatus.text, { level: 'ok' });
+    } catch (err) {
+      setSnapshotStatus(err && err.message ? err.message : `Failed to delete ${name}`, { level: 'error' });
+    } finally {
+      setBusy(btn, false);
+    }
   }
 
   function isRunningFlag(value) {
@@ -1497,6 +1545,17 @@ async function saveSettings() {
     if (snapshotScanBtn) {
       snapshotScanBtn.addEventListener('click', () => {
         void scanSnapshots();
+      });
+    }
+    if (snapshotList) {
+      snapshotList.addEventListener('click', (event) => {
+        const target = event.target.closest('[data-snapshot-action]');
+        if (!target) return;
+        const action = target.dataset.snapshotAction;
+        if (action === 'delete') {
+          const name = target.dataset.snapshotName;
+          void deleteSnapshot(name, target);
+        }
       });
     }
   }

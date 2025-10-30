@@ -93,10 +93,14 @@
   .snapshot-status.is-warn{color:var(--warn)}
   .snapshot-status.is-error{color:var(--bad)}
   .snapshot-locations{font-size:12px;color:var(--muted)}
-  .snapshot-latest-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
-  .snapshot-tile{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:6px}
+  .snapshot-latest-grid{display:flex;flex-direction:column;gap:12px}
+  .snapshot-tile{position:relative;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px 18px 18px;display:flex;flex-direction:column;gap:6px}
   .snapshot-tile__name{font-weight:600;color:var(--text);word-break:break-word}
   .snapshot-tile__meta{font-size:12px;color:var(--muted)}
+  .snapshot-tile__actions{position:absolute;bottom:12px;right:12px}
+  .snapshot-tile__delete{background:rgba(255,255,255,.08);color:var(--muted);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:4px 8px;font-size:11px;font-weight:600;cursor:pointer;transition:background .2s,color .2s}
+  .snapshot-tile__delete:hover:not(:disabled){background:rgba(255,83,112,.18);color:#ff5370;border-color:rgba(255,83,112,.4)}
+  .snapshot-tile__delete[disabled]{opacity:.5;cursor:default}
   .snapshot-empty{font-size:13px;color:var(--muted);padding:12px;border:1px dashed rgba(255,255,255,.14);border-radius:12px;text-align:center}
 .icon-btn{width:41px;height:41px;border-radius:14px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.03);color:inherit;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background .2s,border .2s,color .2s}
 .icon-btn:hover:not(:disabled){background:rgba(255,255,255,.08)}
