@@ -35,7 +35,11 @@
   .setting-text{flex:1;display:flex;flex-direction:column;gap:4px}
   .setting-title{font-weight:600;font-size:15px}
   .setting-desc{color:var(--muted);font-size:13px;line-height:1.4}
-  .setting-control{display:flex;align-items:center;gap:10px}
+  .setting-control{display:flex;align-items:center;gap:10px;position:relative}
+  .setting-control[data-tooltip]::after{content:attr(data-tooltip);position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:rgba(11,16,32,.95);color:var(--text);padding:6px 10px;border-radius:8px;font-size:11px;line-height:1.4;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .15s ease-in-out}
+  .setting-control[data-tooltip]::before{content:'';position:absolute;bottom:100%;left:50%;transform:translateX(-50%);border:6px solid transparent;border-top:0;border-bottom-color:rgba(11,16,32,.95);opacity:0;transition:opacity .15s ease-in-out}
+  .setting-control[data-tooltip]:hover::after,
+  .setting-control[data-tooltip]:hover::before{opacity:1}
   .setting-control input[type="checkbox"]{width:17px;height:17px;cursor:pointer;accent-color:#44f2a8}
   .setting-control input[type="text"]{width:48ch;max-width:100%;min-width:320px;padding:6px 10px;border:1px solid rgba(255,255,255,.15);border-radius:10px;background:rgba(255,255,255,.08);color:var(--text);font-size:13px;font-weight:600;box-sizing:border-box}
   .setting-control input[type="text"]:focus{outline:none;border-color:rgba(255,255,255,.35);background:rgba(255,255,255,.12)}
@@ -51,11 +55,17 @@
   .settings-status{color:var(--muted);font-size:13px}
   .settings-status.is-error{color:var(--bad)}
   .settings-status.is-success{color:var(--ok)}
-  #settingSnapshotMax{width:52px;padding:6px 12px 6px 6px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.08);color:var(--text);font-size:13px;font-weight:600;text-align:right;margin-right:12px;box-sizing:border-box}
-  #settingSnapshotMax::-webkit-inner-spin-button{margin-left:4px;padding:0;transform:scale(.85)}
-  #settingSnapshotMax::-webkit-outer-spin-button{margin-left:4px;padding:0;transform:scale(.85)}
-  #settingSnapshotMax::-moz-focus-inner{border:0}
-  #settingSnapshotMax:focus{outline:none;border-color:rgba(255,255,255,.35);background:rgba(255,255,255,.12)}
+  #settingSnapshotMax,
+  #settingAutoRestartHours{width:52px;padding:6px 12px 6px 6px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.08);color:var(--text);font-size:13px;font-weight:600;text-align:right;margin-right:12px;box-sizing:border-box;transition:background .2s,border .2s,color .2s,opacity .2s}
+  #settingSnapshotMax::-webkit-inner-spin-button,
+  #settingAutoRestartHours::-webkit-inner-spin-button{margin-left:4px;padding:0;transform:scale(.85)}
+  #settingSnapshotMax::-webkit-outer-spin-button,
+  #settingAutoRestartHours::-webkit-outer-spin-button{margin-left:4px;padding:0;transform:scale(.85)}
+  #settingSnapshotMax::-moz-focus-inner,
+  #settingAutoRestartHours::-moz-focus-inner{border:0}
+  #settingSnapshotMax:focus,
+  #settingAutoRestartHours:focus{outline:none;border-color:rgba(255,255,255,.35);background:rgba(255,255,255,.12)}
+  #settingAutoRestartHours[disabled]{opacity:.4;cursor:not-allowed;background:rgba(255,255,255,.04);border-color:rgba(255,255,255,.1);color:rgba(231,234,246,.6)}
   .wallet-card{background:rgba(255,255,255,.05);border-radius:14px;padding:20px;box-shadow:0 6px 24px rgba(0,0,0,.18);display:grid;gap:18px}
   .wallet-overview{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
   .wallet-tile{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px 16px}
@@ -165,8 +175,23 @@
   .node-stats .stat-eta.is-ok{color:var(--ok)}
   .node-stats .stat-eta.is-warn{color:var(--warn)}
   .node-stats .stat-eta.is-danger{color:var(--bad)}
-  .chart-wrap{background:rgba(255,255,255,.04);border-radius:14px;padding:12px}
-  .chart-wrap canvas{width:100%;height:220px;background:rgba(0,0,0,.12);border-radius:10px;padding:6px}
+  .chart-wrap{background:rgba(255,255,255,.04);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:12px}
+  .chart-canvas{background:rgba(0,0,0,.12);border-radius:10px;padding:6px}
+  .chart-canvas canvas{width:100%;height:220px;display:block;border-radius:6px}
+  .chart-tabs{align-self:flex-start}
+  .chart-tabs .summary-tab{font-size:11px;padding:6px 12px}
+  .node-logs{border-top:1px solid rgba(255,255,255,.08);padding-top:12px;display:flex;flex-direction:column;gap:10px}
+  .node-logs__toggle{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--muted);background:transparent;border:none;padding:0;cursor:pointer;transition:color .2s}
+  .node-logs__toggle:hover{color:var(--text)}
+  .node-logs__toggle:focus-visible{outline:none;color:var(--text);text-decoration:underline}
+  .node-logs__chevron{font-size:12px;transition:transform .2s}
+  .node-logs.is-open .node-logs__chevron{transform:rotate(180deg)}
+  .node-logs__panel{background:rgba(0,0,0,.18);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:10px;border:1px solid rgba(255,255,255,.1)}
+  .node-logs__panel[hidden]{display:none}
+  .node-logs__toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .node-logs__meta{font-size:12px;color:var(--muted)}
+  .node-logs__refresh{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;font-size:12px}
+  .node-logs__output{margin:0;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.45;max-height:180px;overflow:auto;white-space:pre-wrap;background:rgba(0,0,0,.22);border-radius:8px;padding:10px;color:var(--text)}
   .fleet-footer{display:flex;justify-content:flex-end;padding:0 18px 16px}
   .fleet-footer .timestamp{font-size:12px;color:var(--muted)}
   .empty-state{padding:20px;border:1px dashed rgba(255,255,255,.15);border-radius:14px;text-align:center;color:var(--muted);font-size:14px}
@@ -180,8 +205,10 @@
     .summary-tabs{width:100%;justify-content:flex-start}
     .setting-row{flex-direction:column;align-items:flex-start}
     .setting-control{width:100%;justify-content:flex-start}
-    .chart-wrap canvas{height:200px}
+    .chart-canvas canvas{height:200px}
   }
+  .version-badge{position:fixed;right:16px;bottom:16px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:6px 14px;font-size:12px;font-weight:600;color:var(--muted);backdrop-filter:blur(6px)}
+  .version-badge strong{color:var(--text);font-weight:600}
 </style>
 
 <div class="wrap">
@@ -268,6 +295,15 @@
                   <input type="checkbox" class="toggle-input" id="settingAutoRestart" name="auto_restart_on_error" data-setting-key="auto_restart_on_error">
                   <span class="toggle-slider"></span>
                 </label>
+              </div>
+            </label>
+            <label class="setting-row">
+              <div class="setting-text">
+                <span class="setting-title">Auto restart cooldown (hours)</span>
+                <span class="setting-desc">Minimum hours between automated restart attempts triggered by error monitoring.</span>
+              </div>
+              <div class="setting-control" data-tooltip-target="auto-restart-hours">
+                <input type="number" min="0" step="1" id="settingAutoRestartHours" name="auto_restart_hours" data-setting-key="auto_restart_hours" data-setting-type="number" title="Adjust the cooldown when automatic restarts are disabled.">
               </div>
             </label>
             <label class="setting-row">
@@ -427,7 +463,32 @@
         </div>
       </div>
       <div class="chart-wrap">
-        <canvas></canvas>
+        <div class="chart-canvas">
+          <canvas></canvas>
+        </div>
+        <div class="chart-tabs summary-tabs" role="tablist">
+          <button class="summary-tab is-active" type="button" data-chart-tab="height">Height Δ</button>
+          <button class="summary-tab" type="button" data-chart-tab="sync">Sync activity</button>
+          <button class="summary-tab" type="button" data-chart-tab="peers">Peers</button>
+          <button class="summary-tab" type="button" data-chart-tab="rpc">RPC latency</button>
+          <button class="summary-tab" type="button" data-chart-tab="block">Block activity</button>
+        </div>
+        <div class="node-logs">
+          <button class="node-logs__toggle" type="button" data-role="logs-toggle" aria-expanded="false">
+            Recent logs
+            <span class="node-logs__chevron" aria-hidden="true">▾</span>
+          </button>
+          <div class="node-logs__panel" data-role="logs-panel" hidden>
+            <div class="node-logs__toolbar">
+              <span class="node-logs__meta" data-role="logs-meta">Not loaded yet.</span>
+              <button class="pill-btn node-logs__refresh" type="button" data-role="logs-refresh">
+                <span class="icon">↻</span>
+                Refresh
+              </button>
+            </div>
+            <pre class="node-logs__output" data-role="logs-output">No log lines yet.</pre>
+          </div>
+        </div>
       </div>
       <div class="fleet-footer">
         <span class="timestamp">Updated <span class="stat-updated">—</span></span>
@@ -438,3 +499,4 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" integrity="sha384-NrKB+u6Ts6AtkIhwPixiKTzgSKNblyhlk0Sohlgar9UHUBzai/sgnNNWWd291xqt" crossorigin="anonymous"></script>
 <script src="{{ url_for('static', filename='node_manager.js') }}?v={{ app_version }}-{{ cache_buster }}"></script>
+<div class="version-badge"><strong>v1.3.0</strong></div>

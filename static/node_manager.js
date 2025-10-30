@@ -2,9 +2,11 @@
   const state = {
     nodes: new Map(), // id -> { card, meta }
     charts: new Map(), // id -> Chart instance
+    chartViews: new Map(), // id -> active chart view
     paused: new Set(),
     lastRates: new Map(), // id -> last non-null sync rate
     lastProgress: new Map(), // id -> last non-null sync progress
+    nodeLogs: new Map(), // id -> { lines, ts, loading, error }
     lastMetricsTs: 0,
     settings: {},
     settingsDirty: false,
@@ -42,11 +44,15 @@
   const walletHistoryList = document.getElementById('walletHistoryList');
   const walletHistoryEmpty = document.getElementById('walletHistoryEmpty');
   const walletPane = document.getElementById('walletPane');
+  const autoRestartToggle = document.getElementById('settingAutoRestart');
+  const autoRestartHoursInput = document.getElementById('settingAutoRestartHours');
+  const autoRestartHoursControl = document.querySelector('[data-tooltip-target="auto-restart-hours"]');
   let settingsStatusTimer = null;
   let snapshotPollTimer = null;
   const defaultSettings = {
     liveness_auto_recover: false,
     auto_restart_on_error: false,
+    auto_restart_hours: 0,
     display_wallet_balance: false,
     snapshot_max: 0,
   };
@@ -110,6 +116,204 @@
     } catch (_) {
       return String(value);
     }
+  }
+
+  function updateAutoRestartCooldownState(settings = state.settings) {
+    if (!autoRestartHoursInput) return;
+    const enabled = Boolean(settings?.auto_restart_on_error);
+    autoRestartHoursInput.disabled = enabled;
+  }
+
+  const defaultChartView = 'height';
+  const LOG_REFRESH_COOLDOWN_MS = 5000;
+
+  function formatChartLabels(rawLabels) {
+    if (!Array.isArray(rawLabels)) return [];
+    return rawLabels.map((stamp) => {
+      try {
+        return fmtTime.format(new Date(stamp));
+      } catch (_) {
+        return String(stamp);
+      }
+    });
+  }
+
+  function normalizeSeries(series, length) {
+    const target = Number.isFinite(length) && length >= 0
+      ? length
+      : Array.isArray(series) ? series.length : 0;
+    const values = Array.isArray(series) ? series : [];
+    const output = [];
+    for (let idx = 0; idx < target; idx += 1) {
+      const raw = values[idx];
+      const num = Number(raw);
+      output.push(Number.isFinite(num) ? num : null);
+    }
+    return output;
+  }
+
+  function hasUsableValues(series) {
+    return Array.isArray(series) && series.some((value) => Number.isFinite(value));
+  }
+
+  function computeDeltaSeries(metrics, length) {
+    const localSeries = Array.isArray(metrics.local) ? metrics.local : [];
+    const remoteSeries = Array.isArray(metrics.remote) ? metrics.remote : [];
+    const targetLength = Number.isFinite(length) && length >= 0
+      ? length
+      : Math.max(localSeries.length, remoteSeries.length);
+    const output = [];
+    for (let idx = 0; idx < targetLength; idx += 1) {
+      const localVal = Number(localSeries[idx]);
+      const remoteVal = Number(remoteSeries[idx]);
+      if (!Number.isFinite(localVal) || !Number.isFinite(remoteVal)) {
+        output.push(null);
+        continue;
+      }
+      const delta = remoteVal - localVal;
+      output.push(Number.isFinite(delta) ? delta : null);
+    }
+    return output;
+  }
+
+  function formatPercentValue(value) {
+    if (!Number.isFinite(value)) return '—';
+    if (value >= 99.95) return '100%';
+    if (value <= 0) return '0%';
+    if (value >= 10) return `${value.toFixed(1)}%`;
+    return `${value.toFixed(2)}%`;
+  }
+
+  function formatPercentTick(value) {
+    if (!Number.isFinite(value)) return '';
+    if (value >= 100) return '100%';
+    if (value <= 0) return '0%';
+    if (value >= 10) return `${Math.round(value)}%`;
+    return `${value.toFixed(1)}%`;
+  }
+
+  function formatBlocksValue(value) {
+    if (!Number.isFinite(value)) return '—';
+    const safe = Math.max(value, 0);
+    return `${fmt.format(safe)} blocks`;
+  }
+
+  function formatBlocksTick(value) {
+    if (!Number.isFinite(value)) return '';
+    return fmt.format(Math.max(value, 0));
+  }
+
+  function formatPeersValue(value) {
+    if (!Number.isFinite(value)) return '—';
+    return `${fmt.format(Math.max(value, 0))} peers`;
+  }
+
+  function formatLatencyValue(value) {
+    if (!Number.isFinite(value) || value < 0) return '—';
+    if (value >= 1000) return `${(value / 1000).toFixed(2)} s`;
+    if (value >= 100) return `${value.toFixed(0)} ms`;
+    return `${value.toFixed(0)} ms`;
+  }
+
+  function formatLatencyTick(value) {
+    if (!Number.isFinite(value) || value < 0) return '';
+    if (value >= 1000) return `${(value / 1000).toFixed(1)}s`;
+    return `${Math.round(value)}ms`;
+  }
+
+  function formatRateValue(value) {
+    if (!Number.isFinite(value) || value < 0) return '—';
+    if (value >= 10) return `${value.toFixed(1)} blk/s`;
+    if (value >= 1) return `${value.toFixed(2)} blk/s`;
+    return `${value.toFixed(3)} blk/s`;
+  }
+
+  function formatRateTick(value) {
+    if (!Number.isFinite(value) || value < 0) return '';
+    if (value >= 10) return `${value.toFixed(0)}`;
+    if (value >= 1) return `${value.toFixed(1)}`;
+    return `${value.toFixed(2)}`;
+  }
+
+  const chartViewConfigs = {
+    height: {
+      label: 'Height Δ',
+      color: '#ffb74d',
+      background: 'rgba(255,183,77,0.2)',
+      data: (metrics, length) => normalizeSeries(computeDeltaSeries(metrics, length), length),
+      tooltip: formatBlocksValue,
+      tick: formatBlocksTick,
+    },
+    sync: {
+      label: 'Sync activity',
+      color: '#44f2a8',
+      background: 'rgba(68,242,168,0.18)',
+      data: (metrics, length) => normalizeSeries(metrics.sync_progress_series, length),
+      tooltip: formatPercentValue,
+      tick: formatPercentTick,
+      fallback: {
+        label: 'Height Δ',
+        color: '#ffb74d',
+        background: 'rgba(255,183,77,0.2)',
+        data: (metrics, length) => normalizeSeries(computeDeltaSeries(metrics, length), length),
+        tooltip: formatBlocksValue,
+        tick: formatBlocksTick,
+      },
+    },
+    peers: {
+      label: 'Peers',
+      color: '#64b5f6',
+      background: 'rgba(100,181,246,0.22)',
+      data: (metrics, length) => normalizeSeries(metrics.peers_series, length),
+      tooltip: formatPeersValue,
+      tick: formatBlocksTick,
+    },
+    rpc: {
+      label: 'RPC latency',
+      color: '#81d4fa',
+      background: 'rgba(129,212,250,0.25)',
+      data: (metrics, length) => normalizeSeries(metrics.rpc_latency_series, length),
+      tooltip: formatLatencyValue,
+      tick: formatLatencyTick,
+    },
+    block: {
+      label: 'Block activity',
+      color: '#ce93d8',
+      background: 'rgba(206,147,216,0.25)',
+      data: (metrics, length) => normalizeSeries(metrics.block_rate_series, length),
+      tooltip: formatRateValue,
+      tick: formatRateTick,
+    },
+  };
+
+  function materializeChartConfig(metrics, config, length, depth = 0) {
+    const fallbackDepth = Number(depth) || 0;
+    if (!config) {
+      return {
+        config: chartViewConfigs.height,
+        data: normalizeSeries(computeDeltaSeries(metrics, length), length),
+      };
+    }
+    const values = typeof config.data === 'function'
+      ? config.data(metrics, length)
+      : normalizeSeries([], length);
+    const usable = hasUsableValues(values);
+    if (usable || !config.fallback || fallbackDepth > 3) {
+      return { config, data: values };
+    }
+    return materializeChartConfig(metrics, config.fallback, length, fallbackDepth + 1);
+  }
+
+  function resolveChartDataset(metrics, viewKey) {
+    const labelsRaw = Array.isArray(metrics.labels) ? metrics.labels : [];
+    const length = labelsRaw.length;
+    const baseConfig = chartViewConfigs[viewKey] || chartViewConfigs[defaultChartView];
+    const { config, data } = materializeChartConfig(metrics, baseConfig, length);
+    return {
+      labels: formatChartLabels(labelsRaw),
+      data,
+      config,
+    };
   }
 
   function setBusy(btn, busy, text) {
@@ -829,6 +1033,7 @@ function applySettingsToForm(settings = {}) {
         state.settings[key] = checked;
       }
     });
+    updateAutoRestartCooldownState(merged);
   }
   if (saveSettingsBtn) {
     saveSettingsBtn.disabled = true;
@@ -1020,9 +1225,11 @@ async function saveSettings() {
         }
         state.nodes.delete(nodeId);
         state.charts.delete(nodeId);
+        state.chartViews.delete(nodeId);
         state.paused.delete(nodeId);
         state.lastRates.delete(nodeId);
         state.lastProgress.delete(nodeId);
+        state.nodeLogs.delete(nodeId);
       }
     });
     updateSnapshotButtons();
@@ -1117,6 +1324,7 @@ async function saveSettings() {
     }
     cardsContainer.appendChild(details);
     state.nodes.set(node.id, { card: details, meta: node });
+    state.chartViews.set(node.id, defaultChartView);
     updateCardHeader(node);
 
     const canvas = details.querySelector('canvas');
@@ -1125,6 +1333,46 @@ async function saveSettings() {
       state.charts.set(node.id, chart);
     } else {
       console.warn('[fleet] chart unavailable; skipping chart init for', node.id);
+    }
+
+    const chartTabs = Array.from(details.querySelectorAll('[data-chart-tab]'));
+    if (chartTabs.length) {
+      chartTabs.forEach((button) => {
+        button.addEventListener('click', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          selectChartTab(node.id, button.dataset.chartTab, details);
+        });
+        button.addEventListener('mousedown', (event) => event.stopPropagation());
+        button.addEventListener('mouseup', (event) => event.stopPropagation());
+        button.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            selectChartTab(node.id, button.dataset.chartTab, details);
+          }
+        });
+      });
+    }
+
+    const logsToggle = details.querySelector('[data-role="logs-toggle"]');
+    if (logsToggle) {
+      logsToggle.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleNodeLogs(node.id, details);
+      });
+      logsToggle.addEventListener('mousedown', (event) => event.stopPropagation());
+      logsToggle.addEventListener('mouseup', (event) => event.stopPropagation());
+    }
+    const logsRefresh = details.querySelector('[data-role="logs-refresh"]');
+    if (logsRefresh) {
+      logsRefresh.addEventListener('click', async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        await loadNodeLogs(node.id, details, { force: true });
+      });
+      logsRefresh.addEventListener('mousedown', (event) => event.stopPropagation());
+      logsRefresh.addEventListener('mouseup', (event) => event.stopPropagation());
     }
   }
 
@@ -1444,7 +1692,7 @@ async function saveSettings() {
   }
 
   function createChart(ctx) {
-    return new Chart(ctx, {
+    const chart = new Chart(ctx, {
       type: 'line',
       data: {
         labels: [],
@@ -1472,7 +1720,7 @@ async function saveSettings() {
           tooltip: {
             callbacks: {
               title: (items) => items.map((item) => item.label).join(', '),
-              label: (ctx) => `${ctx.dataset.label}: ${fmt.format(ctx.parsed.y ?? 0)}`,
+              label: () => '',
             },
           },
         },
@@ -1482,13 +1730,207 @@ async function saveSettings() {
             grid: { color: 'rgba(255,255,255,0.06)' },
           },
           y: {
-            ticks: { color: '#7681a8', callback: (val) => fmt.format(val), align: 'inner', crossAlign: 'near' },
+            ticks: { color: '#7681a8', callback: () => '', align: 'inner', crossAlign: 'near' },
             grid: { color: 'rgba(255,255,255,0.06)' },
             position: 'right',
           },
         },
       },
     });
+    chart.$formatValue = formatBlocksValue;
+    chart.$tickFormatter = (value) => formatBlocksTick(value);
+    chart.options.plugins.tooltip.callbacks.label = (tooltipItem) => {
+      const formatter = typeof chart.$formatValue === 'function'
+        ? chart.$formatValue
+        : (value) => formatBlocksValue(value);
+      return `${tooltipItem.dataset.label}: ${formatter(tooltipItem.parsed.y)}`;
+    };
+    chart.options.scales.y.ticks.callback = (value) => {
+      const formatter = typeof chart.$tickFormatter === 'function'
+        ? chart.$tickFormatter
+        : (val) => formatBlocksTick(val);
+      return formatter(Number(value));
+    };
+    return chart;
+  }
+
+  function getChartView(nodeId) {
+    if (!state.chartViews.has(nodeId)) {
+      state.chartViews.set(nodeId, defaultChartView);
+    }
+    const view = state.chartViews.get(nodeId);
+    return chartViewConfigs[view] ? view : defaultChartView;
+  }
+
+  function refreshNodeChart(nodeId) {
+    const chart = state.charts.get(nodeId);
+    if (!chart) return;
+    const entry = state.nodes.get(nodeId);
+    const metrics = entry?.meta?.status;
+    if (!metrics) return;
+    const view = getChartView(nodeId);
+    const dataset = resolveChartDataset(metrics, view);
+    chart.data.labels = dataset.labels;
+    chart.data.datasets[0].data = dataset.data;
+    chart.data.datasets[0].label = dataset.config.label;
+    chart.data.datasets[0].borderColor = dataset.config.color;
+    chart.data.datasets[0].backgroundColor = dataset.config.background;
+    chart.$formatValue = typeof dataset.config.tooltip === 'function'
+      ? dataset.config.tooltip
+      : formatBlocksValue;
+    chart.$tickFormatter = typeof dataset.config.tick === 'function'
+      ? dataset.config.tick
+      : (value) => formatBlocksTick(value);
+    chart.update('none');
+  }
+
+  function selectChartTab(nodeId, nextView, card) {
+    const targetView = chartViewConfigs[nextView] ? nextView : defaultChartView;
+    state.chartViews.set(nodeId, targetView);
+    if (card) {
+      const buttons = Array.from(card.querySelectorAll('[data-chart-tab]'));
+      buttons.forEach((button) => {
+        const isActive = button.dataset.chartTab === targetView;
+        button.classList.toggle('is-active', isActive);
+      });
+    }
+    refreshNodeChart(nodeId);
+  }
+
+  function locateNodeContainer(nodeId) {
+    const entry = state.nodes.get(nodeId);
+    if (!entry) return null;
+    const meta = entry.meta || {};
+    const status = meta.status || {};
+    return meta.container || status.container || null;
+  }
+
+  function updateLogsDisplay(nodeId, card, logsState = {}) {
+    const wrapper = card.querySelector('.node-logs');
+    const panel = card.querySelector('[data-role="logs-panel"]');
+    const output = card.querySelector('[data-role="logs-output"]');
+    const meta = card.querySelector('[data-role="logs-meta"]');
+    if (!panel || !output) return;
+    if (logsState.loading) {
+      output.textContent = 'Loading logs…';
+    } else if (logsState.unavailable) {
+      output.textContent = 'Logs unavailable for this node.';
+    } else if (logsState.error) {
+      const message = logsState.error && logsState.error.message ? ` (${logsState.error.message})` : '';
+      output.textContent = `Unable to load logs${message}.`;
+    } else if (Array.isArray(logsState.lines) && logsState.lines.length) {
+      output.textContent = logsState.lines.join('\n');
+    } else {
+      output.textContent = 'No recent log entries.';
+    }
+    if (meta) {
+      if (logsState.loading) {
+        meta.textContent = 'Loading…';
+      } else if (logsState.unavailable) {
+        meta.textContent = 'Container offline.';
+      } else if (logsState.error) {
+        meta.textContent = 'Failed to refresh logs.';
+      } else if (Number.isFinite(logsState.ts)) {
+        meta.textContent = `Updated ${fmtShortDateTime.format(new Date(logsState.ts))}`;
+      } else {
+        meta.textContent = 'Updated —';
+      }
+    }
+    if (wrapper) {
+      wrapper.classList.toggle('has-error', Boolean(logsState.error));
+    }
+  }
+
+  async function loadNodeLogs(nodeId, card, options = {}) {
+    const entry = state.nodes.get(nodeId);
+    if (!entry) return;
+    const limit = Number.isFinite(options.limit) && options.limit > 0 ? Math.min(options.limit, 200) : 80;
+    const container = locateNodeContainer(nodeId);
+    if (!container) {
+      const unavailableState = {
+        lines: [],
+        ts: Date.now(),
+        loading: false,
+        error: null,
+        unavailable: true,
+        limit,
+      };
+      state.nodeLogs.set(nodeId, unavailableState);
+      updateLogsDisplay(nodeId, card, unavailableState);
+      return;
+    }
+    const cached = state.nodeLogs.get(nodeId);
+    const force = options.force === true;
+    if (!force && cached && !cached.error && !cached.unavailable) {
+      const age = Date.now() - (cached.ts || 0);
+      if (age < LOG_REFRESH_COOLDOWN_MS) {
+        updateLogsDisplay(nodeId, card, cached);
+        return;
+      }
+    }
+    if (!force && cached?.loading) {
+      updateLogsDisplay(nodeId, card, cached);
+      return;
+    }
+    const loadingState = {
+      ...(cached || {}),
+      loading: true,
+      error: null,
+      unavailable: false,
+      limit,
+      ts: Date.now(),
+    };
+    state.nodeLogs.set(nodeId, loadingState);
+    updateLogsDisplay(nodeId, card, loadingState);
+    try {
+      const res = await fetch(
+        `/api/node-manager/logs?node=${encodeURIComponent(nodeId)}&limit=${limit}`,
+        { cache: 'no-store' },
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const payload = await res.json();
+      const lines = Array.isArray(payload?.lines) ? payload.lines : [];
+      const nextState = {
+        lines,
+        ts: Date.now(),
+        loading: false,
+        error: null,
+        unavailable: false,
+        limit,
+      };
+      state.nodeLogs.set(nodeId, nextState);
+      updateLogsDisplay(nodeId, card, nextState);
+    } catch (err) {
+      console.error('[fleet] fetch recent logs failed', err);
+      const failureState = {
+        lines: [],
+        ts: Date.now(),
+        loading: false,
+        error: err,
+        unavailable: false,
+        limit,
+      };
+      state.nodeLogs.set(nodeId, failureState);
+      updateLogsDisplay(nodeId, card, failureState);
+    }
+  }
+
+  function toggleNodeLogs(nodeId, card) {
+    const wrapper = card.querySelector('.node-logs');
+    const panel = card.querySelector('[data-role="logs-panel"]');
+    const toggle = card.querySelector('[data-role="logs-toggle"]');
+    if (!panel || !toggle || !wrapper) return;
+    const isHidden = panel.hasAttribute('hidden');
+    if (isHidden) {
+      panel.removeAttribute('hidden');
+      toggle.setAttribute('aria-expanded', 'true');
+      wrapper.classList.add('is-open');
+      void loadNodeLogs(nodeId, card);
+    } else {
+      panel.setAttribute('hidden', '');
+      toggle.setAttribute('aria-expanded', 'false');
+      wrapper.classList.remove('is-open');
+    }
   }
 
   function updateStartStopButton(btn, containerRunning, options = {}) {
@@ -1745,29 +2187,9 @@ async function saveSettings() {
         return;
       }
 
-      const chart = state.charts.get(nodeId);
-      if (!chart) return;
-      const labels = (metrics.labels || []).map((stamp) => {
-        try {
-          return fmtTime.format(new Date(stamp));
-        } catch (_) {
-          return stamp;
-        }
-      });
-      const localSeries = Array.isArray(metrics.local) ? metrics.local : [];
-      const remoteSeries = Array.isArray(metrics.remote) ? metrics.remote : [];
-      const deltaSeries = localSeries.map((localVal, idx) => {
-        const remoteVal = remoteSeries[idx];
-        if (localVal === null || localVal === undefined) return null;
-        if (remoteVal === null || remoteVal === undefined) return null;
-        const localNum = Number(localVal);
-        const remoteNum = Number(remoteVal);
-        const delta = Number.isFinite(remoteNum - localNum) ? remoteNum - localNum : null;
-        return delta;
-      });
-      chart.data.labels = labels;
-      chart.data.datasets[0].data = deltaSeries;
-      chart.update('none');
+      if (state.charts.has(nodeId)) {
+        refreshNodeChart(nodeId);
+      }
     });
   }
 
@@ -1806,6 +2228,7 @@ async function saveSettings() {
             state.settings[key] = !!target.checked;
           }
           markSettingsDirty();
+          updateAutoRestartCooldownState(state.settings);
         }
       });
     }
