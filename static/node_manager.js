@@ -33,9 +33,6 @@
   const settingsStatus = document.getElementById('settingsStatus');
   const snapshotList = document.getElementById('snapshotList');
   const snapshotStatus = document.getElementById('snapshotStatus');
-  const snapshotLocationWrap = document.getElementById('snapshotLocationWrap');
-  const snapshotLocation = document.getElementById('snapshotLocation');
-  const snapshotLocationsEl = document.getElementById('snapshotLocations');
   const snapshotEmptyState = document.getElementById('snapshotEmptyState');
   const snapshotRefreshBtn = document.getElementById('btnRefreshSnapshots');
   const snapshotScanBtn = document.getElementById('btnScanSnapshots');
@@ -132,30 +129,6 @@
     }
   }
 
-  function renderSnapshotLocations(locations) {
-    if (!snapshotLocationsEl) return;
-    if (!Array.isArray(locations) || !locations.length) {
-      snapshotLocationsEl.hidden = true;
-      snapshotLocationsEl.textContent = '';
-      return;
-    }
-    const summary = locations
-      .slice(0, 3)
-      .map((entry) => {
-        const path = entry && entry.path ? entry.path : '';
-        const count = Number(entry && entry.count);
-        return count ? `${path} (${count})` : path;
-      })
-      .filter(Boolean);
-    if (!summary.length) {
-      snapshotLocationsEl.hidden = true;
-      snapshotLocationsEl.textContent = '';
-      return;
-    }
-    snapshotLocationsEl.hidden = false;
-    snapshotLocationsEl.textContent = `Other locations: ${summary.join(', ')}`;
-  }
-
   function updateSnapshotButtons() {
     const job = (state.snapshots && state.snapshots.job) || null;
     const jobActive = !!(job && job.active);
@@ -197,21 +170,6 @@
     const job = snapshotsState.job || null;
     const locations = Array.isArray(snapshotsState.locations) ? snapshotsState.locations : [];
     const hasSnapshots = items.length > 0;
-    if (snapshotLocation && snapshotLocationWrap) {
-      if (hasSnapshots && dir) {
-        snapshotLocation.textContent = dir;
-        snapshotLocationWrap.hidden = false;
-      } else {
-        snapshotLocation.textContent = '—';
-        snapshotLocationWrap.hidden = true;
-      }
-    }
-    if (hasSnapshots) {
-      renderSnapshotLocations(locations);
-    } else if (snapshotLocationsEl) {
-      snapshotLocationsEl.hidden = true;
-      snapshotLocationsEl.textContent = '';
-    }
     if (!snapshotList) {
       return;
     }
