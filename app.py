@@ -400,6 +400,46 @@ _SNAPSHOT_JOB_STATE: Dict[str, object] = {
 }
 
 
+def _stop_container(name: Optional[str], timeout: int = 90) -> bool:
+    if not name or not DOCKER_BIN:
+        return False
+    exists, running, _ = _container_state(name)
+    if not exists or not running:
+        return False
+    try:
+        subprocess.run(
+            [DOCKER_BIN, "stop", "-t", str(timeout), name],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        return True
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError((exc.stderr or exc.stdout or str(exc)).strip())
+
+
+def _start_container(name: Optional[str]) -> bool:
+    if not name or not DOCKER_BIN:
+        return False
+    exists, running, _ = _container_state(name)
+    if not exists:
+        return False
+    if running:
+        return True
+    try:
+        subprocess.run(
+            [DOCKER_BIN, "start", name],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        return True
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError((exc.stderr or exc.stdout or str(exc)).strip())
+
+
 def _collect_home_dirs(primary_home: Optional[Path] = None) -> List[Path]:
     homes: List[Path] = []
     seen: set[str] = set()
@@ -621,6 +661,7 @@ def _snapshot_job_snapshot() -> Dict[str, object]:
             "details": _SNAPSHOT_JOB_STATE.get("details", {}) or {},
             "started": _SNAPSHOT_JOB_STATE.get("started"),
             "ended": _SNAPSHOT_JOB_STATE.get("ended"),
+            "warnings": _SNAPSHOT_JOB_STATE.get("warnings", []) or [],
         }
 
 
@@ -639,6 +680,8 @@ def _update_snapshot_dir(new_dir: Path) -> bool:
 def _run_snapshot_job(details: Dict[str, object]) -> None:
     dest_name: Optional[str] = None
     dest_path: Optional[Path] = None
+    container = (details or {}).get("container") if details else None
+    restart_required = False
     try:
         directory = _ensure_snapshot_dir()
         data_dir = _normalize_path(details.get("data_dir")) if details else None
@@ -646,6 +689,11 @@ def _run_snapshot_job(details: Dict[str, object]) -> None:
             data_dir = _normalize_path(SNAPSHOT_DATA_DIR)
         if not data_dir or not data_dir.exists() or not data_dir.is_dir():
             raise RuntimeError(f"Snapshot data directory not found: {data_dir}")
+        if container and DOCKER_BIN:
+            try:
+                restart_required = _stop_container(container)
+            except Exception as exc:
+                raise RuntimeError(f"Failed to stop container {container}: {exc}")
         timestamp = datetime.utcnow().strftime("%Y%m%d.%H%M%S")
         height = details.get("height")
         height_text = f".{height}" if height else ""
@@ -677,6 +725,15 @@ def _run_snapshot_job(details: Dict[str, object]) -> None:
             except Exception:
                 pass
     finally:
+        if restart_required:
+            try:
+                _start_container(container)
+                details.setdefault("restart", True)
+            except Exception as exc:
+                with _SNAPSHOT_JOB_LOCK:
+                    _SNAPSHOT_JOB_STATE.setdefault("warnings", []).append(str(exc))
+        elif container:
+            details.setdefault("restart", False)
         with _SNAPSHOT_JOB_LOCK:
             _SNAPSHOT_JOB_STATE.update(
                 {
@@ -724,6 +781,7 @@ def _start_snapshot_job(node_id: Optional[str]) -> Tuple[bool, str, Dict[str, ob
                 "details": details,
                 "started": time.time(),
                 "ended": None,
+                "warnings": [],
             }
         )
     thread = threading.Thread(target=_run_snapshot_job, args=(details,), daemon=True)
