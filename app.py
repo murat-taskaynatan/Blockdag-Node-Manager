@@ -655,6 +655,8 @@ def _run_snapshot_job(details: Dict[str, object]) -> None:
         arcname = data_dir.name
         command = [
             "tar",
+            "--warning=no-file-changed",
+            "--ignore-failed-read",
             "-cf",
             str(dest_path),
             "-C",
