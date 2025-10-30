@@ -209,7 +209,7 @@
             <label class="setting-row">
               <div class="setting-text">
                 <span class="setting-title">Liveness auto-recover</span>
-                <span class="setting-desc">Attempt to recover sampling when health checks fail repeatedly.</span>
+                <span class="setting-desc">Attempt to recover chain data when health checks fail repeatedly.</span>
               </div>
               <div class="setting-control">
                 <input type="checkbox" id="settingLiveness" name="liveness_auto_recover" data-setting-key="liveness_auto_recover">
@@ -264,7 +264,7 @@
               <span class="snapshot-status" id="snapshotStatus"></span>
             </div>
             <div class="snapshot-latest-grid" id="snapshotList">
-              <div class="snapshot-empty" id="snapshotEmptyState">No snapshots yet. Use the camera icon on a node to capture one.</div>
+              <div class="snapshot-empty" id="snapshotEmptyState">No snapshots yet. Use the upload arrow icon on a node to capture one.</div>
             </div>
           </div>
         </div>
@@ -304,7 +304,7 @@
             <span class="icon">⏹</span>
           </button>
           <button class="icon-btn snapshot" data-action="node-snapshot" aria-label="Create snapshot">
-            <span class="icon">⤴️</span>
+            <span class="icon">⬆️</span>
           </button>
         </div>
       </div>
