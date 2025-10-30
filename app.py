@@ -375,10 +375,17 @@ def _normalize_path(value) -> Optional[Path]:
         return path
 
 
-SNAPSHOT_DATA_DIR = _expanded_path(os.getenv("BDAG_SNAPSHOT_DATA_DIR"), "/home/node/blockdag-scripts/bin/bdag/data")
+SNAPSHOT_DATA_DIR = _expanded_path(
+    os.getenv("BDAG_SNAPSHOT_DATA_DIR"),
+    "/home/node/blockdag/blockdag-scripts/bin/bdag/data",
+)
 SNAPSHOT_DIR = _expanded_path(os.getenv("BDAG_SNAPSHOT_DIR"), os.path.expanduser("~/backups"))
-SNAPSHOT_PREFIX = (os.getenv("BDAG_SNAPSHOT_PREFIX", "blockdag-chaindata") or "blockdag-chaindata").strip() or "blockdag-chaindata"
-SNAPSHOT_SUFFIX = (os.getenv("BDAG_SNAPSHOT_SUFFIX", ".tar.gz") or ".tar.gz").strip()
+SNAPSHOT_PREFIX = (os.getenv("BDAG_SNAPSHOT_PREFIX", "bdag.chaindata") or "bdag.chaindata").strip() or "bdag.chaindata"
+SNAPSHOT_SUFFIX = (os.getenv("BDAG_SNAPSHOT_SUFFIX", ".tar") or ".tar").strip()
+LEGACY_SNAPSHOT_PATTERNS = [
+    "blockdag-chaindata-*.tar.gz",
+    f"{SNAPSHOT_PREFIX}-*.tar.gz",
+]
 SNAPSHOT_MAX = max(0, int(os.getenv("BDAG_SNAPSHOT_MAX", "0") or 0))
 
 _SNAPSHOT_DIR_LOCK = threading.Lock()
@@ -484,10 +491,10 @@ def _candidate_snapshot_dirs() -> List[Path]:
     return candidates
 
 
-def _snapshot_pattern() -> str:
-    prefix = SNAPSHOT_PREFIX or "snapshot"
-    suffix = SNAPSHOT_SUFFIX or ".tar.gz"
-    return f"{prefix}-*{suffix}"
+def _snapshot_patterns() -> List[str]:
+    patterns = [f"{SNAPSHOT_PREFIX}*.tar"]
+    patterns.extend(LEGACY_SNAPSHOT_PATTERNS)
+    return patterns
 
 
 def _ensure_snapshot_dir() -> Path:
@@ -499,15 +506,29 @@ def _ensure_snapshot_dir() -> Path:
 
 def list_snapshots() -> List[dict]:
     directory = _ensure_snapshot_dir()
-    pattern = _snapshot_pattern()
-    try:
-        files = sorted(
-            directory.glob(pattern),
-            key=lambda path: path.stat().st_mtime if path.exists() else 0.0,
-            reverse=True,
-        )
-    except Exception:
-        files = []
+    patterns = _snapshot_patterns()
+    files: List[Path] = []
+    for pattern in patterns:
+        try:
+            files.extend(directory.glob(pattern))
+        except Exception:
+            continue
+    if not files:
+        for candidate in _candidate_snapshot_dirs():
+            if candidate == directory:
+                continue
+            tmp: List[Path] = []
+            for pattern in patterns:
+                try:
+                    tmp.extend(candidate.glob(pattern))
+                except Exception:
+                    continue
+            if tmp:
+                if _update_snapshot_dir(candidate):
+                    directory = candidate
+                files = tmp
+                break
+    files.sort(key=lambda path: path.stat().st_mtime if path.exists() else 0.0, reverse=True)
     snapshots: List[dict] = []
     for path in files:
         try:
@@ -542,15 +563,17 @@ def _prune_snapshots() -> None:
 
 
 def _scan_snapshot_locations() -> List[dict]:
-    pattern = _snapshot_pattern()
     results: List[dict] = []
+    patterns = _snapshot_patterns()
     for directory in _candidate_snapshot_dirs():
         if not directory.exists() or not directory.is_dir():
             continue
-        try:
-            entries = list(directory.glob(pattern))
-        except Exception:
-            continue
+        entries: List[Path] = []
+        for pattern in patterns:
+            try:
+                entries.extend(directory.glob(pattern))
+            except Exception:
+                continue
         if not entries:
             continue
         count = 0
@@ -618,17 +641,21 @@ def _run_snapshot_job(details: Dict[str, object]) -> None:
     dest_path: Optional[Path] = None
     try:
         directory = _ensure_snapshot_dir()
-        data_dir = _normalize_path(SNAPSHOT_DATA_DIR)
+        data_dir = _normalize_path(details.get("data_dir")) if details else None
+        if not data_dir or not data_dir.exists() or not data_dir.is_dir():
+            data_dir = _normalize_path(SNAPSHOT_DATA_DIR)
         if not data_dir or not data_dir.exists() or not data_dir.is_dir():
             raise RuntimeError(f"Snapshot data directory not found: {data_dir}")
-        timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
-        dest_name = f"{SNAPSHOT_PREFIX}-{timestamp}{SNAPSHOT_SUFFIX}"
+        timestamp = datetime.utcnow().strftime("%Y%m%d.%H%M%S")
+        height = details.get("height")
+        height_text = f".{height}" if height else ""
+        dest_name = f"{SNAPSHOT_PREFIX}.{timestamp}{height_text}{SNAPSHOT_SUFFIX}"
         dest_path = directory / dest_name
         parent = data_dir.parent
         arcname = data_dir.name
         command = [
             "tar",
-            "-czf",
+            "-cf",
             str(dest_path),
             "-C",
             str(parent),
@@ -669,9 +696,21 @@ def _start_snapshot_job(node_id: Optional[str]) -> Tuple[bool, str, Dict[str, ob
         except Exception:
             target_ctx = None
     if target_ctx:
+        try:
+            target_ctx.sample(force=True)
+        except Exception:
+            pass
         details["node"] = target_ctx.id
         if target_ctx.container:
             details["container"] = target_ctx.container
+        if target_ctx.chain_data_dir:
+            details["data_dir"] = str(target_ctx.chain_data_dir)
+        if target_ctx.label:
+            details["label"] = target_ctx.label
+        last_metrics = target_ctx.last_metrics or {}
+        height = last_metrics.get("local_height")
+        if isinstance(height, int) and height >= 0:
+            details["height"] = height
     with _SNAPSHOT_JOB_LOCK:
         if _SNAPSHOT_JOB_STATE.get("active"):
             return False, "Snapshot already in progress", _snapshot_job_snapshot()
@@ -687,7 +726,9 @@ def _start_snapshot_job(node_id: Optional[str]) -> Tuple[bool, str, Dict[str, ob
         )
     thread = threading.Thread(target=_run_snapshot_job, args=(details,), daemon=True)
     thread.start()
-    return True, "Snapshot started", _snapshot_job_snapshot()
+    label = details.get("label") or details.get("node")
+    message = f"Snapshot started for {label}" if label else "Snapshot started"
+    return True, message, _snapshot_job_snapshot()
 
 
 def _list_docker_containers() -> List[str]:
@@ -726,6 +767,14 @@ def _discover_docker_nodes() -> List[dict]:
             or env.get("REMOTE_RPC_BASES")
             or env.get("BDAG_REMOTE_RPC_BASE")
         )
+        chain_data_dir = None
+        for mount in data.get("Mounts") or []:
+            if mount.get("Destination") == "/bdag/data" and mount.get("Source"):
+                try:
+                    chain_data_dir = str(_normalize_path(mount.get("Source")))
+                except Exception:
+                    chain_data_dir = mount.get("Source")
+                break
         label = (
             env.get("BDAG_NODE_LABEL")
             or env.get("NODE_LABEL")
@@ -741,6 +790,7 @@ def _discover_docker_nodes() -> List[dict]:
                 "rpc_user": rpc_user,
                 "rpc_pass": rpc_pass,
                 "remote_rpc_bases": remote_bases,
+                "chain_data_dir": chain_data_dir,
             }
         )
     return nodes
@@ -908,6 +958,13 @@ class NodeContext:
             merged.get("remote_rpc_verify", DEFAULT_NODE_SETTINGS["remote_rpc_verify"])
         )
 
+        chain_data_dir = merged.get("chain_data_dir") or merged.get("chaindata_dir")
+        self.chain_data_dir: Optional[Path]
+        if chain_data_dir:
+            self.chain_data_dir = _normalize_path(chain_data_dir)
+        else:
+            self.chain_data_dir = None
+
         self.lock = threading.RLock()
         self.height_series: deque = deque(maxlen=WINDOW)
         self.remote_series: deque = deque(maxlen=WINDOW)
@@ -949,6 +1006,12 @@ class NodeContext:
             if bases and bases != self.remote_rpc_bases:
                 self.remote_rpc_bases = bases
                 changed = True
+        chain_dir = meta.get("chain_data_dir") or meta.get("chaindata_dir")
+        if chain_dir:
+            normalized = _normalize_path(chain_dir)
+            if normalized and normalized != self.chain_data_dir:
+                self.chain_data_dir = normalized
+                changed = True
         return changed
 
     def to_metadata(self) -> dict:
@@ -959,6 +1022,7 @@ class NodeContext:
             "rpc_base": self.rpc_base,
             "remote_rpc_bases": self.remote_rpc_bases[:],
             "auto_discovered": self.auto_discovered,
+            "chain_data_dir": str(self.chain_data_dir) if self.chain_data_dir else None,
         }
 
     def _empty_metrics(self) -> dict:
