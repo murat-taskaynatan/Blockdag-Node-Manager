@@ -57,7 +57,8 @@
   summary.fleet-summary::-webkit-details-marker{display:none}
   .summary-main{display:flex;flex-direction:column;gap:4px}
   .summary-left{display:flex;flex-direction:column;gap:8px}
-  .summary-status-line{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted)}
+  .summary-status-line{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted);flex-wrap:wrap}
+  .summary-sync-chips{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
   .summary-status-chip{display:inline-flex;align-items:center;gap:6px;position:relative}
   .summary-status-chip::before{content:'';width:8px;height:8px;border-radius:999px;background:var(--muted)}
   .status-chip{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:4px 11px;font-size:12px;font-weight:600;background:rgba(255,255,255,.06);color:var(--muted);letter-spacing:.05em;text-transform:none}
@@ -69,15 +70,25 @@
   .node-meta{font-size:13px;color:var(--muted)}
   .summary-actions{display:flex;flex-direction:column;align-items:center;gap:8px}
   .summary-actions .button-row{display:flex;align-items:center;gap:14px}
-  .sync-pill{display:inline-flex;align-items:center;justify-content:center;padding:4px 12px;border-radius:999px;background:rgba(255,183,77,.18);color:#ffb74d;font-weight:600;font-size:12px;letter-spacing:.05em;text-transform:none}
+  .sync-pill{display:inline-flex;align-items:center;justify-content:center;padding:4px 12px;border-radius:999px;font-weight:600;font-size:12px;letter-spacing:.05em;text-transform:none;transition:background .2s,color .2s}
+  .sync-pill--progress{background:rgba(255,255,255,.08);color:var(--muted)}
+  .sync-pill--progress.is-ok{background:rgba(68,242,168,.16);color:#44f2a8}
+  .sync-pill--progress.is-warn{background:rgba(255,183,77,.18);color:#ffb74d}
+  .sync-pill--progress.is-danger{background:rgba(255,83,112,.18);color:#ff5370}
+  .sync-pill--rate{background:rgba(255,183,77,.18);color:#ffb74d}
+  .sync-pill--eta{background:rgba(255,255,255,.08);color:var(--muted)}
+  .sync-pill--eta.is-ok{background:rgba(68,242,168,.16);color:#44f2a8}
+  .sync-pill--eta.is-warn{background:rgba(255,183,77,.18);color:#ffb74d}
+  .sync-pill--eta.is-danger{background:rgba(255,83,112,.18);color:#ff5370}
 .icon-btn{width:41px;height:41px;border-radius:14px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.03);color:inherit;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background .2s,border .2s,color .2s}
 .icon-btn:hover:not(:disabled){background:rgba(255,255,255,.08)}
 .icon-btn .icon{display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:17px;line-height:1;transform:none}
-.icon-btn.play[data-action="start"] .icon,
-.icon-btn.play[data-action="restart"] .icon{font-size:18px;transform:translateX(1px)}
+.icon-btn.play[data-action="start"] .icon{font-size:18px;transform:translateX(1px)}
+.icon-btn.play[data-action="restart"] .icon{font-size:17px;transform:none}
 .icon-btn.play[data-running="1"] .icon{transform:none}
+.icon-btn.play.is-stalled{color:#ffb74d;border-color:rgba(255,183,77,.4)}
+.icon-btn.play.is-stalled:hover:not(:disabled){background:rgba(255,183,77,.12)}
 
-.icon-btn.restart{color:#ffb74d;border-color:rgba(255,183,77,.4)}
   .icon-btn[disabled]{opacity:.5;cursor:default}
   .fleet-body{padding:0 18px 18px;display:grid;gap:12px}
   .node-status{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px}
@@ -223,16 +234,17 @@
         </div>
         <div class="summary-status-line">
           <span class="status-chip summary-health-chip">Status</span>
-          <span class="sync-pill" data-role="sync-pill">Synced —</span>
+          <div class="summary-sync-chips">
+            <span class="sync-pill sync-pill--progress" data-role="sync-progress">Synced —</span>
+            <span class="sync-pill sync-pill--rate" data-role="sync-rate">Rate — blk/s</span>
+            <span class="sync-pill sync-pill--eta" data-role="sync-eta">ETA —</span>
+          </div>
         </div>
       </div>
       <div class="summary-actions">
         <div class="button-row">
-          <button class="icon-btn play" data-action="toggle" aria-label="Pause sampling">
+          <button class="icon-btn play" data-role="toggle" data-action="toggle" aria-label="Pause sampling">
             <span class="icon">⏹</span>
-          </button>
-          <button class="icon-btn restart" data-action="restart" aria-label="Restart container">
-            <span class="icon">⟳</span>
           </button>
         </div>
       </div>
