@@ -530,7 +530,7 @@ function switchSummaryTab(target) {
       },
       snapshots: {
         title: 'Snapshots',
-        desc: 'Latest archived snapshots. Use the camera icons on nodes to capture more.',
+        desc: 'Latest archived snapshots for quick recovery.',
       },
     };
     const next = copy[activeView] || copy.stats;
