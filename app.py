@@ -43,7 +43,21 @@ getcontext().prec = 50
 SAMPLE_SEC = max(1, int(os.getenv("BDAG_SAMPLE_SEC", "5") or "5"))
 WINDOW = max(12, int(os.getenv("BDAG_WINDOW", "240") or "240"))
 
+_docker_override = os.getenv("BDAG_DOCKER_BIN", "").strip()
 DOCKER_BIN = shutil.which("docker")
+if _docker_override:
+    override_path = Path(_docker_override).expanduser()
+    if override_path.exists() and os.access(override_path, os.X_OK):
+        DOCKER_BIN = str(override_path)
+    else:
+        candidate = shutil.which(_docker_override)
+        if candidate:
+            DOCKER_BIN = candidate
+if not DOCKER_BIN:
+    for candidate in ("/usr/bin/docker", "/usr/local/bin/docker", "/bin/docker", "/snap/bin/docker"):
+        if os.path.exists(candidate) and os.access(candidate, os.X_OK):
+            DOCKER_BIN = candidate
+            break
 
 LOG_ERROR_THRESHOLD = max(1, int(os.getenv("BDAG_LOG_ERROR_THRESHOLD", "10") or "10"))
 LOG_ERROR_CHECK_SEC = max(1.0, float(os.getenv("BDAG_LOG_ERROR_CHECK_SEC", "15") or "15"))
@@ -400,6 +414,163 @@ _SNAPSHOT_JOB_STATE: Dict[str, object] = {
 }
 
 
+def _estimate_dir_size_bytes(directory: Optional[Path]) -> int:
+    normalized = _normalize_path(directory)
+    if not normalized or not normalized.exists():
+        return 0
+    size: Optional[int] = None
+    try:
+        out = subprocess.check_output(
+            ["du", "-sb", str(normalized)],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+        parts = out.strip().split()
+        if parts:
+            size = max(int(parts[0]), 0)
+    except Exception:
+        size = None
+    if size and size > 0:
+        return size
+    total = 0
+    try:
+        for root, _, files in os.walk(normalized):
+            for name in files:
+                try:
+                    total += (Path(root) / name).stat().st_size
+                except Exception:
+                    continue
+    except Exception:
+        total = max(total, 0)
+    if total > 0:
+        return total
+    if DOCKER_BIN:
+        try:
+            out = subprocess.check_output(
+                [
+                    DOCKER_BIN,
+                    "run",
+                    "--rm",
+                    "--init",
+                    "-u",
+                    "0",
+                    "-v",
+                    f"{normalized}:/data:ro",
+                    "busybox",
+                    "du",
+                    "-sb",
+                    "/data",
+                ],
+                stderr=subprocess.DEVNULL,
+                text=True,
+                timeout=300,
+            )
+            parts = out.strip().split()
+            if parts:
+                docker_size = max(int(parts[0]), 0)
+                if docker_size > 0:
+                    return docker_size
+        except Exception:
+            pass
+    return total
+
+
+def _snapshot_progress_update(payload: Optional[Dict[str, object]]) -> None:
+    with _SNAPSHOT_JOB_LOCK:
+        if not payload:
+            _SNAPSHOT_JOB_STATE.pop("progress", None)
+        else:
+            progress = dict(_SNAPSHOT_JOB_STATE.get("progress") or {})
+            progress.update(payload)
+            _SNAPSHOT_JOB_STATE["progress"] = progress
+
+
+def _run_command_with_progress(command: List[str], dest_path: Path, *, total_bytes: int, started: float) -> Tuple[str, str]:
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    last_emit = 0.0
+    try:
+        while True:
+            retcode = process.poll()
+            now = time.time()
+            emit = now - last_emit >= 0.8 or retcode is not None
+            bytes_written = 0
+            if dest_path.exists():
+                try:
+                    bytes_written = max(dest_path.stat().st_size, 0)
+                except Exception:
+                    bytes_written = 0
+            elapsed = max(now - started, 0.0)
+            pct = None
+            speed = 0.0
+            eta = None
+            if total_bytes > 0:
+                pct = max(0.0, min(100.0, (bytes_written / total_bytes) * 100.0))
+                if elapsed > 0:
+                    speed = max(bytes_written / elapsed, 0.0)
+                    remaining = max(total_bytes - bytes_written, 0)
+                    if speed > 0:
+                        eta = remaining / speed
+            elif elapsed > 0:
+                speed = max(bytes_written / elapsed, 0.0)
+            if emit:
+                _snapshot_progress_update(
+                    {
+                        "bytes_written": bytes_written,
+                        "total_bytes": total_bytes,
+                        "pct": pct,
+                        "speed_bytes": speed,
+                        "eta_seconds": eta,
+                        "updated": now,
+                        "path": str(dest_path),
+                        "started": started,
+                    }
+                )
+                last_emit = now
+            if retcode is not None:
+                stdout, stderr = process.communicate()
+                if retcode != 0:
+                    raise RuntimeError(stderr or stdout or f"Command exited with status {retcode}")
+                final_now = time.time()
+                final_bytes = 0
+                if dest_path.exists():
+                    try:
+                        final_bytes = max(dest_path.stat().st_size, 0)
+                    except Exception:
+                        final_bytes = bytes_written
+                final_pct = 100.0 if total_bytes > 0 else pct
+                final_speed = speed
+                if elapsed > 0 and final_bytes > 0:
+                    final_speed = max(final_bytes / max(final_now - started, elapsed, 1e-6), 0.0)
+                _snapshot_progress_update(
+                    {
+                        "bytes_written": final_bytes,
+                        "total_bytes": total_bytes,
+                        "pct": final_pct,
+                        "speed_bytes": final_speed,
+                        "eta_seconds": 0.0 if total_bytes > 0 else None,
+                        "updated": final_now,
+                        "path": str(dest_path),
+                        "started": started,
+                    }
+                )
+                return stdout or "", stderr or ""
+            time.sleep(1.0)
+    finally:
+        try:
+            process.stdout and process.stdout.close()
+        except Exception:
+            pass
+        try:
+            process.stderr and process.stderr.close()
+        except Exception:
+            pass
+
+
 def _stop_container(name: Optional[str], timeout: int = 90) -> bool:
     if not name or not DOCKER_BIN:
         return False
@@ -654,6 +825,8 @@ def _scan_snapshot_locations() -> List[dict]:
 
 def _snapshot_job_snapshot() -> Dict[str, object]:
     with _SNAPSHOT_JOB_LOCK:
+        progress = _SNAPSHOT_JOB_STATE.get("progress")
+        progress_copy = dict(progress) if isinstance(progress, dict) else None
         return {
             "active": bool(_SNAPSHOT_JOB_STATE.get("active")),
             "status": _SNAPSHOT_JOB_STATE.get("status"),
@@ -662,6 +835,7 @@ def _snapshot_job_snapshot() -> Dict[str, object]:
             "started": _SNAPSHOT_JOB_STATE.get("started"),
             "ended": _SNAPSHOT_JOB_STATE.get("ended"),
             "warnings": _SNAPSHOT_JOB_STATE.get("warnings", []) or [],
+            "progress": progress_copy,
         }
 
 
@@ -683,6 +857,11 @@ def _run_snapshot_job(details: Dict[str, object]) -> None:
     container = (details or {}).get("container") if details else None
     restart_required = False
     try:
+        locations = _scan_snapshot_locations()
+        if locations:
+            primary_path = locations[0].get("path")
+            if primary_path:
+                _update_snapshot_dir(Path(primary_path))
         directory = _ensure_snapshot_dir()
         data_dir = _normalize_path(details.get("data_dir")) if details else None
         if not data_dir or not data_dir.exists() or not data_dir.is_dir():
@@ -694,24 +873,102 @@ def _run_snapshot_job(details: Dict[str, object]) -> None:
                 restart_required = _stop_container(container)
             except Exception as exc:
                 raise RuntimeError(f"Failed to stop container {container}: {exc}")
+        total_bytes = _estimate_dir_size_bytes(data_dir)
+        details.setdefault("total_bytes", total_bytes)
+        start_time = time.time()
         timestamp = datetime.utcnow().strftime("%Y%m%d.%H%M%S")
         height = details.get("height")
         height_text = f".{height}" if height else ""
         dest_name = f"{SNAPSHOT_PREFIX}.{timestamp}{height_text}{SNAPSHOT_SUFFIX}"
         dest_path = directory / dest_name
-        parent = data_dir.parent
-        arcname = data_dir.name
-        command = [
-            "tar",
-            "--warning=no-file-changed",
-            "--ignore-failed-read",
-            "-cf",
-            str(dest_path),
-            "-C",
-            str(parent),
-            arcname,
-        ]
-        subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        _snapshot_progress_update(
+            {
+                "bytes_written": 0,
+                "total_bytes": total_bytes,
+                "pct": 0.0 if total_bytes else None,
+                "speed_bytes": 0.0,
+                "eta_seconds": None,
+                "updated": start_time,
+                "started": start_time,
+                "path": str(dest_path),
+            }
+        )
+        if DOCKER_BIN:
+            command = [
+                DOCKER_BIN,
+                "run",
+                "--rm",
+                "--init",
+                "-u",
+                "0",
+                "-v",
+                f"{data_dir}:/data:ro",
+                "-v",
+                f"{directory}:/backup",
+                "busybox",
+                "tar",
+                "-cf",
+                f"/backup/{dest_name}",
+                "-C",
+                "/data",
+                ".",
+            ]
+            try:
+                _run_command_with_progress(command, dest_path, total_bytes=total_bytes, started=start_time)
+            except RuntimeError as exc:
+                raise RuntimeError(str(exc))
+        else:
+            parent = data_dir.parent
+            arcname = data_dir.name
+            command = [
+                "tar",
+                "--warning=no-file-changed",
+                "--ignore-failed-read",
+                "-cf",
+                str(dest_path),
+                "-C",
+                str(parent),
+                arcname,
+            ]
+            try:
+                _run_command_with_progress(command, dest_path, total_bytes=total_bytes, started=start_time)
+            except RuntimeError as exc:
+                err_text = str(exc).lower()
+                if "unrecognized option" in err_text or "illegal option" in err_text:
+                    if dest_path.exists():
+                        try:
+                            dest_path.unlink()
+                        except Exception:
+                            pass
+                    restart_time = time.time()
+                    _snapshot_progress_update(
+                        {
+                            "bytes_written": 0,
+                            "total_bytes": total_bytes,
+                            "pct": 0.0 if total_bytes else None,
+                            "speed_bytes": 0.0,
+                            "eta_seconds": None,
+                            "updated": restart_time,
+                            "started": restart_time,
+                            "path": str(dest_path),
+                        }
+                    )
+                    fallback_command = [
+                        "tar",
+                        "-cf",
+                        str(dest_path),
+                        "-C",
+                        str(parent),
+                        arcname,
+                    ]
+                    try:
+                        _run_command_with_progress(
+                            fallback_command, dest_path, total_bytes=total_bytes, started=restart_time
+                        )
+                    except RuntimeError as fallback_exc:
+                        raise RuntimeError(str(fallback_exc))
+                else:
+                    raise
         message = f"Snapshot saved as {dest_name}"
         status = "completed"
         if SNAPSHOT_MAX > 0:
@@ -734,6 +991,7 @@ def _run_snapshot_job(details: Dict[str, object]) -> None:
                     _SNAPSHOT_JOB_STATE.setdefault("warnings", []).append(str(exc))
         elif container:
             details.setdefault("restart", False)
+        _snapshot_progress_update(None)
         with _SNAPSHOT_JOB_LOCK:
             _SNAPSHOT_JOB_STATE.update(
                 {
@@ -773,6 +1031,7 @@ def _start_snapshot_job(node_id: Optional[str]) -> Tuple[bool, str, Dict[str, ob
     with _SNAPSHOT_JOB_LOCK:
         if _SNAPSHOT_JOB_STATE.get("active"):
             return False, "Snapshot already in progress", _snapshot_job_snapshot()
+        _SNAPSHOT_JOB_STATE.pop("progress", None)
         _SNAPSHOT_JOB_STATE.update(
             {
                 "active": True,

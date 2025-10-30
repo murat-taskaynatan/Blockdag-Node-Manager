@@ -15,7 +15,7 @@
       job: null,
     },
     snapshotsLoaded: false,
-    snapshotStatus: { text: '', level: '' },
+    snapshotStatus: { text: '', level: '', manual: false },
   };
 
   const cardsContainer = document.getElementById('fleetCards');
@@ -71,6 +71,26 @@
     return `${scaled.toFixed(precision)} ${units[index]}`;
   }
 
+  function formatPercent(value) {
+    if (!Number.isFinite(value)) return null;
+    if (value >= 99.95) return '100%';
+    if (value >= 10) return `${value.toFixed(1)}%`;
+    return `${value.toFixed(2)}%`;
+  }
+
+  function formatDurationShort(seconds) {
+    if (!Number.isFinite(seconds) || seconds < 0) return null;
+    const total = Math.round(seconds);
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const secs = total % 60;
+    const parts = [];
+    if (hours) parts.push(`${hours}h`);
+    if (hours || minutes) parts.push(`${minutes}m`);
+    parts.push(`${secs}s`);
+    return parts.join(' ');
+  }
+
   function formatSnapshotDate(value) {
     if (!value) return '—';
     try {
@@ -116,7 +136,8 @@
 
   function setSnapshotStatus(message, options = {}) {
     const level = options.level || '';
-    state.snapshotStatus = { text: message || '', level };
+    const manual = options.manual === true && message;
+    state.snapshotStatus = { text: message || '', level, manual: Boolean(manual) };
     if (!snapshotStatus) return;
     snapshotStatus.classList.remove('is-ok', 'is-warn', 'is-error');
     if (!message) {
@@ -154,7 +175,19 @@
       if (state.snapshots && state.snapshots.job && state.snapshots.job.active) {
         disabled = true;
         if (jobNode && jobNode === nodeId) {
-          title = `Snapshot running for ${label}`;
+          const progress = job && job.progress ? job.progress : {};
+          const pctText = formatPercent(progress.pct);
+          const speedText =
+            Number.isFinite(progress.speed_bytes) && progress.speed_bytes > 0
+              ? `${formatBytes(progress.speed_bytes)}/s`
+              : null;
+          const etaText = formatDurationShort(progress.eta_seconds);
+          const parts = [];
+          if (pctText) parts.push(pctText);
+          if (speedText) parts.push(speedText);
+          if (etaText) parts.push(`ETA ${etaText}`);
+          const progressText = parts.length ? ` (${parts.join(' • ')})` : '';
+          title = `Snapshot running for ${label}${progressText}`;
           btn.classList.add('is-busy');
         } else {
           title = 'Snapshot in progress';
@@ -166,6 +199,20 @@
       btn.disabled = disabled;
       btn.title = title;
       btn.setAttribute('aria-label', title);
+
+      const toggleBtn = entry.card.querySelector('[data-role="toggle"]');
+      if (toggleBtn) {
+        const snapshotLock = jobActive && jobNode && jobNode === nodeId;
+        if (snapshotLock) {
+          toggleBtn.dataset.snapshotLock = '1';
+          toggleBtn.disabled = true;
+        } else if (toggleBtn.dataset.snapshotLock === '1') {
+          delete toggleBtn.dataset.snapshotLock;
+          if (!toggleBtn.dataset.manualDisable) {
+            toggleBtn.disabled = false;
+          }
+        }
+      }
     });
   }
 
@@ -238,17 +285,43 @@
       });
     }
 
+    const jobDetails = (job && job.details) || {};
     const jobActive = job && job.active;
+    const manualOverride = Boolean(state.snapshotStatus && state.snapshotStatus.manual);
+
     if (jobActive) {
-      setSnapshotStatus(job.message || 'Snapshot job running…', { level: 'warn' });
+      const progress = job.progress || {};
+      const pctText = formatPercent(progress.pct);
+      const speedText =
+        Number.isFinite(progress.speed_bytes) && progress.speed_bytes > 0
+          ? `${formatBytes(progress.speed_bytes)}/s`
+          : null;
+      const etaText = formatDurationShort(progress.eta_seconds);
+      const pieces = [];
+      if (pctText) pieces.push(pctText);
+      if (speedText) pieces.push(speedText);
+      if (etaText) pieces.push(`ETA ${etaText}`);
+      const label = jobDetails.label || jobDetails.node || '';
+      let message = job.message || 'Snapshot job running…';
+      if (label && !message.toLowerCase().includes(label.toLowerCase())) {
+        message = `Snapshot running for ${label}`;
+      }
+      if (pieces.length) {
+        const suffix = pieces.join(' • ');
+        message = message.endsWith('…') ? `${message} ${suffix}` : `${message} — ${suffix}`;
+      }
+      setSnapshotStatus(message, { level: 'warn' });
       scheduleSnapshotPoll(true);
-    } else if (job && job.status && job.message) {
+    } else if (job && job.status && job.message && !manualOverride) {
       const levelMap = { completed: 'ok', error: 'error', cancelled: 'warn' };
       const level = levelMap[job.status] || '';
       setSnapshotStatus(job.message, { level });
       scheduleSnapshotPoll(false);
     } else if (state.snapshotStatus && state.snapshotStatus.text) {
-      setSnapshotStatus(state.snapshotStatus.text, { level: state.snapshotStatus.level });
+      setSnapshotStatus(state.snapshotStatus.text, {
+        level: state.snapshotStatus.level,
+        manual: manualOverride,
+      });
       scheduleSnapshotPoll(false);
     } else {
       setSnapshotStatus('');
@@ -272,7 +345,7 @@
   }
 
   async function loadSnapshots(options = {}) {
-    const { silent = false } = options;
+    const { silent = false, preserveStatus = false } = options;
     if (!silent) {
       setSnapshotStatus('Loading snapshots…', { level: 'warn' });
     }
@@ -286,13 +359,14 @@
         dir: payload.directory || '',
         job: payload.job || null,
       };
-      if (payload.status && payload.status.text) {
+      if (!preserveStatus && payload.status && payload.status.text) {
         state.snapshotStatus = {
           text: payload.status.text,
           level: payload.status.level || '',
+          manual: false,
         };
-      } else if (!silent) {
-        state.snapshotStatus = { text: 'Snapshots refreshed.', level: 'ok' };
+      } else if (!silent && !preserveStatus) {
+        state.snapshotStatus = { text: 'Snapshots refreshed.', level: 'ok', manual: false };
       }
       state.snapshotsLoaded = true;
       renderSnapshots();
@@ -316,7 +390,7 @@
       return;
     }
     if (btn) {
-      setBusy(btn, true, 'Working…');
+      setBusy(btn, true);
     }
     try {
       const entry = state.nodes.get(nodeId);
@@ -361,12 +435,10 @@
       if (!res.ok || payload.ok === false) {
         throw new Error(payload && payload.error ? payload.error : `HTTP ${res.status}`);
       }
-      state.snapshotStatus = {
-        text: payload.message || 'Snapshot locations updated.',
-        level: 'ok',
-      };
+      const message = payload.message || 'Snapshot locations updated.';
+      setSnapshotStatus(message, { level: 'ok' });
       await loadSnapshots({ silent: true });
-      setSnapshotStatus(state.snapshotStatus.text, { level: 'ok' });
+      setSnapshotStatus(message, { level: 'ok' });
     } catch (err) {
       setSnapshotStatus(err && err.message ? err.message : 'Snapshot scan failed', { level: 'error' });
     } finally {
@@ -393,12 +465,9 @@
       if (!res.ok || payload.ok === false) {
         throw new Error(payload && payload.error ? payload.error : `HTTP ${res.status}`);
       }
-      state.snapshotStatus = {
-        text: payload.message || `Deleted ${name}`,
-        level: 'ok',
-      };
-      await loadSnapshots({ silent: true });
-      setSnapshotStatus(state.snapshotStatus.text, { level: 'ok' });
+      const message = payload.message || `Deleted ${name}`;
+      setSnapshotStatus(message, { level: 'ok', manual: true });
+      await loadSnapshots({ silent: true, preserveStatus: true });
     } catch (err) {
       setSnapshotStatus(err && err.message ? err.message : `Failed to delete ${name}`, { level: 'error' });
     } finally {
@@ -1310,7 +1379,10 @@ async function saveSettings() {
         forced_offline: optimisticState.forcedOffline,
       };
     }
-    if (btn) btn.disabled = true;
+    if (btn) {
+      btn.disabled = true;
+      btn.dataset.manualDisable = '1';
+    }
     try {
       const res = await fetch('/api/control', {
         method: 'POST',
@@ -1321,7 +1393,12 @@ async function saveSettings() {
     } catch (err) {
       console.error('[fleet] start/stop failed', err);
     } finally {
-      if (btn) btn.disabled = false;
+      if (btn) {
+        delete btn.dataset.manualDisable;
+        if (!btn.dataset.snapshotLock) {
+          btn.disabled = false;
+        }
+      }
       await loadNodes();
       await refreshMetrics();
     }
