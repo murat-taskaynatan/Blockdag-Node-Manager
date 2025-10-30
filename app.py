@@ -349,6 +349,347 @@ def _wallet_candidate_paths() -> List[Path]:
     return unique
 
 
+# ---------------------------------------------------------------------------
+# Snapshot management (adapted from dashboard backup module)
+# ---------------------------------------------------------------------------
+
+
+def _expanded_path(raw: Optional[str], default: str) -> Path:
+    base = raw if raw else default
+    try:
+        return Path(base).expanduser().resolve()
+    except Exception:
+        return Path(base).expanduser()
+
+
+def _normalize_path(value) -> Optional[Path]:
+    if value is None:
+        return None
+    try:
+        path = Path(value).expanduser()
+    except Exception:
+        return None
+    try:
+        return path.resolve()
+    except Exception:
+        return path
+
+
+SNAPSHOT_DATA_DIR = _expanded_path(os.getenv("BDAG_SNAPSHOT_DATA_DIR"), "/home/node/blockdag-scripts/bin/bdag/data")
+SNAPSHOT_DIR = _expanded_path(os.getenv("BDAG_SNAPSHOT_DIR"), os.path.expanduser("~/backups"))
+SNAPSHOT_PREFIX = (os.getenv("BDAG_SNAPSHOT_PREFIX", "blockdag-chaindata") or "blockdag-chaindata").strip() or "blockdag-chaindata"
+SNAPSHOT_SUFFIX = (os.getenv("BDAG_SNAPSHOT_SUFFIX", ".tar.gz") or ".tar.gz").strip()
+SNAPSHOT_MAX = max(0, int(os.getenv("BDAG_SNAPSHOT_MAX", "0") or 0))
+
+_SNAPSHOT_DIR_LOCK = threading.Lock()
+_SNAPSHOT_JOB_LOCK = threading.Lock()
+_SNAPSHOT_JOB_STATE: Dict[str, object] = {
+    "active": False,
+    "status": "idle",
+    "message": "",
+    "details": {},
+    "started": None,
+    "ended": None,
+}
+
+
+def _collect_home_dirs(primary_home: Optional[Path] = None) -> List[Path]:
+    homes: List[Path] = []
+    seen: set[str] = set()
+    candidates: List[Optional[Path]] = [primary_home]
+    try:
+        env_home = Path(os.getenv("HOME")) if os.getenv("HOME") else None
+    except Exception:
+        env_home = None
+    if env_home:
+        candidates.append(env_home)
+    default_home = Path.home()
+    candidates.append(default_home)
+    homes_root = Path("/home")
+    candidates.append(homes_root)
+    try:
+        if homes_root.exists():
+            for entry in homes_root.iterdir():
+                if entry.is_dir():
+                    candidates.append(entry)
+    except Exception:
+        pass
+    media_root = Path("/media")
+    candidates.append(media_root)
+    try:
+        if media_root.exists():
+            for entry in media_root.iterdir():
+                if entry.is_dir():
+                    candidates.append(entry)
+                    try:
+                        for sub in entry.iterdir():
+                            if sub.is_dir():
+                                candidates.append(sub)
+                    except Exception:
+                        continue
+    except Exception:
+        pass
+    for candidate in candidates:
+        normalized = _normalize_path(candidate)
+        if not normalized or not normalized.exists():
+            continue
+        key = str(normalized)
+        if key in seen:
+            continue
+        seen.add(key)
+        homes.append(normalized)
+    return homes
+
+
+def _candidate_snapshot_dirs() -> List[Path]:
+    candidates: List[Path] = []
+    seen: set[str] = set()
+
+    def enqueue(path: Optional[Path]) -> None:
+        normalized = _normalize_path(path)
+        if not normalized:
+            return
+        key = str(normalized)
+        if key in seen:
+            return
+        seen.add(key)
+        candidates.append(normalized)
+
+    enqueue(SNAPSHOT_DIR)
+    enqueue(SNAPSHOT_DIR.parent if SNAPSHOT_DIR else None)
+    home_dirs = _collect_home_dirs(Path.home())
+    for home_dir in home_dirs:
+        enqueue(home_dir / "backups")
+        enqueue(home_dir / "blockdag-scripts" / "backups")
+        enqueue(home_dir / "blockdag" / "backups")
+    media_root = Path("/media")
+    try:
+        if media_root.exists():
+            enqueue(media_root / "backups")
+            for entry in media_root.iterdir():
+                if not entry.is_dir():
+                    continue
+                enqueue(entry / "backups")
+                enqueue(entry / "blockdag" / "backups")
+                enqueue(entry / "blockdag-scripts" / "backups")
+                try:
+                    for sub in entry.iterdir():
+                        if not sub.is_dir():
+                            continue
+                        enqueue(sub / "backups")
+                except Exception:
+                    continue
+    except Exception:
+        pass
+    return candidates
+
+
+def _snapshot_pattern() -> str:
+    prefix = SNAPSHOT_PREFIX or "snapshot"
+    suffix = SNAPSHOT_SUFFIX or ".tar.gz"
+    return f"{prefix}-*{suffix}"
+
+
+def _ensure_snapshot_dir() -> Path:
+    with _SNAPSHOT_DIR_LOCK:
+        directory = SNAPSHOT_DIR
+        directory.mkdir(parents=True, exist_ok=True)
+        return directory
+
+
+def list_snapshots() -> List[dict]:
+    directory = _ensure_snapshot_dir()
+    pattern = _snapshot_pattern()
+    try:
+        files = sorted(
+            directory.glob(pattern),
+            key=lambda path: path.stat().st_mtime if path.exists() else 0.0,
+            reverse=True,
+        )
+    except Exception:
+        files = []
+    snapshots: List[dict] = []
+    for path in files:
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        snapshots.append(
+            {
+                "name": path.name,
+                "size": stat.st_size,
+                "modified": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
+            }
+        )
+    return snapshots
+
+
+def _prune_snapshots() -> None:
+    if SNAPSHOT_MAX <= 0:
+        return
+    snapshots = list_snapshots()
+    for entry in snapshots[SNAPSHOT_MAX:]:
+        name = entry.get("name")
+        if not name:
+            continue
+        target = _normalize_path(SNAPSHOT_DIR / name)
+        if not target or not target.exists():
+            continue
+        try:
+            target.unlink()
+        except Exception:
+            app.logger.warning("Failed to prune snapshot %s", name, exc_info=True)
+
+
+def _scan_snapshot_locations() -> List[dict]:
+    pattern = _snapshot_pattern()
+    results: List[dict] = []
+    for directory in _candidate_snapshot_dirs():
+        if not directory.exists() or not directory.is_dir():
+            continue
+        try:
+            entries = list(directory.glob(pattern))
+        except Exception:
+            continue
+        if not entries:
+            continue
+        count = 0
+        latest_mtime = 0.0
+        latest_name = ""
+        total_size = 0
+        for entry in entries:
+            try:
+                stat = entry.stat()
+            except OSError:
+                continue
+            count += 1
+            total_size += stat.st_size
+            if stat.st_mtime > latest_mtime:
+                latest_mtime = stat.st_mtime
+                latest_name = entry.name
+        if count == 0:
+            continue
+        try:
+            latest_iso = datetime.fromtimestamp(latest_mtime, timezone.utc).isoformat()
+        except Exception:
+            latest_iso = None
+        results.append(
+            {
+                "path": str(directory),
+                "count": count,
+                "latest": latest_iso,
+                "latest_name": latest_name,
+                "total_size": total_size,
+                "latest_ts": latest_mtime,
+            }
+        )
+    results.sort(key=lambda item: item.get("latest_ts", 0.0), reverse=True)
+    for item in results:
+        item.pop("latest_ts", None)
+    return results
+
+
+def _snapshot_job_snapshot() -> Dict[str, object]:
+    with _SNAPSHOT_JOB_LOCK:
+        return {
+            "active": bool(_SNAPSHOT_JOB_STATE.get("active")),
+            "status": _SNAPSHOT_JOB_STATE.get("status"),
+            "message": _SNAPSHOT_JOB_STATE.get("message"),
+            "details": _SNAPSHOT_JOB_STATE.get("details", {}) or {},
+            "started": _SNAPSHOT_JOB_STATE.get("started"),
+            "ended": _SNAPSHOT_JOB_STATE.get("ended"),
+        }
+
+
+def _update_snapshot_dir(new_dir: Path) -> bool:
+    normalized = _normalize_path(new_dir)
+    if not normalized:
+        return False
+    with _SNAPSHOT_DIR_LOCK:
+        global SNAPSHOT_DIR
+        if SNAPSHOT_DIR == normalized:
+            return False
+        SNAPSHOT_DIR = normalized
+    return True
+
+
+def _run_snapshot_job(details: Dict[str, object]) -> None:
+    dest_name: Optional[str] = None
+    dest_path: Optional[Path] = None
+    try:
+        directory = _ensure_snapshot_dir()
+        data_dir = _normalize_path(SNAPSHOT_DATA_DIR)
+        if not data_dir or not data_dir.exists() or not data_dir.is_dir():
+            raise RuntimeError(f"Snapshot data directory not found: {data_dir}")
+        timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
+        dest_name = f"{SNAPSHOT_PREFIX}-{timestamp}{SNAPSHOT_SUFFIX}"
+        dest_path = directory / dest_name
+        parent = data_dir.parent
+        arcname = data_dir.name
+        command = [
+            "tar",
+            "-czf",
+            str(dest_path),
+            "-C",
+            str(parent),
+            arcname,
+        ]
+        subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        message = f"Snapshot saved as {dest_name}"
+        status = "completed"
+        if SNAPSHOT_MAX > 0:
+            _prune_snapshots()
+    except Exception as exc:
+        status = "error"
+        message = f"Snapshot failed: {exc}"
+        if dest_path and dest_path.exists():
+            try:
+                dest_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+    finally:
+        with _SNAPSHOT_JOB_LOCK:
+            _SNAPSHOT_JOB_STATE.update(
+                {
+                    "active": False,
+                    "status": status,
+                    "message": message,
+                    "details": {**(details or {}), "path": dest_name},
+                    "ended": time.time(),
+                }
+            )
+
+
+def _start_snapshot_job(node_id: Optional[str]) -> Tuple[bool, str, Dict[str, object]]:
+    details: Dict[str, object] = {}
+    target_ctx: Optional["NodeContext"] = None
+    if node_id:
+        try:
+            target_ctx = _resolve_node(node_id)
+        except Exception:
+            target_ctx = None
+    if target_ctx:
+        details["node"] = target_ctx.id
+        if target_ctx.container:
+            details["container"] = target_ctx.container
+    with _SNAPSHOT_JOB_LOCK:
+        if _SNAPSHOT_JOB_STATE.get("active"):
+            return False, "Snapshot already in progress", _snapshot_job_snapshot()
+        _SNAPSHOT_JOB_STATE.update(
+            {
+                "active": True,
+                "status": "running",
+                "message": "Snapshot job running…",
+                "details": details,
+                "started": time.time(),
+                "ended": None,
+            }
+        )
+    thread = threading.Thread(target=_run_snapshot_job, args=(details,), daemon=True)
+    thread.start()
+    return True, "Snapshot started", _snapshot_job_snapshot()
+
+
 def _list_docker_containers() -> List[str]:
     if not DOCKER_BIN:
         return []
@@ -1322,6 +1663,102 @@ def api_settings():
         return jsonify({"ok": False, "error": "invalid payload"}), 400
     updated = update_settings(body)
     return jsonify({"ok": True, "settings": updated})
+
+
+@app.route("/api/snapshots", methods=["GET"])
+def api_snapshots():
+    snapshots = list_snapshots()
+    job = _snapshot_job_snapshot()
+    locations = _scan_snapshot_locations()
+    response: Dict[str, object] = {
+        "snapshots": snapshots,
+        "job": job,
+        "directory": str(SNAPSHOT_DIR),
+        "locations": locations,
+    }
+    message = job.get("message") if isinstance(job, dict) else None
+    if message:
+        status = job.get("status") if isinstance(job, dict) else None
+        active = bool(job.get("active")) if isinstance(job, dict) else False
+        if active:
+            level = "warn"
+        elif status == "completed":
+            level = "ok"
+        elif status == "error":
+            level = "error"
+        else:
+            level = "warn"
+        response["status"] = {"text": message, "level": level}
+    return jsonify(response)
+
+
+@app.route("/api/snapshots/create", methods=["POST"])
+def api_snapshots_create():
+    body = request.get_json(silent=True) or {}
+    node_id = body.get("node")
+    ok, message, job = _start_snapshot_job(str(node_id) if node_id else None)
+    if not ok:
+        return jsonify({"ok": False, "error": message, "job": job}), 409
+    return jsonify({"ok": True, "message": message, "job": job})
+
+
+@app.route("/api/snapshots/scan", methods=["POST"])
+def api_snapshots_scan():
+    locations = _scan_snapshot_locations()
+    message: str
+    if locations:
+        selected_path = locations[0].get("path")
+        updated = _update_snapshot_dir(Path(selected_path)) if selected_path else False
+        if updated:
+            message = f"Snapshot directory set to {selected_path}"
+        else:
+            message = f"Using snapshot directory {selected_path}"
+    else:
+        _ensure_snapshot_dir()
+        message = "No snapshot directories found. Created default location."
+    return jsonify(
+        {
+            "ok": True,
+            "message": message,
+            "directory": str(SNAPSHOT_DIR),
+            "locations": locations,
+            "snapshots": list_snapshots(),
+        }
+    )
+
+
+@app.route("/api/snapshots/delete", methods=["POST"])
+def api_snapshots_delete():
+    body = request.get_json(silent=True) or {}
+    name = (body.get("name") or "").strip()
+    if not name:
+        return jsonify({"ok": False, "error": "missing snapshot name"}), 400
+    job = _snapshot_job_snapshot()
+    if job.get("active"):
+        return jsonify({"ok": False, "error": "snapshot job in progress"}), 409
+    directory = _ensure_snapshot_dir()
+    target = directory / name
+    normalized_target = _normalize_path(target)
+    normalized_dir = _normalize_path(directory)
+    if (
+        not normalized_target
+        or not normalized_dir
+        or normalized_target.parent != normalized_dir
+        or not normalized_target.exists()
+    ):
+        return jsonify({"ok": False, "error": f"snapshot '{name}' not found"}), 404
+    try:
+        normalized_target.unlink()
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
+    return jsonify(
+        {
+            "ok": True,
+            "message": f"Deleted {name}",
+            "directory": str(SNAPSHOT_DIR),
+            "snapshots": list_snapshots(),
+        }
+    )
 
 
 @app.route("/api/node-manager/discover", methods=["POST"])
