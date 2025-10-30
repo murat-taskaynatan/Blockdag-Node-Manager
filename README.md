@@ -77,7 +77,7 @@ Need a zero-touch install on a fresh host? Use the remote installer:
 curl -fsSL https://raw.githubusercontent.com/murat-taskaynatan/Blockdag-Node-Manager/main/install_nm_from_github.sh \ | sudo bash
 ```
 
-It downloads the installer, makes it executable, (optionally) honours overrides like `REPO_REF`, then runs the same deployment flow without requiring a local checkout.
+
 
 ## API Overview
 - `GET /api/node-manager/nodes` — summary of discovered nodes and status.
