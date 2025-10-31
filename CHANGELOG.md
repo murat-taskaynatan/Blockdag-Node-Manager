@@ -2,7 +2,7 @@
 
 # Changelog
 
-## v1.4 - 2025-10-31
+## v1.4.0 - 2025-10-31
 
 ### Overclock tab
 - New Overclock tab with safe NVMe/CPU/FS tweaks and an optional VWC toggle.

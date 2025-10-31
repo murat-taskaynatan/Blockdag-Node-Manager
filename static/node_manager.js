@@ -2911,23 +2911,7 @@ async function saveSettings() {
     // Always load and poll Overclock logs panel
     void loadOcLogs({ force: true });
     startOcLogPolling();
-    // Auto-prime the Overclock chart with a quick 5s verify if we have a data path
-    try {
-      const dataPath = ocDataPath?.value?.trim() || '/home/node/blockdag';
-      if (dataPath) {
-        const res = await fetch('/api/overclock/verify', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ data_path: dataPath, runtime: 5 }),
-        });
-        const json = await res.json().catch(() => ({}));
-        if (res.ok && json && json.metrics) {
-          if (typeof ocAppendMetric === 'function') {
-            ocAppendMetric(json.metrics);
-          }
-        }
-      }
-    } catch (_) {}
+    // Chart removed per request; skipping auto-prime visualization
     setInterval(refreshMetrics, 5000);
   }
 
