@@ -6,6 +6,7 @@ logs/
 backups/
 api-status-backups/
 api_status_backup/
+data/
 *.bak
 *.bak.*
 *.tgz

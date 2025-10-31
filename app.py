@@ -160,8 +160,52 @@ WALLET_BALANCE_CACHE_SEC = max(0.0, float(os.getenv("BDAG_BALANCE_CACHE_SEC", "1
 _wallet_address_cache: Dict[str, object] = {"path": None, "mtime": 0.0, "address": None}
 _wallet_balance_cache: Dict[str, object] = {"ts": 0.0, "data": None}
 _WALLET_BALANCE_HISTORY: deque[Dict[str, object]] = deque(maxlen=120)
+WALLET_HISTORY_PATH = (Path(__file__).resolve().parent / "data" / "wallet_history.json")
+WALLET_HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 
+def _load_wallet_history() -> None:
+    if not WALLET_HISTORY_PATH.exists():
+        return
+    try:
+        raw = WALLET_HISTORY_PATH.read_text(encoding="utf-8")
+        data = json.loads(raw)
+    except Exception:
+        return
+    if not isinstance(data, list):
+        return
+    _WALLET_BALANCE_HISTORY.clear()
+    for entry in data:
+        if not isinstance(entry, dict):
+            continue
+        ts = entry.get("timestamp")
+        balance = entry.get("balance")
+        formatted = entry.get("formatted")
+        try:
+            ts_val = float(ts)
+            bal_val = float(balance)
+        except (TypeError, ValueError):
+            continue
+        _WALLET_BALANCE_HISTORY.append(
+            {
+                "timestamp": ts_val,
+                "balance": bal_val,
+                "formatted": formatted,
+            }
+        )
+
+
+def _persist_wallet_history() -> None:
+    try:
+        payload = list(_WALLET_BALANCE_HISTORY)
+        temp_path = WALLET_HISTORY_PATH.with_suffix(".tmp")
+        temp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        temp_path.replace(WALLET_HISTORY_PATH)
+    except Exception:
+        pass
+
+
+_load_wallet_history()
 
 # ---------------------------------------------------------------------------
 # General helpers
@@ -1917,6 +1961,7 @@ def _get_wallet_overview() -> dict:
             balance_entry = None
     if balance_entry:
         _WALLET_BALANCE_HISTORY.append(balance_entry)
+        _persist_wallet_history()
     info["balance_history"] = list(_WALLET_BALANCE_HISTORY)
     _wallet_balance_cache["data"] = dict(info)
     _wallet_balance_cache["ts"] = info["timestamp"]
