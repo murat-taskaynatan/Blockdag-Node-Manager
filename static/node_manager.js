@@ -45,6 +45,9 @@
   const walletHistoryList = document.getElementById('walletHistoryList');
   const walletHistoryEmpty = document.getElementById('walletHistoryEmpty');
   const walletPane = document.getElementById('walletPane');
+  const walletChartWrapper = document.getElementById('walletChart');
+  const walletChartCanvas = document.getElementById('walletBalanceChart');
+  const walletChartEmpty = document.getElementById('walletChartEmpty');
   const autoRestartHoursInput = document.getElementById('settingAutoRestartHours');
   const autoSnapshotHoursInput = document.getElementById('settingAutoSnapshotHours');
   let settingsStatusTimer = null;
@@ -62,6 +65,7 @@
 
   state.settings = { ...defaultSettings };
   state.walletHistory = [];
+  state.walletBalanceHistory = [];
   state.lastWalletSnapshot = null;
 
   const fmt = new Intl.NumberFormat();
@@ -185,6 +189,118 @@
         autoSnapshotHoursInput.style.setProperty('color', textColor);
       }
     });
+  }
+
+  let walletChart = null;
+
+  function ensureWalletChart() {
+    if (!walletChartCanvas || typeof Chart === 'undefined') {
+      return null;
+    }
+    if (!walletChart) {
+      const ctx = walletChartCanvas.getContext('2d');
+      walletChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: [],
+          datasets: [
+            {
+              label: 'Balance (BDAG)',
+              data: [],
+              borderColor: '#44f2a8',
+              backgroundColor: 'rgba(68,242,168,0.18)',
+              fill: true,
+              tension: 0.25,
+              borderWidth: 2,
+              pointRadius: 0,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          plugins: {
+            legend: {
+              display: false,
+            },
+            tooltip: {
+              callbacks: {
+                title: (items) => items.map((item) => item.label).join(', '),
+                label: (context) => {
+                  const dataset = context.dataset;
+                  const meta = Array.isArray(dataset?.meta) ? dataset.meta[context.dataIndex] : null;
+                  if (meta && typeof meta.formatted === 'string') {
+                    return meta.formatted;
+                  }
+                  const value = Number(context.parsed.y);
+                  if (!Number.isFinite(value)) return '';
+                  return `${value.toLocaleString(undefined, { maximumFractionDigits: 4 })} BDAG`;
+                },
+              },
+            },
+          },
+          scales: {
+            x: {
+              ticks: { color: '#7681a8', maxRotation: 0, autoSkip: true, maxTicksLimit: 6 },
+              grid: { color: 'rgba(255,255,255,0.06)' },
+            },
+            y: {
+              ticks: { color: '#7681a8', maxTicksLimit: 6 },
+              grid: { color: 'rgba(255,255,255,0.06)' },
+            },
+          },
+        },
+      });
+    }
+    return walletChart;
+  }
+
+  function updateWalletChart(history = state.walletBalanceHistory, { enabled = false } = {}) {
+    if (!walletChartWrapper) return;
+    walletChartWrapper.classList.toggle('is-disabled', !enabled);
+    const chart = ensureWalletChart();
+    if (!chart) return;
+    const processed = Array.isArray(history)
+      ? history
+          .map((entry) => {
+            const ts = Number(entry.timestamp);
+            const balance = Number(entry.balance);
+            if (!Number.isFinite(ts) || !Number.isFinite(balance)) {
+              return null;
+            }
+            return {
+              label: fmtShortDateTime.format(new Date(ts)),
+              value: balance,
+              formatted: typeof entry.formatted === 'string'
+                ? entry.formatted
+                : `${balance.toLocaleString(undefined, { maximumFractionDigits: 4 })} BDAG`,
+            };
+          })
+          .filter(Boolean)
+      : [];
+    if (!processed.length) {
+      chart.data.labels = [];
+      chart.data.datasets[0].data = [];
+      chart.data.datasets[0].meta = [];
+      chart.update('none');
+      walletChartWrapper.classList.add('is-empty');
+      if (walletChartEmpty) {
+        walletChartEmpty.textContent = enabled
+          ? 'Balance history will appear here once collected.'
+          : 'Wallet monitoring disabled in settings.';
+        walletChartEmpty.hidden = false;
+      }
+      return;
+    }
+    walletChartWrapper.classList.remove('is-empty');
+    if (walletChartEmpty) {
+      walletChartEmpty.hidden = true;
+    }
+    chart.data.labels = processed.map((entry) => entry.label);
+    chart.data.datasets[0].data = processed.map((entry) => entry.value);
+    chart.data.datasets[0].meta = processed;
+    chart.update('none');
   }
 
   function syncLinkedSettingInputs(key, source) {
@@ -479,6 +595,27 @@
     if (walletAddressValue) walletAddressValue.textContent = displayAddress;
     if (walletBalanceValue) walletBalanceValue.textContent = displayBalance;
     if (walletUpdatedValue) walletUpdatedValue.textContent = updatedText;
+
+    if (Array.isArray(wallet?.balance_history) && wallet.balance_history.length) {
+      state.walletBalanceHistory = wallet.balance_history
+        .map((entry) => {
+          const ts = Number(entry.timestamp);
+          const balance = Number(entry.balance);
+          if (!Number.isFinite(ts) || !Number.isFinite(balance)) {
+            return null;
+          }
+          return {
+            timestamp: ts * 1000,
+            balance,
+            formatted: entry.formatted || `${balance.toLocaleString(undefined, { maximumFractionDigits: 4 })} BDAG`,
+          };
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.timestamp - b.timestamp);
+    } else {
+      state.walletBalanceHistory = [];
+    }
+    updateWalletChart(state.walletBalanceHistory, { enabled });
 
     if (walletHistoryList && walletHistoryEmpty) {
       if (wallet && Array.isArray(wallet.history) && wallet.history.length) {

@@ -159,6 +159,7 @@ WEI_PER_BDAG = Decimal("1000000000000000000")
 WALLET_BALANCE_CACHE_SEC = max(0.0, float(os.getenv("BDAG_BALANCE_CACHE_SEC", "60") or "60"))
 _wallet_address_cache: Dict[str, object] = {"path": None, "mtime": 0.0, "address": None}
 _wallet_balance_cache: Dict[str, object] = {"ts": 0.0, "data": None}
+_WALLET_BALANCE_HISTORY: deque[Dict[str, object]] = deque(maxlen=120)
 
 
 
@@ -1848,7 +1849,9 @@ def _get_wallet_overview() -> dict:
         and cached.get("address") == address
         and now - cached_ts < WALLET_BALANCE_CACHE_SEC
     ):
-        return cached
+        cached_copy = dict(cached)
+        cached_copy["balance_history"] = list(_WALLET_BALANCE_HISTORY)
+        return cached_copy
     try:
         info = _fetch_wallet_balance(address)
     except Exception as exc:
@@ -1856,9 +1859,23 @@ def _get_wallet_overview() -> dict:
     info["source"] = source
     info["timestamp"] = time.time()
     info["short"] = info.get("balance_formatted", "—")
-    _wallet_balance_cache["data"] = info
+    balance_entry: Optional[Dict[str, object]] = None
+    if "balance_bdag" in info:
+        try:
+            balance_decimal = Decimal(str(info["balance_bdag"]))
+            balance_entry = {
+                "timestamp": info["timestamp"],
+                "balance": float(balance_decimal),
+                "formatted": info.get("balance_formatted"),
+            }
+        except Exception:
+            balance_entry = None
+    if balance_entry:
+        _WALLET_BALANCE_HISTORY.append(balance_entry)
+    info["balance_history"] = list(_WALLET_BALANCE_HISTORY)
+    _wallet_balance_cache["data"] = dict(info)
     _wallet_balance_cache["ts"] = info["timestamp"]
-    return info
+    return dict(info)
 
 NODE_CONFIG_PATH = Path(
     os.getenv("BDAG_NODE_CONFIG_PATH")
