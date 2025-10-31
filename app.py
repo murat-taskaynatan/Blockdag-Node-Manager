@@ -1168,6 +1168,12 @@ def _run_restore_job(details: Dict[str, object]) -> None:
                 f"if [ -d '{data_dir.name}' ]; then mv '{data_dir.name}' '{backup_name}'; fi\n"
                 f"mkdir -p '{data_dir.name}'\n"
                 f"tar -xf '/backup/{snapshot_path.name}' -C '{data_dir.name}'\n"
+                f"if [ -d '{data_dir.name}/data/testnet' ] && [ ! -e '{data_dir.name}/testnet' ]; then \n"
+                f"  cd '{data_dir.name}'\n"
+                "  for entry in data/*; do [ -e \"$entry\" ] || break; mv \"$entry\" .; done\n"
+                "  rmdir data 2>/dev/null || rm -rf data\n"
+                "  cd /volume\n"
+                "fi\n"
             )
             command = [
                 DOCKER_BIN,
@@ -1203,6 +1209,19 @@ def _run_restore_job(details: Dict[str, object]) -> None:
                 backup_dir = parent_dir / backup_name
                 shutil.move(str(data_dir), str(backup_dir))
             shutil.move(str(temp_dir), str(data_dir))
+        # Flatten nested restores that wrapped contents in an extra directory (e.g., data/data/testnet).
+        nested_candidate = data_dir / "data"
+        nested_testnet = nested_candidate / "testnet"
+        if nested_candidate.is_dir() and nested_testnet.exists() and not (data_dir / "testnet").exists():
+            for child in nested_candidate.iterdir():
+                target_path = data_dir / child.name
+                if target_path.exists():
+                    if target_path.is_dir():
+                        shutil.rmtree(target_path, ignore_errors=True)
+                    else:
+                        target_path.unlink(missing_ok=True)
+                shutil.move(str(child), str(target_path))
+            shutil.rmtree(nested_candidate, ignore_errors=True)
         backup_dir = parent_dir / backup_name if (parent_dir / backup_name).exists() else backup_dir
         if backup_dir and backup_dir.exists():
             details["backup"] = str(backup_dir)

@@ -35,6 +35,7 @@
   .setting-text{flex:1;display:flex;flex-direction:column;gap:4px}
   .setting-title{font-weight:600;font-size:15px}
   .setting-desc{color:var(--muted);font-size:13px;line-height:1.4}
+  .setting-hint{color:var(--muted);font-size:12px;line-height:1.4}
   .setting-control{display:flex;align-items:center;gap:10px;position:relative}
   .setting-control[data-tooltip]::after{content:attr(data-tooltip);position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);background:rgba(11,16,32,.95);color:var(--text);padding:6px 10px;border-radius:8px;font-size:11px;line-height:1.4;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .15s ease-in-out}
   .setting-control[data-tooltip]::before{content:'';position:absolute;bottom:100%;left:50%;transform:translateX(-50%);border:6px solid transparent;border-top:0;border-bottom-color:rgba(11,16,32,.95);opacity:0;transition:opacity .15s ease-in-out}
@@ -294,19 +295,20 @@
                 <span class="setting-desc">Restart the container automatically when critical errors are detected.</span>
               </div>
               <div class="setting-control">
-                <label class="toggle">
-                  <input type="checkbox" class="toggle-input" id="settingAutoRestart" name="auto_restart_on_error" data-setting-key="auto_restart_on_error">
-                  <span class="toggle-slider"></span>
-                </label>
+                <span class="setting-hint">Use the toggle next to the cooldown control to enable or disable.</span>
               </div>
             </label>
             <label class="setting-row">
               <div class="setting-text">
-                <span class="setting-title">Auto restart cooldown (hours)</span>
-                <span class="setting-desc">Minimum hours between automated restart attempts triggered by error monitoring.</span>
+                <span class="setting-title">Auto restart</span>
+                <span class="setting-desc">Set the minimum hours between automated restart attempts, or disable the automation entirely.</span>
               </div>
               <div class="setting-control" data-tooltip-target="auto-restart-hours">
                 <input type="number" min="0" step="1" id="settingAutoRestartHours" name="auto_restart_hours" data-setting-key="auto_restart_hours" data-setting-type="number" title="Adjust the cooldown when automatic restarts are disabled.">
+                <label class="toggle" title="Toggle automatic restart">
+                  <input type="checkbox" class="toggle-input" id="settingAutoRestart" name="auto_restart_on_error" data-setting-key="auto_restart_on_error">
+                  <span class="toggle-slider"></span>
+                </label>
               </div>
             </label>
             <label class="setting-row">
