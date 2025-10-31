@@ -7,6 +7,7 @@
     lastRates: new Map(), // id -> last non-null sync rate
     lastProgress: new Map(), // id -> last non-null sync progress
     nodeLogs: new Map(), // id -> { lines, ts, loading, error }
+    logPollTimers: new Map(),
     lastMetricsTs: 0,
     settings: {},
     settingsDirty: false,
@@ -126,6 +127,7 @@
 
   const defaultChartView = 'height';
   const LOG_REFRESH_COOLDOWN_MS = 5000;
+  const LOG_AUTO_REFRESH_MS = Math.max(6000, Math.floor(LOG_REFRESH_COOLDOWN_MS * 1.5));
 
   function formatChartLabels(rawLabels) {
     if (!Array.isArray(rawLabels)) return [];
@@ -1225,6 +1227,7 @@ async function saveSettings() {
         state.lastRates.delete(nodeId);
         state.lastProgress.delete(nodeId);
         state.nodeLogs.delete(nodeId);
+        stopLogPolling(nodeId);
       }
     });
     updateSnapshotButtons();
@@ -1800,6 +1803,29 @@ async function saveSettings() {
     return meta.container || status.container || null;
   }
 
+  function stopLogPolling(nodeId) {
+    const timer = state.logPollTimers.get(nodeId);
+    if (timer) {
+      clearInterval(timer);
+      state.logPollTimers.delete(nodeId);
+    }
+  }
+
+  function startLogPolling(nodeId, card) {
+    if (state.logPollTimers.has(nodeId)) return;
+    const interval = setInterval(() => {
+      const entry = state.nodes.get(nodeId);
+      if (!entry || !entry.card || !document.body.contains(entry.card)) {
+        stopLogPolling(nodeId);
+        return;
+      }
+      const panel = entry.card.querySelector('[data-role="logs-panel"]');
+      if (!panel || panel.hasAttribute('hidden')) return;
+      loadNodeLogs(nodeId, entry.card, { force: true, silent: true });
+    }, LOG_AUTO_REFRESH_MS);
+    state.logPollTimers.set(nodeId, interval);
+  }
+
   function updateLogsDisplay(nodeId, card, logsState = {}) {
     const wrapper = card.querySelector('.node-logs');
     const panel = card.querySelector('[data-role="logs-panel"]');
@@ -1856,6 +1882,7 @@ async function saveSettings() {
     if (!entry) return;
     const limit = Number.isFinite(options.limit) && options.limit > 0 ? Math.min(options.limit, 200) : 80;
     const container = locateNodeContainer(nodeId);
+    const silent = options.silent === true;
     if (!container) {
       const unavailableState = {
         lines: [],
@@ -1891,7 +1918,9 @@ async function saveSettings() {
       ts: Date.now(),
     };
     state.nodeLogs.set(nodeId, loadingState);
-    updateLogsDisplay(nodeId, card, loadingState);
+    if (!silent) {
+      updateLogsDisplay(nodeId, card, loadingState);
+    }
     try {
       const res = await fetch(
         `/api/node-manager/logs?node=${encodeURIComponent(nodeId)}&limit=${limit}`,
@@ -1936,10 +1965,12 @@ async function saveSettings() {
       toggle.setAttribute('aria-expanded', 'true');
       wrapper.classList.add('is-open');
       void loadNodeLogs(nodeId, card);
+      startLogPolling(nodeId, card);
     } else {
       panel.setAttribute('hidden', '');
       toggle.setAttribute('aria-expanded', 'false');
       wrapper.classList.remove('is-open');
+      stopLogPolling(nodeId);
     }
   }
 
