@@ -568,8 +568,7 @@ def _run_command_with_progress(command: List[str], dest_path: Path, *, total_byt
                         "bytes_written": bytes_written,
                         "total_bytes": total_bytes,
                         "pct": pct,
-                        "speed_bytes": speed,
-                        "eta_seconds": eta,
+                                                "eta_seconds": eta,
                         "updated": now,
                         "path": str(dest_path),
                         "started": started,
@@ -596,8 +595,7 @@ def _run_command_with_progress(command: List[str], dest_path: Path, *, total_byt
                         "bytes_written": final_bytes,
                         "total_bytes": total_bytes,
                         "pct": final_pct,
-                        "speed_bytes": final_speed,
-                        "eta_seconds": 0.0 if total_bytes > 0 else None,
+                                                "eta_seconds": 0.0 if total_bytes > 0 else None,
                         "updated": final_now,
                         "path": str(dest_path),
                         "started": started,
@@ -655,18 +653,16 @@ def _extract_snapshot_contents(
                 eta = None
                 if total > 0:
                     pct = max(0.0, min(100.0, (processed / total) * 100.0))
-                if elapsed > 0:
-                    speed = processed / elapsed if processed > 0 else 0.0
-                    if total > 0 and speed > 0:
-                        remaining = max(total - processed, 0)
-                        eta = remaining / speed if remaining > 0 else 0.0
+                if elapsed > 0 and total > 0 and processed > 0:
+                    remaining = max(total - processed, 0)
+                    if remaining > 0:
+                        eta = remaining / max(elapsed, 1e-6)
                 _snapshot_progress_update(
                     {
                         "bytes_written": processed,
                         "total_bytes": total,
                         "pct": pct,
-                        "speed_bytes": speed,
-                        "eta_seconds": eta,
+                                                "eta_seconds": eta,
                         "updated": now,
                         "path": str(snapshot_path),
                         "started": started,
@@ -680,8 +676,7 @@ def _extract_snapshot_contents(
                 "bytes_written": processed,
                 "total_bytes": final_total,
                 "pct": 100.0 if final_total else None,
-                "speed_bytes": processed / max(final_now - started, 1e-6) if processed else 0.0,
-                "eta_seconds": 0.0 if final_total else None,
+                                "eta_seconds": 0.0 if final_total else None,
                 "updated": final_now,
                 "path": str(snapshot_path),
                 "started": started,
@@ -799,17 +794,16 @@ def _restore_via_docker(
                     if total > 0:
                         pct = max(0.0, min(100.0, (bytes_written / total) * 100.0))
                     if elapsed > 0 and bytes_written > 0:
-                        speed = bytes_written / elapsed
-                        if total > 0 and speed > 0:
+                        if total > 0 and elapsed > 0 and bytes_written > 0:
                             remaining = max(total - bytes_written, 0)
-                            eta = remaining / speed if remaining > 0 else 0.0
+                            if remaining > 0:
+                                eta = remaining / max(bytes_written / elapsed, 1e-6)
                     _snapshot_progress_update(
                         {
                             "bytes_written": bytes_written,
                             "total_bytes": total,
                             "pct": pct,
-                            "speed_bytes": speed,
-                            "eta_seconds": eta,
+                                                        "eta_seconds": eta,
                             "updated": now,
                             "path": str(snapshot_path),
                             "started": started,
@@ -835,8 +829,7 @@ def _restore_via_docker(
             "bytes_written": final_bytes,
             "total_bytes": total,
             "pct": 100.0 if total else None,
-            "speed_bytes": final_bytes / max(final_now - started, 1e-6) if final_bytes else 0.0,
-            "eta_seconds": 0.0 if total else None,
+                        "eta_seconds": 0.0 if total else None,
             "updated": final_now,
             "path": str(snapshot_path),
             "started": started,
@@ -1193,7 +1186,6 @@ def _run_snapshot_job(details: Dict[str, object]) -> None:
                 "bytes_written": 0,
                 "total_bytes": total_bytes,
                 "pct": 0.0 if total_bytes else None,
-                "speed_bytes": 0.0,
                 "eta_seconds": None,
                 "updated": start_time,
                 "started": start_time,
@@ -1395,7 +1387,6 @@ def _run_restore_job(details: Dict[str, object]) -> None:
                 "bytes_written": 0,
                 "total_bytes": total_bytes,
                 "pct": 0.0 if total_bytes else None,
-                "speed_bytes": 0.0,
                 "eta_seconds": None,
                 "updated": started,
                 "path": str(snapshot_path),

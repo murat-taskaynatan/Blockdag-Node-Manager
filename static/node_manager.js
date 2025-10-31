@@ -467,14 +467,9 @@
         if (jobNode && jobNode === nodeId) {
           const progress = job && job.progress ? job.progress : {};
           const pctText = formatPercent(progress.pct);
-          const speedText =
-            Number.isFinite(progress.speed_bytes) && progress.speed_bytes > 0
-              ? `${formatBytes(progress.speed_bytes)}/s`
-              : null;
-          const etaText = formatDurationShort(progress.eta_seconds);
+                    const etaText = formatDurationShort(progress.eta_seconds);
           const parts = [];
           if (pctText) parts.push(pctText);
-          if (speedText) parts.push(speedText);
           if (etaText) parts.push(`ETA ${etaText}`);
           const progressText = parts.length ? ` (${parts.join(' • ')})` : '';
           const mode = jobDetails.mode || 'snapshot';
