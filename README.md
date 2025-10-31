@@ -23,6 +23,10 @@ BlockDAG Node Manager is a lightweight Flask application that discovers, monitor
 - Safe Docker controls for starting, stopping, and restarting containers directly from the UI.
 - REST API suitable for automation via `/api/node-manager/*`.
 
+Log View
+  <img width="1073" height="307" alt="image" src="https://github.com/user-attachments/assets/5d6cb4b7-d64e-4a52-bf86-aa6983575eba" />
+
+
 ## Requirements
 - Python 3.9+ with `venv`.
 - `requests`, `flask`, and `waitress` Python packages (install via `pip install -r requirements.txt`).
