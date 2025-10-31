@@ -738,6 +738,7 @@
         locations: Array.isArray(payload.locations) ? payload.locations : [],
         dir: payload.directory || '',
         job: payload.job || null,
+        automation: payload.automation || null,
       };
       if (!preserveStatus && payload.status && payload.status.text) {
         state.snapshotStatus = {
