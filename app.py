@@ -440,6 +440,7 @@ SNAPSHOT_DATA_DIR = _expanded_path(
     "/home/node/blockdag/blockdag-scripts/bin/bdag/data",
 )
 SNAPSHOT_DIR = _expanded_path(os.getenv("BDAG_SNAPSHOT_DIR"), os.path.expanduser("~/backups"))
+RESTORE_INFLATE_RATIO = max(1.0, float(os.getenv("BDAG_RESTORE_INFLATE_RATIO", "2.0") or "2.0"))
 SNAPSHOT_PREFIX = (os.getenv("BDAG_SNAPSHOT_PREFIX", "bdag.chaindata") or "bdag.chaindata").strip() or "bdag.chaindata"
 SNAPSHOT_SUFFIX = (os.getenv("BDAG_SNAPSHOT_SUFFIX", ".tar") or ".tar").strip()
 LEGACY_SNAPSHOT_PATTERNS = [
@@ -712,7 +713,8 @@ def _restore_via_docker(
     data_dir: Path,
     backup_name: str,
     *,
-    total_bytes: int,
+    expected_total: int,
+    archive_bytes: int,
     started: float,
 ) -> None:
     parent_dir = data_dir.parent
@@ -767,6 +769,7 @@ def _restore_via_docker(
     ]
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     bytes_written = 0
+    total_hint = max(expected_total, archive_bytes)
     try:
         while True:
             line = process.stdout.readline()
@@ -786,29 +789,30 @@ def _restore_via_docker(
                     except ValueError:
                         continue
                     now = time.time()
-                    total = total_bytes or bytes_written
+                    total = max(total_hint, bytes_written, archive_bytes)
+                    if bytes_written > total_hint:
+                        total_hint = bytes_written
                     pct = None
-                    speed = 0.0
                     eta = None
-                    elapsed = max(now - started, 0.0)
                     if total > 0:
                         pct = max(0.0, min(100.0, (bytes_written / total) * 100.0))
-                    if elapsed > 0 and bytes_written > 0:
-                        if total > 0 and elapsed > 0 and bytes_written > 0:
-                            remaining = max(total - bytes_written, 0)
-                            if remaining > 0:
-                                eta = remaining / max(bytes_written / elapsed, 1e-6)
+                    elapsed = max(now - started, 0.0)
+                    if elapsed > 0 and total > 0 and bytes_written > 0:
+                        remaining = max(total - bytes_written, 0)
+                        if remaining > 0:
+                            eta = remaining / max(bytes_written / elapsed, 1e-6)
                     _snapshot_progress_update(
                         {
                             "bytes_written": bytes_written,
                             "total_bytes": total,
                             "pct": pct,
-                                                        "eta_seconds": eta,
+                            "eta_seconds": eta,
                             "updated": now,
                             "path": str(snapshot_path),
                             "started": started,
                         }
                     )
+        process.wait()
     finally:
         try:
             process.stdout and process.stdout.close()
@@ -823,13 +827,13 @@ def _restore_via_docker(
         stdout, stderr = process.communicate()
         raise RuntimeError(stderr or stdout or f"Command exited with status {process.returncode}")
     final_bytes = max(bytes_written, _directory_size(data_dir))
-    total = total_bytes or final_bytes
+    final_total = max(total_hint, final_bytes, archive_bytes)
     _snapshot_progress_update(
         {
             "bytes_written": final_bytes,
-            "total_bytes": total,
-            "pct": 100.0 if total else None,
-                        "eta_seconds": 0.0 if total else None,
+            "total_bytes": final_total,
+            "pct": 100.0 if final_total else None,
+            "eta_seconds": 0.0 if final_total else None,
             "updated": final_now,
             "path": str(snapshot_path),
             "started": started,
@@ -1376,17 +1380,24 @@ def _run_restore_job(details: Dict[str, object]) -> None:
                 restart_required = _stop_container(container)
             except Exception as exc:
                 raise RuntimeError(f"Failed to stop container {container}: {exc}")
-        total_bytes = 0
+        archive_bytes = 0
         try:
-            total_bytes = max(snapshot_path.stat().st_size, 0)
+            archive_bytes = max(snapshot_path.stat().st_size, 0)
         except Exception:
-            total_bytes = 0
+            archive_bytes = 0
+        expected_total = archive_bytes
+        if archive_bytes > 0:
+            try:
+                inflated = int(archive_bytes * RESTORE_INFLATE_RATIO)
+            except Exception:
+                inflated = archive_bytes
+            expected_total = max(inflated, archive_bytes)
         started = time.time()
         _snapshot_progress_update(
             {
                 "bytes_written": 0,
-                "total_bytes": total_bytes,
-                "pct": 0.0 if total_bytes else None,
+                "total_bytes": expected_total,
+                "pct": 0.0 if expected_total else None,
                 "eta_seconds": None,
                 "updated": started,
                 "path": str(snapshot_path),
@@ -1409,7 +1420,7 @@ def _run_restore_job(details: Dict[str, object]) -> None:
                 backup_dir = parent_dir / backup_name
                 shutil.move(str(data_dir), str(backup_dir))
             data_dir.mkdir(parents=True, exist_ok=True)
-            _extract_snapshot_contents(snapshot_path, data_dir, total_bytes=total_bytes, started=started)
+            _extract_snapshot_contents(snapshot_path, data_dir, total_bytes=expected_total, started=started)
             # Flatten nested restores that wrapped contents in an extra directory (e.g., data/data/testnet).
             nested_candidate = data_dir / "data"
             nested_testnet = nested_candidate / "testnet"
@@ -1428,7 +1439,8 @@ def _run_restore_job(details: Dict[str, object]) -> None:
                 snapshot_path,
                 data_dir,
                 backup_name,
-                total_bytes=total_bytes,
+                expected_total=expected_total,
+                archive_bytes=archive_bytes,
                 started=started,
             )
             backup_dir = parent_dir / backup_name if (parent_dir / backup_name).exists() else backup_dir
