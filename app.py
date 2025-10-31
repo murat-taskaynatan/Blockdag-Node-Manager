@@ -198,7 +198,10 @@ SNAPSHOT_MAX = SNAPSHOT_MAX_DEFAULT
 DEFAULT_SETTINGS: Dict[str, object] = {
     "liveness_auto_recover": False,
     "auto_restart_on_error": False,
+    "auto_restart_enabled": False,
     "auto_restart_hours": 0,
+    "auto_snapshot_enabled": False,
+    "auto_snapshot_hours": 0,
     "display_wallet_balance": _coerce_bool(os.getenv("BDAG_WALLET_DISPLAY", "0"), False),
     "snapshot_max": SNAPSHOT_MAX_DEFAULT,
     "wallet_address": str(os.getenv("BDAG_WALLET_ADDRESS", "")).strip(),
@@ -440,7 +443,6 @@ SNAPSHOT_DATA_DIR = _expanded_path(
     "/home/node/blockdag/blockdag-scripts/bin/bdag/data",
 )
 SNAPSHOT_DIR = _expanded_path(os.getenv("BDAG_SNAPSHOT_DIR"), os.path.expanduser("~/backups"))
-RESTORE_INFLATE_RATIO = max(1.0, float(os.getenv("BDAG_RESTORE_INFLATE_RATIO", "2.0") or "2.0"))
 SNAPSHOT_PREFIX = (os.getenv("BDAG_SNAPSHOT_PREFIX", "bdag.chaindata") or "bdag.chaindata").strip() or "bdag.chaindata"
 SNAPSHOT_SUFFIX = (os.getenv("BDAG_SNAPSHOT_SUFFIX", ".tar") or ".tar").strip()
 LEGACY_SNAPSHOT_PATTERNS = [
@@ -894,7 +896,7 @@ def _stop_container(name: Optional[str], timeout: int = 90) -> bool:
         raise RuntimeError((exc.stderr or exc.stdout or str(exc)).strip())
 
 
-def _start_container(name: Optional[str]) -> bool:
+def _start_container(name: Optional[str], retries: int = 3, retry_delay: float = 5.0) -> bool:
     if not name or not DOCKER_BIN:
         return False
     exists, running, _ = _container_state(name)
@@ -902,17 +904,35 @@ def _start_container(name: Optional[str]) -> bool:
         return False
     if running:
         return True
-    try:
-        subprocess.run(
-            [DOCKER_BIN, "start", name],
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        return True
-    except subprocess.CalledProcessError as exc:
-        raise RuntimeError((exc.stderr or exc.stdout or str(exc)).strip())
+    attempts = max(1, int(retries))
+    delay = max(0.0, float(retry_delay))
+    last_error: Optional[str] = None
+    for attempt in range(1, attempts + 1):
+        try:
+            subprocess.run(
+                [DOCKER_BIN, "start", name],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            return True
+        except subprocess.CalledProcessError as exc:
+            err_text = (exc.stderr or exc.stdout or str(exc)).strip()
+            last_error = err_text
+            if attempt >= attempts:
+                break
+            lowered = err_text.lower()
+            if (
+                "address already in use" in lowered
+                or "bind host port" in lowered
+                or "failed to set up container networking" in lowered
+            ):
+                time.sleep(delay or 1.0)
+                delay = min(delay * 2 if delay else 2.0, 30.0)
+                continue
+            raise RuntimeError(err_text)
+    raise RuntimeError(last_error or "Failed to start container.")
 
 
 def _collect_home_dirs(primary_home: Optional[Path] = None) -> List[Path]:
@@ -1386,12 +1406,6 @@ def _run_restore_job(details: Dict[str, object]) -> None:
         except Exception:
             archive_bytes = 0
         expected_total = archive_bytes
-        if archive_bytes > 0:
-            try:
-                inflated = int(archive_bytes * RESTORE_INFLATE_RATIO)
-            except Exception:
-                inflated = archive_bytes
-            expected_total = max(inflated, archive_bytes)
         started = time.time()
         _snapshot_progress_update(
             {
