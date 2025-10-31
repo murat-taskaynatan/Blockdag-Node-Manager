@@ -691,6 +691,158 @@ def _extract_snapshot_contents(
         tar.close()
 
 
+def _directory_size(path: Path) -> int:
+    total = 0
+    if not path.exists():
+        return 0
+    try:
+        for entry in os.scandir(path):
+            entry_path = Path(entry.path)
+            try:
+                if entry.is_symlink():
+                    continue
+                if entry.is_file():
+                    total += entry_path.stat().st_size
+                elif entry.is_dir():
+                    total += _directory_size(entry_path)
+            except FileNotFoundError:
+                continue
+    except (FileNotFoundError, PermissionError):
+        return total
+    return total
+
+
+def _restore_via_docker(
+    snapshot_path: Path,
+    data_dir: Path,
+    backup_name: str,
+    *,
+    total_bytes: int,
+    started: float,
+) -> None:
+    parent_dir = data_dir.parent
+    script = (
+        "set -e\n"
+        "cd /volume\n"
+        f"if [ -d '{data_dir.name}' ]; then mv '{data_dir.name}' '{backup_name}'; fi\n"
+        f"mkdir -p '{data_dir.name}'\n"
+        "progress() {\n"
+        "  pid=\"$1\"\n"
+        "  while kill -0 \"$pid\" 2>/dev/null; do\n"
+        f"    sz=$(du -s '{data_dir.name}' 2>/dev/null | awk '{{print $1}}')\n"
+        "    sz=${sz:-0}\n"
+        "    echo \"PROGRESS $sz\"\n"
+        "    sleep 1\n"
+        "  done\n"
+        "}\n"
+        f"tar -xf '/backup/{snapshot_path.name}' -C '{data_dir.name}' &\n"
+        "tar_pid=$!\n"
+        "progress \"$tar_pid\" &\n"
+        "progress_pid=$!\n"
+        "set +e\n"
+        "wait \"$tar_pid\"\n"
+        "tar_status=$?\n"
+        "kill \"$progress_pid\" 2>/dev/null || true\n"
+        "wait \"$progress_pid\" 2>/dev/null || true\n"
+        "set -e\n"
+        "echo \"PROGRESS_DONE\"\n"
+        "if [ $tar_status -ne 0 ]; then exit $tar_status; fi\n"
+        f"if [ -d '{data_dir.name}/data/testnet' ] && [ ! -e '{data_dir.name}/testnet' ]; then \n"
+        f"  cd '{data_dir.name}'\n"
+        "  for entry in data/*; do [ -e \"$entry\" ] || break; mv \"$entry\" .; done\n"
+        "  rmdir data 2>/dev/null || rm -rf data\n"
+        "  cd /volume\n"
+        "fi\n"
+    )
+    command = [
+        DOCKER_BIN,
+        "run",
+        "--rm",
+        "--init",
+        "-u",
+        "0",
+        "-v",
+        f"{parent_dir}:/volume",
+        "-v",
+        f"{snapshot_path.parent}:/backup:ro",
+        "busybox",
+        "sh",
+        "-c",
+        script,
+    ]
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    bytes_written = 0
+    try:
+        while True:
+            line = process.stdout.readline()
+            if not line:
+                if process.poll() is not None:
+                    break
+                continue
+            line = line.strip()
+            if line.startswith("PROGRESS_DONE"):
+                continue
+            if line.startswith("PROGRESS"):
+                parts = line.split()
+                if len(parts) >= 2:
+                    try:
+                        kilobytes = int(parts[1])
+                        bytes_written = max(kilobytes, 0) * 1024
+                    except ValueError:
+                        continue
+                    now = time.time()
+                    total = total_bytes or bytes_written
+                    pct = None
+                    speed = 0.0
+                    eta = None
+                    elapsed = max(now - started, 0.0)
+                    if total > 0:
+                        pct = max(0.0, min(100.0, (bytes_written / total) * 100.0))
+                    if elapsed > 0 and bytes_written > 0:
+                        speed = bytes_written / elapsed
+                        if total > 0 and speed > 0:
+                            remaining = max(total - bytes_written, 0)
+                            eta = remaining / speed if remaining > 0 else 0.0
+                    _snapshot_progress_update(
+                        {
+                            "bytes_written": bytes_written,
+                            "total_bytes": total,
+                            "pct": pct,
+                            "speed_bytes": speed,
+                            "eta_seconds": eta,
+                            "updated": now,
+                            "path": str(snapshot_path),
+                            "started": started,
+                        }
+                    )
+    finally:
+        try:
+            process.stdout and process.stdout.close()
+        except Exception:
+            pass
+        try:
+            process.stderr and process.stderr.close()
+        except Exception:
+            pass
+    final_now = time.time()
+    if process.returncode not in (0, None):
+        stdout, stderr = process.communicate()
+        raise RuntimeError(stderr or stdout or f"Command exited with status {process.returncode}")
+    final_bytes = max(bytes_written, _directory_size(data_dir))
+    total = total_bytes or final_bytes
+    _snapshot_progress_update(
+        {
+            "bytes_written": final_bytes,
+            "total_bytes": total,
+            "pct": 100.0 if total else None,
+            "speed_bytes": final_bytes / max(final_now - started, 1e-6) if final_bytes else 0.0,
+            "eta_seconds": 0.0 if total else None,
+            "updated": final_now,
+            "path": str(snapshot_path),
+            "started": started,
+        }
+    )
+
 def _parse_snapshot_height(name: str) -> Optional[int]:
     if not name:
         return None
@@ -1252,28 +1404,43 @@ def _run_restore_job(details: Dict[str, object]) -> None:
         )
         parent_dir = data_dir.parent
         if not parent_dir.exists():
-            parent_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                parent_dir.mkdir(parents=True, exist_ok=True)
+            except PermissionError:
+                # Parent directory will be created within docker helper if needed.
+                pass
         timestamp = datetime.utcnow().strftime("%Y%m%d.%H%M%S")
         backup_name = f"{data_dir.name}.pre-restore.{timestamp}"
-        if data_dir.exists():
-            backup_dir = parent_dir / backup_name
-            shutil.move(str(data_dir), str(backup_dir))
-        data_dir.mkdir(parents=True, exist_ok=True)
-        _extract_snapshot_contents(snapshot_path, data_dir, total_bytes=total_bytes, started=started)
-        # Flatten nested restores that wrapped contents in an extra directory (e.g., data/data/testnet).
-        nested_candidate = data_dir / "data"
-        nested_testnet = nested_candidate / "testnet"
-        if nested_candidate.is_dir() and nested_testnet.exists() and not (data_dir / "testnet").exists():
-            for child in nested_candidate.iterdir():
-                target_path = data_dir / child.name
-                if target_path.exists():
-                    if target_path.is_dir():
-                        shutil.rmtree(target_path, ignore_errors=True)
-                    else:
-                        target_path.unlink(missing_ok=True)
-                shutil.move(str(child), str(target_path))
-            shutil.rmtree(nested_candidate, ignore_errors=True)
-        backup_dir = parent_dir / backup_name if (parent_dir / backup_name).exists() else backup_dir
+        can_write_parent = os.access(parent_dir, os.W_OK | os.X_OK)
+        can_write_existing = not data_dir.exists() or os.access(data_dir, os.W_OK | os.X_OK)
+        if can_write_parent and can_write_existing:
+            if data_dir.exists():
+                backup_dir = parent_dir / backup_name
+                shutil.move(str(data_dir), str(backup_dir))
+            data_dir.mkdir(parents=True, exist_ok=True)
+            _extract_snapshot_contents(snapshot_path, data_dir, total_bytes=total_bytes, started=started)
+            # Flatten nested restores that wrapped contents in an extra directory (e.g., data/data/testnet).
+            nested_candidate = data_dir / "data"
+            nested_testnet = nested_candidate / "testnet"
+            if nested_candidate.is_dir() and nested_testnet.exists() and not (data_dir / "testnet").exists():
+                for child in nested_candidate.iterdir():
+                    target_path = data_dir / child.name
+                    if target_path.exists():
+                        if target_path.is_dir():
+                            shutil.rmtree(target_path, ignore_errors=True)
+                        else:
+                            target_path.unlink(missing_ok=True)
+                    shutil.move(str(child), str(target_path))
+                shutil.rmtree(nested_candidate, ignore_errors=True)
+        else:
+            _restore_via_docker(
+                snapshot_path,
+                data_dir,
+                backup_name,
+                total_bytes=total_bytes,
+                started=started,
+            )
+            backup_dir = parent_dir / backup_name if (parent_dir / backup_name).exists() else backup_dir
         if backup_dir and backup_dir.exists():
             details["backup"] = str(backup_dir)
         message = f"Snapshot {snapshot_path.name} restored"
