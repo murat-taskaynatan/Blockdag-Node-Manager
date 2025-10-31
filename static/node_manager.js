@@ -1281,6 +1281,11 @@ async function saveSettings() {
       summary.setAttribute('title', 'Click to expand');
       details.addEventListener('toggle', () => {
         summary.setAttribute('title', details.open ? 'Click to collapse' : 'Click to expand');
+        const entry = state.nodes.get(node.id);
+        if (entry) {
+          entry.state = entry.state || {};
+          entry.state.cardOpen = details.open;
+        }
       });
     }
 
@@ -1321,7 +1326,7 @@ async function saveSettings() {
       restoreBtn.title = 'Restore snapshot';
     }
     cardsContainer.appendChild(details);
-    state.nodes.set(node.id, { card: details, meta: node });
+    state.nodes.set(node.id, { card: details, meta: node, state: {} });
     state.chartViews.set(node.id, defaultChartView);
     updateCardHeader(node);
 
@@ -1377,13 +1382,48 @@ async function saveSettings() {
   function updateCardHeader(node) {
     const entry = state.nodes.get(node.id);
     if (!entry) return;
+    const previousState = entry.state || {};
     entry.meta = node;
+    entry.state = previousState;
 
     const card = entry.card;
-    if (card) {
+    if (card && !previousState.cardOpen) {
       card.open = false;
       card.removeAttribute('open');
     }
+    const panelEl = card?.querySelector?.('[data-role="logs-panel"]');
+    const toggleEl = card?.querySelector?.('[data-role="logs-toggle"]');
+    const wrapperEl = card?.querySelector?.('.node-logs');
+
+    if (previousState.cardOpen && card) {
+      card.open = true;
+      card.setAttribute('open', '');
+    } else if (card && !previousState.cardOpen) {
+      card.open = false;
+      card.removeAttribute('open');
+    }
+
+    if (panelEl) {
+      if (previousState.logsOpen) {
+        if (panelEl.hasAttribute('hidden')) {
+          panelEl.removeAttribute('hidden');
+        }
+        toggleEl?.setAttribute('aria-expanded', 'true');
+        wrapperEl?.classList.add('is-open');
+        startLogPolling(node.id, card);
+        void loadNodeLogs(node.id, card, { force: true, silent: true });
+      } else {
+        if (!panelEl.hasAttribute('hidden')) {
+          panelEl.setAttribute('hidden', '');
+        }
+        toggleEl?.setAttribute('aria-expanded', 'false');
+        wrapperEl?.classList.remove('is-open');
+        stopLogPolling(node.id);
+      }
+    }
+
+    entry.state.cardOpen = Boolean(card && card.open);
+    entry.state.logsOpen = Boolean(panelEl && !panelEl.hasAttribute('hidden'));
     const orderingContext = (() => {
       const keys = Array.from(state.nodes.keys());
       const infoMap = new Map();
@@ -1971,6 +2011,12 @@ async function saveSettings() {
       toggle.setAttribute('aria-expanded', 'false');
       wrapper.classList.remove('is-open');
       stopLogPolling(nodeId);
+    }
+    const entry = state.nodes.get(nodeId);
+    if (entry) {
+      entry.state = entry.state || {};
+      entry.state.logsOpen = !panel.hasAttribute('hidden');
+      entry.state.cardOpen = card?.open || false;
     }
   }
 
