@@ -248,6 +248,8 @@
             y: {
               ticks: { color: '#7681a8', maxTicksLimit: 6 },
               grid: { color: 'rgba(255,255,255,0.06)' },
+              border: { display: false },
+              position: 'right',
             },
           },
         },
