@@ -77,6 +77,16 @@
   .wallet-tile{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px 16px}
   .wallet-tile .label{font-size:12px;color:var(--muted);letter-spacing:.02em;text-transform:none}
   .wallet-tile .value{font-size:13px;font-weight:600;margin-top:6px;word-break:break-all}
+  .wallet-chart{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:12px}
+  .wallet-chart.is-disabled{opacity:.4}
+  .wallet-chart__header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .wallet-chart__title{font-size:13px;font-weight:600;color:var(--text)}
+  .wallet-chart__canvas{position:relative;height:220px}
+  .wallet-chart__canvas canvas{width:100%;height:100%}
+  .wallet-chart__empty{font-size:12px;color:var(--muted);text-align:center;padding:12px;border:1px dashed rgba(255,255,255,.14);border-radius:10px}
+  .wallet-chart.is-empty .wallet-chart__canvas{display:none}
+  .wallet-chart.is-empty .wallet-chart__empty{display:block}
+  .wallet-chart:not(.is-empty) .wallet-chart__empty{display:none}
   .wallet-history{background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px 16px;max-height:240px;overflow:auto}
   .wallet-history h4{margin:0 0 10px;font-size:14px;font-weight:600;color:var(--muted);letter-spacing:.02em;text-transform:none}
   .wallet-history ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
@@ -385,6 +395,15 @@
                 <div class="label">Last Updated</div>
                 <div class="value" id="walletUpdatedValue">—</div>
               </div>
+            </div>
+            <div class="wallet-chart is-empty" id="walletChart">
+              <div class="wallet-chart__header">
+                <span class="wallet-chart__title">Balance Trend</span>
+              </div>
+              <div class="wallet-chart__canvas">
+                <canvas id="walletBalanceChart"></canvas>
+              </div>
+              <div class="wallet-chart__empty" id="walletChartEmpty">Balance history will appear here once collected.</div>
             </div>
             <div class="wallet-history" id="walletHistory">
               <h4>History</h4>
