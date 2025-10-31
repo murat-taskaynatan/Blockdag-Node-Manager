@@ -125,6 +125,7 @@ def _normalize_remote_url(url: Optional[str]) -> str:
 
 PRIMARY_REMOTE_RPC_BASE = _normalize_remote_url("http://13.245.135.249:18545")
 LEGACY_REMOTE_RPC_BASES = [
+    _normalize_remote_url("https://relay.awakening.bdagscan.com"),
     _normalize_remote_url("https://rpc.awakening.bdagscan.com"),
 ]
 
@@ -228,7 +229,7 @@ def _expand_env_placeholders(value: str) -> str:
     return _ENV_VAR_PATTERN.sub(repl, value)
 
 
-DEFAULT_RPC_FALLBACK = "https://rpc.awakening.bdagscan.com"
+DEFAULT_RPC_FALLBACK = "https://relay.awakening.bdagscan.com"
 
 
 def _normalize_rpc_endpoint(endpoint: Optional[str]) -> str:
