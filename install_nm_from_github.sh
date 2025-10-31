@@ -24,6 +24,32 @@ cleanup() {
 need_cmd git
 need_cmd "$PYTHON_BIN"
 
+ensure_packages() {
+  local missing=()
+  local packages=("$@")
+  if command -v apt-get >/dev/null 2>&1; then
+    for pkg in "${packages[@]}"; do
+      dpkg -s "$pkg" >/dev/null 2>&1 || missing+=("$pkg")
+    done
+    if ((${#missing[@]})); then
+      echo "Installing missing apt packages: ${missing[*]}"
+      sudo apt-get update
+      sudo apt-get install -y "${missing[@]}"
+    fi
+  elif command -v dnf >/dev/null 2>&1; then
+    for pkg in "${packages[@]}"; do
+      rpm -q "$pkg" >/dev/null 2>&1 || missing+=("$pkg")
+    done
+    if ((${#missing[@]})); then
+      echo "Installing missing dnf packages: ${missing[*]}"
+      sudo dnf install -y "${missing[@]}"
+    fi
+  fi
+}
+
+echo "[0/4] Ensuring base packages (git/python/venv/rsync/fio)"
+ensure_packages git rsync python3 python3-venv python3-pip fio
+
 TEMP_ROOT="$(mktemp -d)"
 trap cleanup EXIT
 

@@ -32,6 +32,7 @@ Log View
 - Python 3.9+ with `venv`.
 - `requests`, `flask`, and `waitress` Python packages (install via `pip install -r requirements.txt`).
 - Optional: Docker CLI for container discovery and controls.
+ - Optional but recommended: `fio` for Overclock → Verify benchmark. The installer auto‑installs `fio` on apt/dnf systems; the app will attempt to install it on demand when you click Verify.
 
 ## Quick Start
 ```bash

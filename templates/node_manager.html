@@ -215,6 +215,10 @@
   .node-logs__output::-webkit-scrollbar{width:8px;height:8px}
   .node-logs__output::-webkit-scrollbar-track{background:#20263d;border-radius:8px}
   .node-logs__output::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.16);border-radius:8px}
+  /* Overclock logs panel spacing override */
+  #ocLogsPanel.node-logs{border-top:none;padding-top:6px;margin-top:0}
+  /* When compact mode, remove parent gap space before logs */
+  #overclockForm.oc-compact-logs #ocLogsPanel{margin-top:-14px}
   .fleet-footer{display:flex;justify-content:flex-end;padding:0 18px 16px}
   .fleet-footer .timestamp{font-size:12px;color:var(--muted)}
   .empty-state{padding:20px;border:1px dashed rgba(255,255,255,.15);border-radius:14px;text-align:center;color:var(--muted);font-size:14px}
@@ -260,6 +264,7 @@
             <div class="summary-tabs" role="tablist" aria-label="Dashboard view">
               <button class="summary-tab is-active" type="button" data-summary-tab="stats" aria-selected="true">Stats</button>
               <button class="summary-tab" type="button" data-summary-tab="settings" aria-selected="false">Settings</button>
+              <button class="summary-tab" type="button" data-summary-tab="overclock" aria-selected="false">Overclock</button>
               <button class="summary-tab" type="button" data-summary-tab="snapshots" aria-selected="false">Snapshots</button>
               <button class="summary-tab" type="button" data-summary-tab="wallet" aria-selected="false">Wallet</button>
             </div>
@@ -381,6 +386,109 @@
                 Save Settings
               </button>
               <span class="settings-status" id="settingsStatus"></span>
+            </div>
+          </form>
+        </div>
+        <div class="summary-pane" data-summary-pane="overclock" hidden>
+          <form class="settings-form" id="overclockForm">
+            <label class="setting-row">
+              <div class="setting-text">
+                <span class="setting-title">Data directory</span>
+                <span class="setting-desc">Path to your node’s data directory. We’ll detect the mountpoint automatically.</span>
+              </div>
+              <div class="setting-control">
+                <input type="text" id="ocDataPath" placeholder="/home/node/blockdag" value="/home/node/blockdag">
+              </div>
+            </label>
+            <div class="setting-group">
+              <div class="setting-row">
+                <div class="setting-text">
+                  <span class="setting-title">CPU governor: performance</span>
+                  <span class="setting-desc">Pins CPUs to performance governor to reduce latency.</span>
+                </div>
+                <div class="setting-control">
+                  <label class="toggle" title="Set CPU governor to performance">
+                    <input type="checkbox" class="toggle-input" id="ocCpu">
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+              </div>
+              <div class="setting-row">
+                <div class="setting-text">
+                  <span class="setting-title">NVMe low-latency mode</span>
+                  <span class="setting-desc">Disable APST latency target (nvme_core.default_ps_max_latency_us=0).</span>
+                </div>
+                <div class="setting-control">
+                  <label class="toggle" title="Enable NVMe low-latency mode">
+                    <input type="checkbox" class="toggle-input" id="ocNvmeLatency">
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+              </div>
+              <div class="setting-row">
+                <div class="setting-text">
+                  <span class="setting-title">I/O scheduler: none</span>
+                  <span class="setting-desc">Use none (or mq-deadline) scheduler for NVMe.</span>
+                </div>
+                <div class="setting-control">
+                  <label class="toggle" title="Set IO scheduler">
+                    <input type="checkbox" class="toggle-input" id="ocScheduler">
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+              </div>
+              <div class="setting-row">
+                <div class="setting-text">
+                  <span class="setting-title">Filesystem remount (tuned)</span>
+                  <span class="setting-desc">ext4: noatime,commit=30,data=ordered; xfs: noatime,logbufs=8,logbsize=256k.</span>
+                </div>
+                <div class="setting-control">
+                  <label class="toggle" title="Remount filesystem with tuned options">
+                    <input type="checkbox" class="toggle-input" id="ocRemount">
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+              </div>
+            </div>
+            <label class="setting-row">
+              <div class="setting-text">
+                <span class="setting-title">Enable write‑back cache (VWC)</span>
+                <span class="setting-desc">Bigger speedup, but risk of data loss on power failure unless your NVMe has PLP. Use only if you accept the risk.</span>
+                <span class="setting-hint" id="ocVwcRisk" style="font-size:12px;color:var(--muted)">VWC safety: unknown (run preflight)</span>
+              </div>
+              <div class="setting-control">
+                <label class="toggle" title="Enable NVMe volatile write cache (write‑back)">
+                  <input type="checkbox" class="toggle-input" id="ocEnableVWC">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </label>
+            <div class="settings-actions">
+              <button type="button" class="btn btn--primary" id="btnApplyOverclock">
+                Apply Tweaks
+              </button>
+              <button type="button" class="btn btn--ghost" id="btnVerifyOverclock" title="Run a short fsync micro-benchmark (fio)">
+                Verify
+              </button>
+              <button type="button" class="btn btn--ghost" id="btnRevertOverclock" title="Revert tweaks to defaults">
+                Revert
+              </button>
+              <span class="settings-status" id="overclockStatus"></span>
+            </div>
+            <div style="margin-top:12px" id="overclockChartPane">
+              <canvas id="overclockVerifyChart" height="120"></canvas>
+              <div id="overclockChartEmpty" class="setting-hint" style="margin-top:6px">Run Verify to populate the chart.</div>
+            </div>
+            <div class="node-logs" id="ocLogsPanel">
+              <div class="node-logs__header">
+                <span class="node-logs__title">Overclock Logs</span>
+                <span class="node-logs__meta" id="ocLogsMeta">Not loaded yet.</span>
+                <button class="pill-btn node-logs__refresh" type="button" id="btnOcLogsRefresh" title="Refresh">
+                  <span class="icon">↻</span>
+                  Refresh
+                </button>
+              </div>
+              <pre class="node-logs__output" id="ocLogsOutput">No log lines yet.</pre>
             </div>
           </form>
         </div>
@@ -548,4 +656,4 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" integrity="sha384-NrKB+u6Ts6AtkIhwPixiKTzgSKNblyhlk0Sohlgar9UHUBzai/sgnNNWWd291xqt" crossorigin="anonymous"></script>
 <script src="{{ url_for('static', filename='node_manager.js') }}?v={{ app_version }}-{{ cache_buster }}"></script>
-<div class="version-badge"><strong>v1.3.0</strong></div>
+<div class="version-badge"><strong>{{ app_version }}</strong></div>

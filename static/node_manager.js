@@ -34,6 +34,17 @@
   const settingsForm = document.getElementById('settingsForm');
   const saveSettingsBtn = document.getElementById('btnSaveSettings');
   const settingsStatus = document.getElementById('settingsStatus');
+  const overclockForm = document.getElementById('overclockForm');
+  const overclockStatus = document.getElementById('overclockStatus');
+  const ocDataPath = document.getElementById('ocDataPath');
+  const ocEnableVWC = document.getElementById('ocEnableVWC');
+  const ocCpu = document.getElementById('ocCpu');
+  const ocNvmeLatency = document.getElementById('ocNvmeLatency');
+  const ocScheduler = document.getElementById('ocScheduler');
+  const ocRemount = document.getElementById('ocRemount');
+  const ocVwcRisk = document.getElementById('ocVwcRisk');
+  let ocChart = null;
+  const ocHistory = [];
   const snapshotList = document.getElementById('snapshotList');
   const snapshotStatus = document.getElementById('snapshotStatus');
   const snapshotEmptyState = document.getElementById('snapshotEmptyState');
@@ -50,6 +61,96 @@
   const walletChartEmpty = document.getElementById('walletChartEmpty');
   const autoRestartHoursInput = document.getElementById('settingAutoRestartHours');
   const autoSnapshotHoursInput = document.getElementById('settingAutoSnapshotHours');
+  const ocLogsPanel = document.getElementById('ocLogsPanel');
+  const ocLogsOutput = document.getElementById('ocLogsOutput');
+  const ocLogsMeta = document.getElementById('ocLogsMeta');
+  let ocLogPollTimer = null;
+  const ocChartPane = document.getElementById('overclockChartPane');
+  const ocManualPane = document.getElementById('overclockManualPane');
+  const ocManualContent = document.getElementById('overclockManualContent');
+  let ocManualLoaded = false;
+  const ocChartEmpty = document.getElementById('overclockChartEmpty');
+  const ocCanvas = document.getElementById('overclockVerifyChart');
+  // Allow init() to push a metric once auto-verify returns
+  let ocAppendMetric = null;
+  function drawFallbackChart(labels, iopsData, p50Data) {
+    if (!ocCanvas) return;
+    const ctx = ocCanvas.getContext('2d');
+    const w = ocCanvas.width = ocCanvas.clientWidth || 600;
+    const h = ocCanvas.height = ocCanvas.clientHeight || 140;
+    ctx.clearRect(0, 0, w, h);
+    // Padding
+    const padL = 32, padR = 12, padT = 12, padB = 18;
+    const plotW = Math.max(10, w - padL - padR);
+    const plotH = Math.max(10, h - padT - padB);
+    // Ranges
+    const xs = labels.length;
+    const minX = 0, maxX = Math.max(1, xs - 1);
+    const iopsVals = iopsData.filter(v => Number.isFinite(v));
+    const p50Vals = p50Data.filter(v => Number.isFinite(v));
+    const iopsMin = iopsVals.length ? Math.min(...iopsVals) : 0;
+    const iopsMax = iopsVals.length ? Math.max(...iopsVals) : 1;
+    const p50Min = p50Vals.length ? Math.min(...p50Vals) : 0;
+    const p50Max = p50Vals.length ? Math.max(...p50Vals) : 1;
+    const scale = (val, min, max) => {
+      const r = max - min || 1;
+      return Math.max(0, Math.min(1, (val - min) / r));
+    };
+    // Grid
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let i = 0; i <= 4; i++) {
+      const y = padT + (plotH * i) / 4;
+      ctx.moveTo(padL, y);
+      ctx.lineTo(padL + plotW, y);
+    }
+    ctx.stroke();
+    // Draw series helper
+    function drawSeries(values, color, min, max) {
+      if (!values.length) return;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let i = 0; i < values.length; i++) {
+        const v = Number.isFinite(values[i]) ? values[i] : null;
+        const x = padL + (plotW * (i - minX)) / (maxX - minX || 1);
+        if (v == null) continue;
+        const t = scale(v, min, max);
+        const y = padT + plotH * (1 - t);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+    // IOPS (green, left axis)
+    drawSeries(iopsData, '#44f2a8', iopsMin, iopsMax);
+    // p50 (blue-ish, right axis) — scale to its own range
+    drawSeries(p50Data, '#55aaff', p50Min, p50Max);
+    // Axes labels (simple)
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.font = '11px ui-sans-serif, system-ui, sans-serif';
+    if (labels.length) {
+      ctx.fillText('IOPS (left), p50 μs (right)', padL, padT - 2);
+    }
+  }
+  function updateOcLayout() {
+    const form = document.getElementById('overclockForm');
+    if (!form) return;
+    const noChart = !ocChartPane || ocChartPane.hidden === true;
+    const noManual = !ocManualPane || ocManualPane.hidden === true;
+    if (noChart && noManual) {
+      form.classList.add('oc-compact-logs');
+    } else {
+      form.classList.remove('oc-compact-logs');
+    }
+  }
+  function openOcLogs() {
+    if (ocLogsPanel) {
+      ocLogsPanel.hidden = false;
+    }
+    void loadOcLogs({ force: true });
+    startOcLogPolling();
+  }
   let settingsStatusTimer = null;
   let snapshotPollTimer = null;
   const defaultSettings = {
@@ -1180,6 +1281,10 @@ function switchSummaryTab(target) {
         title: 'Settings',
         desc: 'Configure automatic recovery and display preferences for the fleet.',
       },
+      overclock: {
+        title: 'Overclock',
+        desc: 'Apply NVMe/CPU/filesystem tweaks to speed up sync on bare metal.',
+      },
       snapshots: {
         title: 'Snapshots',
         desc: 'Latest archived snapshots for quick recovery.',
@@ -1223,11 +1328,11 @@ function updateSettingsStatus(message, options = {}) {
   }
 }
 
-function applySettingsToForm(settings = {}) {
-  const merged = { ...defaultSettings, ...settings };
-  state.settings = { ...merged };
-  state.settingsDirty = false;
-  if (settingsForm) {
+  function applySettingsToForm(settings = {}) {
+    const merged = { ...defaultSettings, ...settings };
+    state.settings = { ...merged };
+    state.settingsDirty = false;
+    if (settingsForm) {
     const inputs = settingsForm.querySelectorAll('[data-setting-key]');
     inputs.forEach((input) => {
       const key = input.dataset.settingKey;
@@ -1257,6 +1362,17 @@ function applySettingsToForm(settings = {}) {
     saveSettingsBtn.disabled = true;
   }
   updateSettingsStatus('');
+  // Also apply Overclock preferences to Overclock form
+  try {
+    if (ocDataPath && typeof merged.overclock_data_path === 'string' && merged.overclock_data_path) {
+      ocDataPath.value = merged.overclock_data_path;
+    }
+    if (typeof merged.overclock_cpu === 'boolean' && ocCpu) ocCpu.checked = !!merged.overclock_cpu;
+    if (typeof merged.overclock_nvme_latency === 'boolean' && ocNvmeLatency) ocNvmeLatency.checked = !!merged.overclock_nvme_latency;
+    if (typeof merged.overclock_scheduler === 'boolean' && ocScheduler) ocScheduler.checked = !!merged.overclock_scheduler;
+    if (typeof merged.overclock_remount === 'boolean' && ocRemount) ocRemount.checked = !!merged.overclock_remount;
+    if (typeof merged.overclock_enable_vwc === 'boolean' && ocEnableVWC) ocEnableVWC.checked = !!merged.overclock_enable_vwc;
+  } catch (_) {}
 }
 
 function markSettingsDirty() {
@@ -1318,6 +1434,16 @@ async function saveSettings() {
       const res = await fetch('/api/node-manager/nodes', { cache: 'no-store' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const payload = await res.json();
+      // Auto-fill Overclock data path from first discovered node with chain_data_dir
+      try {
+        const nodes = payload.nodes || [];
+        const withData = nodes.find((n) => n && n.status && n.status.chain_data_dir);
+        if (withData && withData.status && withData.status.chain_data_dir && ocDataPath && (!ocDataPath.value || ocDataPath.value === '/home/node/blockdag')) {
+          ocDataPath.value = withData.status.chain_data_dir;
+        }
+      } catch (e) {
+        // ignore
+      }
       const nodes = Array.isArray(payload.nodes) ? payload.nodes : [];
       const stalled = nodes.reduce((count, node) => {
         if (!node || !node.id) return count;
@@ -2547,6 +2673,206 @@ async function saveSettings() {
         void saveSettings();
       });
     }
+    if (overclockForm) {
+      const setOCStatus = (text, kind='') => {
+        if (!overclockStatus) return;
+        overclockStatus.textContent = text || '';
+        overclockStatus.classList.remove('is-error','is-success');
+        if (kind === 'error') overclockStatus.classList.add('is-error');
+        if (kind === 'success') overclockStatus.classList.add('is-success');
+      };
+      const setVwcRisk = (text, level='') => {
+        if (!ocVwcRisk) return;
+        ocVwcRisk.textContent = `VWC safety: ${text}`;
+        ocVwcRisk.classList.remove('is-error','is-success');
+        if (level === 'error') ocVwcRisk.classList.add('is-error');
+        if (level === 'success') ocVwcRisk.classList.add('is-success');
+      };
+      const parseIops = (value) => {
+        if (!value) return null;
+        const v = String(value).trim().toLowerCase().replace('iops','').trim();
+        const m = v.match(/([0-9]+(?:\.[0-9]+)?)\s*([kmg])?/);
+        if (!m) return Number.parseFloat(v) || null;
+        let num = Number.parseFloat(m[1]);
+        const unit = m[2];
+        if (unit === 'k') num *= 1e3; else if (unit === 'm') num *= 1e6; else if (unit === 'g') num *= 1e9;
+        return num;
+      };
+      const ensureOcChart = () => {
+        if (ocChart) return ocChart;
+        const canvas = document.getElementById('overclockVerifyChart');
+        if (!canvas) return null;
+        if (typeof Chart !== 'function') {
+          if (ocChartEmpty) ocChartEmpty.textContent = 'Chart unavailable (library not loaded)';
+          return null;
+        }
+        ocChart = new Chart(canvas.getContext('2d'), {
+          type: 'line',
+          data: { labels: [], datasets: [
+            { label: 'IOPS', data: [], borderColor: '#44f2a8', tension: 0.2, yAxisID: 'y' },
+            { label: 'p50 (us)', data: [], borderColor: '#55aaff', tension: 0.2, yAxisID: 'y1' },
+          ]},
+          options: { responsive: true, animation: false, scales: { y: { position: 'left' }, y1: { position: 'right' } } }
+        });
+        return ocChart;
+      };
+      const updateOcChart = (metrics) => {
+        const chart = ensureOcChart();
+        const ts = new Date();
+        const iops = parseIops(metrics.iops);
+        const p50 = metrics.p50 ? Number((metrics.p50.match(/([0-9.]+)/)||[])[1]) : null;
+        ocHistory.push({ ts, iops, p50 });
+        const labels = ocHistory.map(x => fmtTime.format(x.ts));
+        const iopsData = ocHistory.map(x => x.iops);
+        const p50Data = ocHistory.map(x => x.p50);
+        if (chart && typeof chart.update === 'function' && (Number.isFinite(iops) || Number.isFinite(p50))) {
+          chart.data.labels = labels;
+          chart.data.datasets[0].data = iopsData;
+          chart.data.datasets[1].data = p50Data;
+          chart.update();
+        } else {
+          drawFallbackChart(labels, iopsData, p50Data);
+        }
+        if (ocChartEmpty && (Number.isFinite(iops) || Number.isFinite(p50))) ocChartEmpty.hidden = true;
+      };
+      // Expose to init() so auto-prime can push a point
+      ocAppendMetric = updateOcChart;
+      const preflight = async () => {
+        try {
+          setVwcRisk('checking…');
+          const payload = { data_path: ocDataPath?.value?.trim() || '/home/node/blockdag' };
+          const res = await fetch('/api/overclock/preflight', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok || json.ok === false) {
+            setVwcRisk(json.error || `error`, 'error');
+            return;
+          }
+          const plp = json.plp || 'unknown';
+          if (plp === 'yes') setVwcRisk('PLP detected (safer)', 'success');
+          else if (plp === 'no') setVwcRisk('No PLP (risk on power loss)', 'error');
+          else setVwcRisk('unknown');
+        } catch (err) {
+          setVwcRisk('check failed', 'error');
+        }
+      };
+      ocDataPath?.addEventListener('change', preflight);
+      // Kick off preflight on load
+      setTimeout(preflight, 0);
+      const btn = document.getElementById('btnApplyOverclock');
+      if (btn) {
+        btn.addEventListener('click', async () => {
+          try {
+            setOCStatus('Applying…');
+            openOcLogs();
+            updateOcLayout();
+            const payload = {
+              data_path: ocDataPath?.value?.trim() || '/home/node/blockdag',
+              enable_vwc: !!ocEnableVWC?.checked,
+              cpu: !!ocCpu?.checked,
+              nvme_latency: !!ocNvmeLatency?.checked,
+              scheduler: !!ocScheduler?.checked,
+              remount: !!ocRemount?.checked,
+            };
+            const res = await fetch('/api/overclock/apply', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok || json.ok === false) {
+              const msg = json.error || `HTTP ${res.status}`;
+              setOCStatus(msg, 'error');
+              return;
+            }
+            // Persist Overclock preferences so they survive refresh
+            try {
+              const pref = {
+                overclock_data_path: payload.data_path,
+                overclock_cpu: payload.cpu,
+                overclock_nvme_latency: payload.nvme_latency,
+                overclock_scheduler: payload.scheduler,
+                overclock_remount: payload.remount,
+                overclock_enable_vwc: payload.enable_vwc,
+              };
+              void fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify(pref),
+              }).catch(() => {});
+            } catch (_) {}
+            let msg = 'Tweaks applied';
+            if (json.needs_root) msg = 'Needs root: ' + (json.hint || 'run via sudo');
+            setOCStatus(msg, json.needs_root ? '' : 'success');
+          } catch (err) {
+            console.error('[overclock] failed', err);
+            setOCStatus(err.message || 'Failed to apply', 'error');
+          }
+        });
+      }
+      const verifyBtn = document.getElementById('btnVerifyOverclock');
+      if (verifyBtn) {
+        verifyBtn.addEventListener('click', async () => {
+          try {
+            setOCStatus('Running verify (10s)…');
+            openOcLogs();
+            updateOcLayout();
+            const payload = { data_path: ocDataPath?.value?.trim() || '/home/node/blockdag' };
+            const res = await fetch('/api/overclock/verify', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok || json.ok === false) {
+              setOCStatus(json.error || `HTTP ${res.status}`, 'error');
+              return;
+            }
+            const m = json.metrics || {};
+            const parts = [];
+            if (m.iops) parts.push(`${m.iops} IOPS`);
+            if (m.bw) parts.push(`${m.bw}`);
+            if (m.p50) parts.push(`p50 ${m.p50}`);
+            if (m.p99) parts.push(`p99 ${m.p99}`);
+            setOCStatus(parts.length ? `Verify: ${parts.join(', ')}` : 'Verify complete', 'success');
+            updateOcChart(m);
+          } catch (err) {
+            console.error('[overclock verify] failed', err);
+            setOCStatus(err.message || 'Verify failed', 'error');
+          }
+        });
+      }
+      const revertBtn = document.getElementById('btnRevertOverclock');
+      if (revertBtn) {
+        revertBtn.addEventListener('click', async () => {
+          try {
+            setOCStatus('Reverting…');
+            openOcLogs();
+            updateOcLayout();
+            const payload = { data_path: ocDataPath?.value?.trim() || '/home/node/blockdag' };
+            const res = await fetch('/api/overclock/revert', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok || json.ok === false) {
+              setOCStatus(json.error || `HTTP ${res.status}`, 'error');
+              return;
+            }
+            let msg = 'Reverted to defaults';
+            if (json.needs_root) msg = 'Needs root: ' + (json.hint || 'run via sudo');
+            setOCStatus(msg, json.needs_root ? '' : 'success');
+            // Refresh preflight after revert
+            setTimeout(() => { void preflight(); }, 500);
+          } catch (err) {
+            console.error('[overclock revert] failed', err);
+            setOCStatus(err.message || 'Revert failed', 'error');
+          }
+        });
+      }
+      // Logs button removed; always show logs and poll
+      const refreshLogsBtn = document.getElementById('btnOcLogsRefresh');
+      if (refreshLogsBtn) {
+        refreshLogsBtn.addEventListener('click', () => { void loadOcLogs({ force: true }); });
+      }
+      // Manual removed
+    }
     if (snapshotRefreshBtn) {
       snapshotRefreshBtn.addEventListener('click', () => {
         void refreshSnapshots();
@@ -2582,7 +2908,57 @@ async function saveSettings() {
     await loadSnapshots({ silent: true });
     await discoverNodes({ auto: true });
     await refreshMetrics();
+    // Always load and poll Overclock logs panel
+    void loadOcLogs({ force: true });
+    startOcLogPolling();
+    // Auto-prime the Overclock chart with a quick 5s verify if we have a data path
+    try {
+      const dataPath = ocDataPath?.value?.trim() || '/home/node/blockdag';
+      if (dataPath) {
+        const res = await fetch('/api/overclock/verify', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ data_path: dataPath, runtime: 5 }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (res.ok && json && json.metrics) {
+          if (typeof ocAppendMetric === 'function') {
+            ocAppendMetric(json.metrics);
+          }
+        }
+      }
+    } catch (_) {}
     setInterval(refreshMetrics, 5000);
+  }
+
+  async function loadOcLogs() {
+    try {
+      const res = await fetch('/api/overclock/logs?limit=200', { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const payload = await res.json();
+      const lines = payload.lines || [];
+      if (ocLogsOutput) {
+        ocLogsOutput.textContent = lines.length ? lines.join('\n') + '\n' : 'No log lines yet.';
+      }
+      if (ocLogsMeta) {
+        const ts = payload.timestamp ? new Date(payload.timestamp * 1000) : new Date();
+        ocLogsMeta.textContent = `Updated ${fmtTime.format(ts)}`;
+      }
+    } catch (err) {
+      if (ocLogsMeta) ocLogsMeta.textContent = 'Failed to load logs';
+    }
+  }
+
+  function startOcLogPolling() {
+    stopOcLogPolling();
+    ocLogPollTimer = window.setInterval(() => { void loadOcLogs(); }, 4000);
+  }
+
+  function stopOcLogPolling() {
+    if (ocLogPollTimer) {
+      clearInterval(ocLogPollTimer);
+      ocLogPollTimer = null;
+    }
   }
 
   document.addEventListener('visibilitychange', () => {
