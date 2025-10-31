@@ -156,7 +156,7 @@ ENV_REMOTE_RPC_BASES = _parse_remote_rpc_bases(
 DEFAULT_REMOTE_BASES = ENV_REMOTE_RPC_BASES or DEFAULT_REMOTE_RPC_BASES[:]
 
 WEI_PER_BDAG = Decimal("1000000000000000000")
-WALLET_BALANCE_CACHE_SEC = max(0.0, float(os.getenv("BDAG_BALANCE_CACHE_SEC", "60") or "60"))
+WALLET_BALANCE_CACHE_SEC = max(0.0, float(os.getenv("BDAG_BALANCE_CACHE_SEC", "120") or "120"))
 _wallet_address_cache: Dict[str, object] = {"path": None, "mtime": 0.0, "address": None}
 _wallet_balance_cache: Dict[str, object] = {"ts": 0.0, "data": None}
 _WALLET_BALANCE_HISTORY: deque[Dict[str, object]] = deque(maxlen=120)
