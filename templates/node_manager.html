@@ -49,6 +49,8 @@
   .setting-control input[type="checkbox"]{width:17px;height:17px;cursor:pointer;accent-color:#44f2a8}
   .setting-control input[type="text"]{width:48ch;max-width:100%;min-width:320px;padding:6px 10px;border:1px solid rgba(255,255,255,.15);border-radius:10px;background:rgba(255,255,255,.08);color:var(--text);font-size:13px;font-weight:600;box-sizing:border-box}
   .setting-control input[type="text"]:focus{outline:none;border-color:rgba(255,255,255,.35);background:rgba(255,255,255,.12)}
+  .settings-actions{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+  .settings-actions .button-row{display:flex;align-items:center;gap:10px}
   .toggle{position:relative;display:inline-flex;width:46px;height:24px;cursor:pointer}
   .toggle-input{opacity:0;width:0;height:0}
   .toggle-slider{position:absolute;inset:0;border-radius:999px;background:rgba(154,164,199,.35);border:1px solid rgba(154,164,199,.35);transition:all .2s}
@@ -464,21 +466,20 @@
               </div>
             </label>
             <div class="settings-actions">
-              <button type="button" class="btn btn--primary" id="btnApplyOverclock">
-                Apply Tweaks
-              </button>
-              <button type="button" class="btn btn--ghost" id="btnVerifyOverclock" title="Run a short fsync micro-benchmark (fio)">
-                Verify
-              </button>
-              <button type="button" class="btn btn--ghost" id="btnRevertOverclock" title="Revert tweaks to defaults">
-                Revert
-              </button>
               <span class="settings-status" id="overclockStatus"></span>
+              <div class="button-row">
+                <button type="button" class="btn btn--primary" id="btnApplyOverclock">
+                  Apply Tweaks
+                </button>
+                <button type="button" class="btn btn--ghost" id="btnVerifyOverclock" title="Run a short fsync micro-benchmark (fio)">
+                  Verify
+                </button>
+                <button type="button" class="btn btn--ghost" id="btnRevertOverclock" title="Revert tweaks to defaults">
+                  Revert
+                </button>
+              </div>
             </div>
-            <div style="margin-top:12px" id="overclockChartPane">
-              <canvas id="overclockVerifyChart" height="120"></canvas>
-              <div id="overclockChartEmpty" class="setting-hint" style="margin-top:6px">Run Verify to populate the chart.</div>
-            </div>
+            
             <div class="node-logs" id="ocLogsPanel">
               <div class="node-logs__header">
                 <span class="node-logs__title">Overclock Logs</span>
@@ -654,6 +655,5 @@
   </details>
 </template>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" integrity="sha384-NrKB+u6Ts6AtkIhwPixiKTzgSKNblyhlk0Sohlgar9UHUBzai/sgnNNWWd291xqt" crossorigin="anonymous"></script>
 <script src="{{ url_for('static', filename='node_manager.js') }}?v={{ app_version }}-{{ cache_buster }}"></script>
 <div class="version-badge"><strong>{{ app_version }}</strong></div>
