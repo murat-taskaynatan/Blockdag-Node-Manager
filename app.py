@@ -1454,6 +1454,7 @@ def _run_restore_job(details: Dict[str, object]) -> None:
     except Exception as exc:
         status = "error"
         message = f"Snapshot restore failed: {exc}"
+        details["restart"] = False
         if backup_dir and backup_dir.exists():
             try:
                 if data_dir.exists():
@@ -1462,14 +1463,20 @@ def _run_restore_job(details: Dict[str, object]) -> None:
             except Exception:
                 pass
     finally:
-        if restart_required:
+        if status != "error" and container and DOCKER_BIN:
             try:
                 _start_container(container)
                 details.setdefault("restart", True)
             except Exception as exc:
                 with _SNAPSHOT_JOB_LOCK:
                     _SNAPSHOT_JOB_STATE.setdefault("warnings", []).append(str(exc))
-        elif container:
+        elif status != "error" and container:
+            try:
+                docker_action(container, "start")
+                details.setdefault("restart", True)
+            except Exception:
+                details.setdefault("restart", False)
+        elif container and "restart" not in details:
             details.setdefault("restart", False)
         _snapshot_progress_update(None)
         with _SNAPSHOT_JOB_LOCK:
