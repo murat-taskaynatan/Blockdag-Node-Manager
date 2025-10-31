@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 import subprocess
+import tarfile
 import threading
 import time
 from datetime import datetime, timezone
@@ -615,6 +616,81 @@ def _run_command_with_progress(command: List[str], dest_path: Path, *, total_byt
             pass
 
 
+def _validate_tar_member(member: tarfile.TarInfo) -> None:
+    name = member.name or ""
+    if name.startswith("/") or name.startswith("\\"):
+        raise RuntimeError(f"Snapshot contains unsafe path entry: {name}")
+    parts = Path(name).parts
+    if any(part == ".." for part in parts):
+        raise RuntimeError(f"Snapshot contains unsafe path traversal: {name}")
+
+
+def _extract_snapshot_contents(
+    snapshot_path: Path,
+    target_dir: Path,
+    *,
+    total_bytes: int,
+    started: float,
+) -> None:
+    try:
+        tar = tarfile.open(snapshot_path, "r:*")
+    except tarfile.TarError as exc:
+        raise RuntimeError(f"Failed to open snapshot archive: {exc}") from exc
+    try:
+        members = tar.getmembers()
+        member_total = sum(max(member.size, 0) for member in members if member.isfile() or member.islnk() or member.issym())
+        total = member_total or total_bytes
+        processed = 0
+        last_emit = 0.0
+        for member in members:
+            _validate_tar_member(member)
+            tar.extract(member, path=target_dir)
+            if member.isfile() or member.islnk() or member.issym():
+                processed += max(member.size, 0)
+            now = time.time()
+            if now - last_emit >= 0.4:
+                elapsed = max(now - started, 0.0)
+                pct = None
+                speed = 0.0
+                eta = None
+                if total > 0:
+                    pct = max(0.0, min(100.0, (processed / total) * 100.0))
+                if elapsed > 0:
+                    speed = processed / elapsed if processed > 0 else 0.0
+                    if total > 0 and speed > 0:
+                        remaining = max(total - processed, 0)
+                        eta = remaining / speed if remaining > 0 else 0.0
+                _snapshot_progress_update(
+                    {
+                        "bytes_written": processed,
+                        "total_bytes": total,
+                        "pct": pct,
+                        "speed_bytes": speed,
+                        "eta_seconds": eta,
+                        "updated": now,
+                        "path": str(snapshot_path),
+                        "started": started,
+                    }
+                )
+                last_emit = now
+        final_now = time.time()
+        final_total = total or processed
+        _snapshot_progress_update(
+            {
+                "bytes_written": processed,
+                "total_bytes": final_total,
+                "pct": 100.0 if final_total else None,
+                "speed_bytes": processed / max(final_now - started, 1e-6) if processed else 0.0,
+                "eta_seconds": 0.0 if final_total else None,
+                "updated": final_now,
+                "path": str(snapshot_path),
+                "started": started,
+            }
+        )
+    finally:
+        tar.close()
+
+
 def _parse_snapshot_height(name: str) -> Optional[int]:
     if not name:
         return None
@@ -1156,59 +1232,34 @@ def _run_restore_job(details: Dict[str, object]) -> None:
                 restart_required = _stop_container(container)
             except Exception as exc:
                 raise RuntimeError(f"Failed to stop container {container}: {exc}")
+        total_bytes = 0
+        try:
+            total_bytes = max(snapshot_path.stat().st_size, 0)
+        except Exception:
+            total_bytes = 0
+        started = time.time()
+        _snapshot_progress_update(
+            {
+                "bytes_written": 0,
+                "total_bytes": total_bytes,
+                "pct": 0.0 if total_bytes else None,
+                "speed_bytes": 0.0,
+                "eta_seconds": None,
+                "updated": started,
+                "path": str(snapshot_path),
+                "started": started,
+            }
+        )
         parent_dir = data_dir.parent
         if not parent_dir.exists():
             parent_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.utcnow().strftime("%Y%m%d.%H%M%S")
         backup_name = f"{data_dir.name}.pre-restore.{timestamp}"
-        if DOCKER_BIN:
-            script = (
-                "set -e\n"
-                "cd /volume\n"
-                f"if [ -d '{data_dir.name}' ]; then mv '{data_dir.name}' '{backup_name}'; fi\n"
-                f"mkdir -p '{data_dir.name}'\n"
-                f"tar -xf '/backup/{snapshot_path.name}' -C '{data_dir.name}'\n"
-                f"if [ -d '{data_dir.name}/data/testnet' ] && [ ! -e '{data_dir.name}/testnet' ]; then \n"
-                f"  cd '{data_dir.name}'\n"
-                "  for entry in data/*; do [ -e \"$entry\" ] || break; mv \"$entry\" .; done\n"
-                "  rmdir data 2>/dev/null || rm -rf data\n"
-                "  cd /volume\n"
-                "fi\n"
-            )
-            command = [
-                DOCKER_BIN,
-                "run",
-                "--rm",
-                "--init",
-                "-u",
-                "0",
-                "-v",
-                f"{parent_dir}:/volume",
-                "-v",
-                f"{snapshot_path.parent}:/backup:ro",
-                "busybox",
-                "sh",
-                "-c",
-                script,
-            ]
-            try:
-                subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            except subprocess.CalledProcessError as exc:
-                raise RuntimeError(exc.stderr or exc.stdout or str(exc))
-        else:
-            temp_dir = parent_dir / f"restore-{timestamp}"
-            if temp_dir.exists():
-                shutil.rmtree(temp_dir, ignore_errors=True)
-            temp_dir.mkdir(parents=True, exist_ok=True)
-            command = ["tar", "-xf", str(snapshot_path), "-C", str(temp_dir)]
-            try:
-                subprocess.run(command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            except subprocess.CalledProcessError as exc:
-                raise RuntimeError(exc.stderr or exc.stdout or str(exc))
-            if data_dir.exists():
-                backup_dir = parent_dir / backup_name
-                shutil.move(str(data_dir), str(backup_dir))
-            shutil.move(str(temp_dir), str(data_dir))
+        if data_dir.exists():
+            backup_dir = parent_dir / backup_name
+            shutil.move(str(data_dir), str(backup_dir))
+        data_dir.mkdir(parents=True, exist_ok=True)
+        _extract_snapshot_contents(snapshot_path, data_dir, total_bytes=total_bytes, started=started)
         # Flatten nested restores that wrapped contents in an extra directory (e.g., data/data/testnet).
         nested_candidate = data_dir / "data"
         nested_testnet = nested_candidate / "testnet"
@@ -1233,36 +1284,10 @@ def _run_restore_job(details: Dict[str, object]) -> None:
     except Exception as exc:
         status = "error"
         message = f"Snapshot restore failed: {exc}"
-        if DOCKER_BIN and data_dir:
+        if backup_dir and backup_dir.exists():
             try:
-                revert_script = (
-                    "cd /volume\n"
-                    f"if [ -d '{backup_name}' ] && [ ! -d '{data_dir.name}' ]; then mv '{backup_name}' '{data_dir.name}'; fi\n"
-                )
-                subprocess.run(
-                    [
-                        DOCKER_BIN,
-                        "run",
-                        "--rm",
-                        "--init",
-                        "-u",
-                        "0",
-                        "-v",
-                        f"{parent_dir}:/volume",
-                        "busybox",
-                        "sh",
-                        "-c",
-                        revert_script,
-                    ],
-                    check=False,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                )
-            except Exception:
-                pass
-        elif backup_dir and data_dir and not data_dir.exists():
-            try:
+                if data_dir.exists():
+                    shutil.rmtree(data_dir, ignore_errors=True)
                 shutil.move(str(backup_dir), str(data_dir))
             except Exception:
                 pass
