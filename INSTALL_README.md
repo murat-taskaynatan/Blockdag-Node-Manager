@@ -7,6 +7,7 @@ This guide explains how to deploy the BlockDAG Node Manager UI as a system servi
 - Ubuntu/Debian or RHEL/Fedora style host with `sudo`
 - Python 3.9+ with `venv`
 - `git`, `rsync`, `systemctl`, and Docker (optional but recommended for discovery/control)
+- `fio` (used by Overclock → Verify). The installer auto‑installs `fio` when using apt/dnf; the app also attempts on‑demand install when you click Verify.
 
 ## 2. Quick Install
 
@@ -25,6 +26,7 @@ The script will:
 3. Install dependencies from `requirements.txt` (falls back to `flask`, `requests`, `waitress` if missing).
 4. Write `/etc/blockdag-node-manager/node-manager.env` with overridable environment variables.
 5. Register and start the `blockdag-node-manager.service` systemd unit.
+6. Ensure `fio` is installed for the Overclock verification benchmark (apt/dnf systems).
 
 If a previous `blockdag-node-manager.service` exists, the installer stops, disables, and removes it before reinstalling. Running the script outside a repo clone automatically pulls the latest sources from GitHub.
 

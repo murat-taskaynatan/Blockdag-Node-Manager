@@ -16,6 +16,7 @@ from urllib.parse import urlparse
 
 import requests
 from flask import Flask, abort, jsonify, render_template, request
+from flask import Response, send_from_directory
 
 
 # ---------------------------------------------------------------------------
@@ -111,6 +112,19 @@ ANSI_ESCAPE_RE = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
 _LOG_POLICY_LOCK = threading.Lock()
 _LOG_POLICY_STATE: Dict[str, Dict[str, object]] = {}
 _RECENT_LOGS_CACHE: Dict[Tuple[str, int], Dict[str, object]] = {}
+
+# Overclock logs buffer (UI tailing)
+_OVERCLOCK_LOGS: deque[str] = deque(maxlen=500)
+_OVERCLOCK_LOGS_LOCK = threading.Lock()
+
+
+def _oc_log(message: str) -> None:
+    try:
+        line = f"[{datetime.now().strftime('%H:%M:%S')}] {message}"
+    except Exception:
+        line = message
+    with _OVERCLOCK_LOGS_LOCK:
+        _OVERCLOCK_LOGS.append(line)
 
 
 # ---------------------------------------------------------------------------
@@ -267,6 +281,13 @@ DEFAULT_SETTINGS: Dict[str, object] = {
     "display_wallet_balance": _coerce_bool(os.getenv("BDAG_WALLET_DISPLAY", "0"), False),
     "snapshot_max": SNAPSHOT_MAX_DEFAULT,
     "wallet_address": str(os.getenv("BDAG_WALLET_ADDRESS", "")).strip(),
+    # Overclock preferences (persist UI selections)
+    "overclock_data_path": "/home/node/blockdag",
+    "overclock_cpu": False,
+    "overclock_nvme_latency": False,
+    "overclock_scheduler": False,
+    "overclock_remount": False,
+    "overclock_enable_vwc": False,
 }
 _SETTINGS_LOCK = threading.Lock()
 _SETTINGS_CACHE: Dict[str, object] = {}
@@ -322,6 +343,22 @@ def _load_settings_file() -> Dict[str, bool]:
             for key, default in DEFAULT_SETTINGS.items():
                 if key in payload:
                     merged[key] = _coerce_setting(key, payload[key])
+            # One-time migration: ensure Overclock toggles default to off
+            migration_flag = payload.get("_overclock_defaults_migrated")
+            if not migration_flag:
+                merged["overclock_cpu"] = False
+                merged["overclock_nvme_latency"] = False
+                merged["overclock_scheduler"] = False
+                merged["overclock_remount"] = False
+                # Persist migration so we don't overwrite future changes
+                try:
+                    SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+                    temp = dict(merged)
+                    temp["_overclock_defaults_migrated"] = True
+                    with SETTINGS_PATH.open("w", encoding="utf-8") as handle:
+                        json.dump(temp, handle, indent=2, sort_keys=True)
+                except Exception as exc:
+                    app.logger.warning("failed to persist overclock default migration: %s", exc)
     _apply_runtime_settings(merged)
     return merged
 
@@ -1840,7 +1877,7 @@ DEFAULT_NODE_SETTINGS = {
 BALANCE_RPC_BASE = _normalize_rpc_endpoint(
     os.getenv("BDAG_BALANCE_RPC_BASE")
     or os.getenv("BDAG_RPC_BASE")
-    or DEFAULT_NODE_SETTINGS["rpc_base"]
+    or PRIMARY_REMOTE_RPC_BASE
 )
 BALANCE_RPC_USER = os.getenv("BDAG_BALANCE_RPC_USER", DEFAULT_NODE_SETTINGS["rpc_user"])
 BALANCE_RPC_PASS = os.getenv("BDAG_BALANCE_RPC_PASS", DEFAULT_NODE_SETTINGS["rpc_pass"])
@@ -2769,7 +2806,7 @@ def _resolve_node(node_id: Optional[str]) -> NodeContext:
 # ---------------------------------------------------------------------------
 # API endpoints
 # ---------------------------------------------------------------------------
-APP_VERSION = os.getenv("BDAG_MANAGER_VERSION", "v1.3.0").strip() or "v1.3.0"
+APP_VERSION = os.getenv("BDAG_MANAGER_VERSION", "v1.4").strip() or "v1.4"
 
 
 @app.route("/healthz")
@@ -2864,6 +2901,366 @@ def api_settings():
         return jsonify({"ok": False, "error": "invalid payload"}), 400
     updated = update_settings(body)
     return jsonify({"ok": True, "settings": updated})
+
+
+@app.route("/api/overclock/apply", methods=["POST"])
+def api_overclock_apply():
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body, dict):
+        return jsonify({"ok": False, "error": "invalid payload"}), 400
+    data_path = str(body.get("data_path") or "/home/node/blockdag").strip() or "/"
+    enable_vwc = _coerce_bool(body.get("enable_vwc"), False)
+    do_cpu = _coerce_bool(body.get("cpu"), True)
+    do_nvme = _coerce_bool(body.get("nvme_latency"), True)
+    do_sched = _coerce_bool(body.get("scheduler"), True)
+    do_remount = _coerce_bool(body.get("remount"), True)
+
+    # Resolve mountpoint using findmnt so users can pass any path under the filesystem
+    mountpoint = None
+    try:
+        out = subprocess.check_output(["findmnt", "-no", "TARGET", "--target", data_path], text=True, stderr=subprocess.DEVNULL)
+        mountpoint = (out or "").strip() or None
+    except Exception:
+        mountpoint = None
+    if not mountpoint:
+        # Fall back: if data_path is a mountpoint itself
+        mountpoint = data_path if os.path.ismount(data_path) else "/"
+
+    # Prefer bundled script inside install dir; fallback to workspace root
+    script_path = (Path(__file__).resolve().parent / "scripts" / "tune_nvme_node.sh")
+    if not script_path.exists():
+        script_path = (Path(__file__).resolve().parents[1] / "scripts" / "tune_nvme_node.sh")
+    if not script_path.exists():
+        return jsonify({"ok": False, "error": f"script not found: {script_path}"}), 500
+
+    cmd = [str(script_path), "--mountpoint", mountpoint]
+    if enable_vwc:
+        cmd.extend(["--enable-vwc", "yes"])
+    cmd.extend(["--cpu", "yes" if do_cpu else "no"]) 
+    cmd.extend(["--nvme-latency", "yes" if do_nvme else "no"]) 
+    cmd.extend(["--scheduler", "yes" if do_sched else "no"]) 
+    cmd.extend(["--remount", "yes" if do_remount else "no"]) 
+
+    use_sudo = os.geteuid() != 0
+    if use_sudo:
+        cmd = ["sudo", "-n"] + cmd
+    try:
+        _oc_log(f"Apply: mount={mountpoint} cpu={do_cpu} nvme={do_nvme} sched={do_sched} remount={do_remount} vwc={'yes' if enable_vwc else 'no'}")
+        proc = subprocess.run(cmd, text=True, capture_output=True, check=False)
+        ok = proc.returncode == 0
+        # Stream a few lines to Overclock log buffer
+        for line in (proc.stdout or "").splitlines()[:12]:
+            _oc_log(f"apply stdout: {line}")
+        for line in (proc.stderr or "").splitlines()[:12]:
+            _oc_log(f"apply stderr: {line}")
+        _oc_log(f"Apply: {'OK' if ok else 'FAILED'} (rc={proc.returncode})")
+        payload = {"ok": ok, "stdout": proc.stdout, "stderr": proc.stderr}
+        if use_sudo and proc.returncode != 0:
+            # Common case: sudo requires a TTY or password
+            payload.update({
+                "needs_root": True,
+                "hint": f"sudo scripts/tune_nvme_node.sh --mountpoint {mountpoint}" + (" --enable-vwc yes" if enable_vwc else ""),
+            })
+        status = 200 if ok or payload.get("needs_root") else 500
+        return jsonify(payload), status
+    except Exception as exc:
+        app.logger.error("overclock apply failed: %s", exc, exc_info=True)
+        _oc_log(f"Apply: exception {exc}")
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@app.route("/api/overclock/revert", methods=["POST"])
+def api_overclock_revert():
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body, dict):
+        return jsonify({"ok": False, "error": "invalid payload"}), 400
+    data_path = str(body.get("data_path") or "/home/node/blockdag").strip() or "/"
+    try:
+        out = subprocess.check_output(["findmnt", "-no", "TARGET", "--target", data_path], text=True, stderr=subprocess.DEVNULL)
+        mountpoint = (out or "").strip() or None
+    except Exception:
+        mountpoint = None
+    if not mountpoint:
+        mountpoint = data_path if os.path.ismount(data_path) else "/"
+    script_path = (Path(__file__).resolve().parent / "scripts" / "tune_nvme_node.sh")
+    if not script_path.exists():
+        script_path = (Path(__file__).resolve().parents[1] / "scripts" / "tune_nvme_node.sh")
+    if not script_path.exists():
+        return jsonify({"ok": False, "error": f"script not found: {script_path}"}), 500
+    cmd = [str(script_path), "--mountpoint", mountpoint, "--revert", "yes", "--cpu", "yes", "--nvme-latency", "yes", "--scheduler", "yes", "--remount", "yes"]
+    use_sudo = os.geteuid() != 0
+    if use_sudo:
+        cmd = ["sudo", "-n"] + cmd
+    try:
+        _oc_log(f"Revert: mount={mountpoint}")
+        proc = subprocess.run(cmd, text=True, capture_output=True, check=False)
+        ok = proc.returncode == 0
+        for line in (proc.stdout or "").splitlines()[:12]:
+            _oc_log(f"revert stdout: {line}")
+        for line in (proc.stderr or "").splitlines()[:12]:
+            _oc_log(f"revert stderr: {line}")
+        _oc_log(f"Revert: {'OK' if ok else 'FAILED'} (rc={proc.returncode})")
+        payload = {"ok": ok, "stdout": proc.stdout, "stderr": proc.stderr}
+        if use_sudo and proc.returncode != 0:
+            payload.update({"needs_root": True, "hint": f"sudo scripts/tune_nvme_node.sh --mountpoint {mountpoint} --revert yes"})
+        return jsonify(payload), (200 if ok or payload.get("needs_root") else 500)
+    except Exception as exc:
+        app.logger.error("overclock revert failed: %s", exc, exc_info=True)
+        _oc_log(f"Revert: exception {exc}")
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@app.route("/api/overclock/verify", methods=["POST"])
+def api_overclock_verify():
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body, dict):
+        return jsonify({"ok": False, "error": "invalid payload"}), 400
+    data_path = str(body.get("data_path") or "/home/node/blockdag").strip() or "/"
+    try:
+        runtime_req = int(body.get("runtime")) if body.get("runtime") is not None else 10
+    except Exception:
+        runtime_req = 10
+    runtime = max(5, min(runtime_req, 30))
+    # Resolve mountpoint and create a temporary directory on that filesystem
+    try:
+        out = subprocess.check_output(["findmnt", "-no", "TARGET", "--target", data_path], text=True, stderr=subprocess.DEVNULL)
+        mountpoint = (out or "").strip() or None
+    except Exception:
+        mountpoint = None
+    if not mountpoint:
+        mountpoint = data_path if os.path.ismount(data_path) else "/"
+    tmp_dir = Path(mountpoint) / f".oc-verify-{int(time.time())}"
+    try:
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+    except Exception as exc:
+        return jsonify({"ok": False, "error": f"cannot create temp dir on {mountpoint}: {exc}"}), 500
+    fio_bin = shutil.which("fio")
+    if not fio_bin:
+        # Try to install fio automatically using apt-get or dnf
+        installer = None
+        use_sudo = os.geteuid() != 0
+        if shutil.which("apt-get"):
+            installer = ["apt-get", "update"]
+            cmd_install = ["apt-get", "install", "-y", "fio"]
+        elif shutil.which("dnf"):
+            installer = ["dnf", "makecache"]
+            cmd_install = ["dnf", "install", "-y", "fio"]
+        else:
+            installer = None
+            cmd_install = None
+        try:
+            if installer and cmd_install:
+                if use_sudo:
+                    installer = ["sudo", "-n"] + installer
+                    cmd_install = ["sudo", "-n"] + cmd_install
+                subprocess.run(installer, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                subprocess.run(cmd_install, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
+        fio_bin = shutil.which("fio")
+        if not fio_bin:
+            try:
+                tmp_dir.rmdir()
+            except Exception:
+                pass
+            hint = "sudo apt-get update && sudo apt-get install -y fio" if shutil.which("apt-get") else "sudo dnf install -y fio"
+            payload = {"ok": False, "error": "fio not installed", "hint": hint}
+            if use_sudo:
+                payload.update({"needs_root": True})
+            return jsonify(payload), 400
+    cmd = [
+        fio_bin,
+        "--name=fsync",
+        f"--directory={str(tmp_dir)}",
+        "--rw=write",
+        "--bs=4k",
+        "--ioengine=psync",
+        "--numjobs=1",
+        "--size=64m",
+        "--fsync=1",
+        "--time_based=1",
+        f"--runtime={runtime}",
+        "--group_reporting=1",
+        "--eta=never",
+        "--output-format=json",
+    ]
+    try:
+        _oc_log(f"Verify: running fio on mount={mountpoint}")
+        proc = subprocess.run(cmd, text=True, capture_output=True, check=False)
+        stdout = proc.stdout or ""
+        stderr = proc.stderr or ""
+        ok = proc.returncode == 0
+        # Parse simple metrics: IOPS, BW, clat percentiles if present
+        metrics = {}
+        # Prefer JSON parsing (robust across fio versions)
+        parsed = None
+        try:
+            parsed = json.loads(stdout)
+        except Exception:
+            parsed = None
+        if isinstance(parsed, dict):
+            try:
+                jobs = parsed.get("jobs") or []
+                job = jobs[0] if jobs else {}
+                section = job.get("write") or job.get("sync") or {}
+                iops_val = section.get("iops")
+                bw_kib = section.get("bw")  # KiB/s
+                if iops_val is not None:
+                    try:
+                        metrics["iops"] = f"{float(iops_val):.0f}"
+                    except Exception:
+                        metrics["iops"] = str(iops_val)
+                if bw_kib is not None:
+                    metrics["bw"] = f"{bw_kib}KiB/s"
+                # Percentiles in ns
+                p = (
+                    (job.get("clat_ns") or {}).get("percentile")
+                    or (section.get("clat_ns") or {}).get("percentile")
+                    or (job.get("lat_ns") or {}).get("percentile")
+                    or (section.get("lat_ns") or {}).get("percentile")
+                )
+                def _fmt_us(val_ns):
+                    try:
+                        us = float(val_ns) / 1000.0
+                        return f"{us:.0f}us"
+                    except Exception:
+                        return None
+                if isinstance(p, dict):
+                    p50_ns = p.get("50.000000") or p.get("50.00th")
+                    p99_ns = p.get("99.000000") or p.get("99.00th")
+                    if p50_ns is not None:
+                        metrics["p50"] = _fmt_us(p50_ns)
+                    if p99_ns is not None:
+                        metrics["p99"] = _fmt_us(p99_ns)
+            except Exception:
+                pass
+        # Derive IOPS from bandwidth if missing
+        if (not metrics.get("iops")) and metrics.get("bw"):
+            try:
+                # Expect format like '429KiB/s'
+                bw_text = str(metrics["bw"]).lower().replace("/s", "")
+                bw_val = None
+                if "kib" in bw_text:
+                    bw_val = float(bw_text.split("kib")[0])
+                elif "kb" in bw_text:
+                    bw_val = float(bw_text.split("kb")[0])
+                elif "mb" in bw_text:
+                    bw_val = float(bw_text.split("mb")[0]) * 1024.0
+                if bw_val is not None and bw_val >= 0:
+                    # bs is 4KiB; iops ≈ KiB/s / 4
+                    approx_iops = max(0.0, bw_val / 4.0)
+                    metrics["iops"] = f"{approx_iops:.0f}"
+            except Exception:
+                pass
+        # Fallback: text parsing for older fio
+        if not metrics.get("iops") or not metrics.get("bw"):
+            try:
+                for line in stdout.splitlines():
+                    t = line.strip()
+                    if (t.lower().startswith("write:") or t.lower().startswith("write ")) and ("iops=" in t.lower() or "bw=" in t.lower()):
+                        # Example variants: write: IOPS=12.3k, BW=48.2MiB/s ... OR write: bw=..., iops=...
+                        # Normalize separators
+                        parts = [seg.strip() for seg in t.split(',')]
+                        for part in parts:
+                            pl = part.lower()
+                            if pl.startswith("iops="):
+                                metrics["iops"] = part.split("=",1)[1]
+                            if pl.startswith("bw=") or part.startswith("BW="):
+                                val = part.split("=",1)[1]
+                                metrics["bw"] = val
+                    if t.startswith("\t50.00th") or t.startswith("50.00th"):
+                        metrics["p50"] = t.split('=')[1].strip().strip('[]')
+                    if t.startswith("\t99.00th") or t.startswith("99.00th"):
+                        metrics["p99"] = t.split('=')[1].strip().strip('[]')
+            except Exception:
+                pass
+        try:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+        except Exception:
+            pass
+        if metrics:
+            _oc_log(f"Verify: IOPS={metrics.get('iops')} BW={metrics.get('bw')} p50={metrics.get('p50')} p99={metrics.get('p99')}")
+        else:
+            _oc_log(f"Verify: rc={proc.returncode}")
+        return jsonify({"ok": ok, "stdout": stdout, "stderr": stderr, "metrics": metrics}), (200 if ok else 500)
+    except Exception as exc:
+        try:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+        except Exception:
+            pass
+        _oc_log(f"Verify: exception {exc}")
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@app.route("/api/overclock/preflight", methods=["POST"])
+def api_overclock_preflight():
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body, dict):
+        return jsonify({"ok": False, "error": "invalid payload"}), 400
+    data_path = str(body.get("data_path") or "/home/node/blockdag").strip() or "/"
+    try:
+        out = subprocess.check_output(["findmnt", "-no", "SOURCE,TARGET", "--target", data_path], text=True, stderr=subprocess.DEVNULL)
+        parts = (out or "").strip().split()
+        source = parts[0] if parts else None
+        mountpoint = parts[1] if len(parts) > 1 else None
+    except Exception:
+        source = None
+        mountpoint = None
+    if not source:
+        return jsonify({"ok": False, "error": "could not resolve device for data path"}), 400
+    dev_path = str(Path(source))
+    base = os.path.basename(os.path.realpath(dev_path))
+    ctrl = None
+    m = re.match(r"(nvme\d+)n\d+", base)
+    if m:
+        ctrl = f"/dev/{m.group(1)}"
+    if not ctrl:
+        # Fallback for non-NVMe; we only report VWC/PLP for NVMe controllers
+        return jsonify({"ok": True, "device": dev_path, "mountpoint": mountpoint, "plp": "unknown", "vwc_present": None})
+    # Try nvme id-ctrl (no root needed)
+    vwc_present = None
+    try:
+        out = subprocess.check_output(["nvme", "id-ctrl", "-H", ctrl], text=True, stderr=subprocess.DEVNULL)
+        text = out.lower()
+        if "volatile write cache" in text:
+            # naive check
+            vwc_present = ("present" in text and "volatile write cache" in text)
+    except Exception:
+        vwc_present = None
+    plp = "unknown"
+    needs_root = False
+    # Try smartctl for PLP hint
+    smartctl = shutil.which("smartctl")
+    if smartctl:
+        try:
+            out = subprocess.check_output([smartctl, "-a", "-d", "nvme", ctrl], text=True, stderr=subprocess.STDOUT)
+            low = out.lower()
+            if "power loss protection" in low:
+                if "power loss protection: supported" in low or "enabled" in low:
+                    plp = "yes"
+                elif "not supported" in low or "disabled" in low:
+                    plp = "no"
+        except subprocess.CalledProcessError as exc:
+            needs_root = True
+        except Exception:
+            pass
+    _oc_log(f"Preflight: dev={dev_path} ctrl={ctrl or 'n/a'} plp={plp} vwc_present={vwc_present}")
+    return jsonify({"ok": True, "device": dev_path, "mountpoint": mountpoint, "controller": ctrl, "vwc_present": vwc_present, "plp": plp, "needs_root": needs_root})
+
+
+@app.route("/api/overclock/logs")
+def api_overclock_logs():
+    limit_param = request.args.get("limit")
+    try:
+        limit = max(1, min(int(limit_param), 500)) if limit_param is not None else 120
+    except Exception:
+        limit = 120
+    with _OVERCLOCK_LOGS_LOCK:
+        lines = list(_OVERCLOCK_LOGS)[-limit:]
+    return jsonify({"lines": lines, "limit": limit, "timestamp": time.time()})
+
+
+
 
 
 @app.route("/api/snapshots", methods=["GET"])
