@@ -1234,6 +1234,50 @@ def _auto_snapshot_mark_result(status: str) -> None:
     _AUTO_SNAPSHOT_EVENT.set()
 
 
+def _select_best_snapshot_node() -> Optional[str]:
+    best_id: Optional[str] = None
+    best_local: int = -1
+    best_delta: float = float("inf")
+    for ctx in NODES.values():
+        try:
+            metrics = ctx.sample(force=True)
+        except Exception:
+            continue
+        if not metrics:
+            continue
+        running = bool(metrics.get("running"))
+        container_running = metrics.get("container_running")
+        if not running or (container_running is False):
+            continue
+        local_height = metrics.get("local_height")
+        remote_height = metrics.get("remote_height")
+        if not isinstance(local_height, (int, float)):
+            continue
+        height_delta = metrics.get("height_delta")
+        if not isinstance(height_delta, (int, float)):
+            if isinstance(remote_height, (int, float)):
+                height_delta = remote_height - local_height
+            else:
+                height_delta = 0.0
+        if height_delta is None:
+            height_delta = 0.0
+        try:
+            height_delta = float(height_delta)
+        except Exception:
+            height_delta = float("inf")
+        if height_delta < 0:
+            height_delta = 0.0
+        try:
+            local_val = int(local_height)
+        except Exception:
+            local_val = -1
+        if local_val > best_local or (local_val == best_local and height_delta < best_delta):
+            best_local = local_val
+            best_delta = height_delta
+            best_id = ctx.id
+    return best_id
+
+
 def _auto_snapshot_worker() -> None:
     while True:
         with _AUTO_SNAPSHOT_LOCK:
@@ -1256,7 +1300,8 @@ def _auto_snapshot_worker() -> None:
                 with _AUTO_SNAPSHOT_LOCK:
                     _AUTO_SNAPSHOT_STATE["next_run"] = now + max(60.0, min(interval, 300.0))
                 continue
-            ok, message, _ = _start_snapshot_job(None, mode="auto_snapshot", trigger="auto")
+            best_node = _select_best_snapshot_node()
+            ok, message, _ = _start_snapshot_job(best_node, mode="auto_snapshot", trigger="auto")
             with _AUTO_SNAPSHOT_LOCK:
                 if ok:
                     _AUTO_SNAPSHOT_STATE["next_run"] = now + max(interval, AUTO_SNAPSHOT_MIN_INTERVAL_SEC)
