@@ -1806,6 +1806,14 @@ async function saveSettings() {
     const output = card.querySelector('[data-role="logs-output"]');
     const meta = card.querySelector('[data-role="logs-meta"]');
     if (!panel || !output) return;
+    const shouldAutoScroll = (() => {
+      try {
+        const nearBottom = output.scrollTop + output.clientHeight >= output.scrollHeight - 20;
+        return nearBottom;
+      } catch (_) {
+        return false;
+      }
+    })();
     if (logsState.loading) {
       output.textContent = 'Loading logs…';
     } else if (logsState.unavailable) {
@@ -1833,6 +1841,13 @@ async function saveSettings() {
     }
     if (wrapper) {
       wrapper.classList.toggle('has-error', Boolean(logsState.error));
+    }
+    if (shouldAutoScroll) {
+      try {
+        output.scrollTop = output.scrollHeight;
+      } catch (_) {
+        /* ignore */
+      }
     }
   }
 
