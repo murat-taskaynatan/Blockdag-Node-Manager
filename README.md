@@ -25,7 +25,7 @@ BlockDAG Node Manager is a lightweight Flask application that discovers, monitor
 
 Log View
   <img width="1073" height="307" alt="image" src="https://github.com/user-attachments/assets/5d6cb4b7-d64e-4a52-bf86-aa6983575eba" />
-
+<br>
 
 ## Requirements
 - Python 3.9+ with `venv`.
