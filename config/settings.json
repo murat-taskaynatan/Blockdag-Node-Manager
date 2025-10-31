@@ -1,5 +1,9 @@
 {
   "liveness_auto_recover": false,
   "auto_restart_on_error": false,
+  "auto_restart_enabled": false,
+  "auto_restart_hours": 0,
+  "auto_snapshot_enabled": false,
+  "auto_snapshot_hours": 0,
   "display_wallet_balance": false
 }

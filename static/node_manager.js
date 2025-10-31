@@ -45,15 +45,17 @@
   const walletHistoryList = document.getElementById('walletHistoryList');
   const walletHistoryEmpty = document.getElementById('walletHistoryEmpty');
   const walletPane = document.getElementById('walletPane');
-  const autoRestartToggle = document.getElementById('settingAutoRestart');
   const autoRestartHoursInput = document.getElementById('settingAutoRestartHours');
-  const autoRestartHoursControl = document.querySelector('[data-tooltip-target="auto-restart-hours"]');
+  const autoSnapshotHoursInput = document.getElementById('settingAutoSnapshotHours');
   let settingsStatusTimer = null;
   let snapshotPollTimer = null;
   const defaultSettings = {
     liveness_auto_recover: false,
     auto_restart_on_error: false,
+    auto_restart_enabled: false,
     auto_restart_hours: 0,
+    auto_snapshot_enabled: false,
+    auto_snapshot_hours: 0,
     display_wallet_balance: false,
     snapshot_max: 0,
   };
@@ -121,8 +123,85 @@
 
   function updateAutoRestartCooldownState(settings = state.settings) {
     if (!autoRestartHoursInput) return;
-    const enabled = Boolean(settings?.auto_restart_on_error);
+    const enabled = Boolean(settings?.auto_restart_enabled);
     autoRestartHoursInput.disabled = enabled;
+    alignSnapshotSpinnerStyle();
+  }
+
+  function updateAutoSnapshotState(settings = state.settings) {
+    if (!autoSnapshotHoursInput) return;
+    const enabled = Boolean(settings?.auto_snapshot_enabled);
+    autoSnapshotHoursInput.disabled = enabled;
+    alignSnapshotSpinnerStyle();
+  }
+
+  function alignSnapshotSpinnerStyle() {
+    if (!autoRestartHoursInput || !autoSnapshotHoursInput) return;
+    window.requestAnimationFrame(() => {
+      const restartStyles = window.getComputedStyle(autoRestartHoursInput);
+      const cssProps = [
+        'width',
+        'min-width',
+        'max-width',
+        'padding-top',
+        'padding-right',
+        'padding-bottom',
+        'padding-left',
+        'border-top-width',
+        'border-right-width',
+        'border-bottom-width',
+        'border-left-width',
+        'border-top-style',
+        'border-right-style',
+        'border-bottom-style',
+        'border-left-style',
+        'border-top-left-radius',
+        'border-top-right-radius',
+        'border-bottom-right-radius',
+        'border-bottom-left-radius',
+        'font-size',
+        'font-weight',
+        'line-height',
+        'margin-left',
+        'margin-right',
+      ];
+      cssProps.forEach((prop) => {
+        const value = restartStyles.getPropertyValue(prop);
+        if (value) {
+          autoSnapshotHoursInput.style.setProperty(prop, value);
+        }
+      });
+      const borderColor = restartStyles.getPropertyValue('border-top-color');
+      if (borderColor) {
+        autoSnapshotHoursInput.style.setProperty('border-color', borderColor);
+      }
+      const backgroundColor = restartStyles.getPropertyValue('background-color');
+      if (backgroundColor) {
+        autoSnapshotHoursInput.style.setProperty('background-color', backgroundColor);
+      }
+      const textColor = restartStyles.getPropertyValue('color');
+      if (textColor) {
+        autoSnapshotHoursInput.style.setProperty('color', textColor);
+      }
+    });
+  }
+
+  function syncLinkedSettingInputs(key, source) {
+    if (!settingsForm) return;
+    const inputs = settingsForm.querySelectorAll(`[data-setting-key="${key}"]`);
+    const rawValue = state.settings[key];
+    inputs.forEach((input) => {
+      if (!input || input === source) return;
+      const type = input.dataset.settingType || input.type;
+      if (type === 'number') {
+        const value = Number(rawValue);
+        input.value = Number.isFinite(value) && value >= 0 ? value : '';
+      } else if (type === 'text') {
+        input.value = typeof rawValue === 'string' ? rawValue : rawValue == null ? '' : String(rawValue);
+      } else {
+        input.checked = !!rawValue;
+      }
+    });
   }
 
   const defaultChartView = 'height';
@@ -1031,6 +1110,7 @@ function applySettingsToForm(settings = {}) {
       }
     });
     updateAutoRestartCooldownState(merged);
+    updateAutoSnapshotState(merged);
   }
   if (saveSettingsBtn) {
     saveSettingsBtn.disabled = true;
@@ -2314,8 +2394,10 @@ async function saveSettings() {
           } else {
             state.settings[key] = !!target.checked;
           }
+          syncLinkedSettingInputs(key, target);
           markSettingsDirty();
           updateAutoRestartCooldownState(state.settings);
+          updateAutoSnapshotState(state.settings);
         }
       });
     }
