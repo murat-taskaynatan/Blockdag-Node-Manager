@@ -73,6 +73,22 @@ AUTO_RESTART_INTERVAL_SEC = LOG_ERROR_RESTART_COOLDOWN_SEC
 LOG_ERROR_TAIL = max(10, min(int(os.getenv("BDAG_LOG_ERROR_TAIL", "80") or "80"), 200))
 LOG_ERROR_PATTERN = re.compile(r"\berror\b", re.IGNORECASE)
 
+AUTO_SNAPSHOT_MIN_INTERVAL_SEC = max(
+    900.0, float(os.getenv("BDAG_AUTO_SNAPSHOT_MIN_SEC", "3600") or 3600.0)
+)
+AUTO_SNAPSHOT_RETRY_SEC = max(
+    300.0, float(os.getenv("BDAG_AUTO_SNAPSHOT_RETRY_SEC", "900") or 900.0)
+)
+_AUTO_SNAPSHOT_LOCK = threading.Lock()
+_AUTO_SNAPSHOT_EVENT = threading.Event()
+_AUTO_SNAPSHOT_STATE: Dict[str, object] = {
+    "enabled": False,
+    "interval": 0.0,
+    "next_run": 0.0,
+    "last_run": 0.0,
+    "last_result": None,
+}
+
 LIVENESS_RECOVER_COOLDOWN_SEC = max(
     60.0, float(os.getenv("BDAG_LIVENESS_RECOVER_COOLDOWN_SEC", "900") or "900")
 )
@@ -244,6 +260,7 @@ def _apply_runtime_settings(settings: Dict[str, object]) -> None:
         AUTO_RESTART_INTERVAL_SEC = max(300.0, float(interval_hours) * 3600.0)
     else:
         AUTO_RESTART_INTERVAL_SEC = LOG_ERROR_RESTART_COOLDOWN_SEC
+    _configure_auto_snapshot(settings)
 
 
 def _load_settings_file() -> Dict[str, bool]:
@@ -1163,6 +1180,99 @@ def _snapshot_job_snapshot() -> Dict[str, object]:
         }
 
 
+def _configure_auto_snapshot(settings: Dict[str, object]) -> None:
+    enabled = bool(settings.get("auto_snapshot_enabled"))
+    raw_hours = settings.get("auto_snapshot_hours")
+    try:
+        hours_value = float(raw_hours)
+    except (TypeError, ValueError):
+        hours_value = 0.0
+    interval_sec = max(0.0, hours_value * 3600.0)
+    if enabled and interval_sec > 0.0:
+        interval_sec = max(interval_sec, AUTO_SNAPSHOT_MIN_INTERVAL_SEC)
+    else:
+        enabled = False
+        interval_sec = 0.0
+    now = time.time()
+    with _AUTO_SNAPSHOT_LOCK:
+        _AUTO_SNAPSHOT_STATE["enabled"] = enabled
+        _AUTO_SNAPSHOT_STATE["interval"] = interval_sec
+        if not enabled or interval_sec <= 0.0:
+            _AUTO_SNAPSHOT_STATE["next_run"] = 0.0
+        else:
+            last_run = float(_AUTO_SNAPSHOT_STATE.get("last_run") or 0.0)
+            next_run = float(_AUTO_SNAPSHOT_STATE.get("next_run") or 0.0)
+            if last_run > 0.0:
+                candidate = last_run + interval_sec
+                if candidate < now + 60.0:
+                    candidate = now + 60.0
+                next_run = candidate
+            elif next_run <= 0.0 or next_run < now:
+                next_run = now + min(interval_sec, 300.0)
+            _AUTO_SNAPSHOT_STATE["next_run"] = next_run
+    _AUTO_SNAPSHOT_EVENT.set()
+
+
+def _auto_snapshot_mark_result(status: str) -> None:
+    now = time.time()
+    with _AUTO_SNAPSHOT_LOCK:
+        _AUTO_SNAPSHOT_STATE["last_result"] = status
+        enabled = bool(_AUTO_SNAPSHOT_STATE.get("enabled"))
+        interval = float(_AUTO_SNAPSHOT_STATE.get("interval") or 0.0)
+        if status == "completed":
+            _AUTO_SNAPSHOT_STATE["last_run"] = now
+            if enabled and interval > 0.0:
+                _AUTO_SNAPSHOT_STATE["next_run"] = now + interval
+            else:
+                _AUTO_SNAPSHOT_STATE["next_run"] = 0.0
+        else:
+            if enabled and interval > 0.0:
+                _AUTO_SNAPSHOT_STATE["next_run"] = now + max(AUTO_SNAPSHOT_RETRY_SEC, 120.0)
+            else:
+                _AUTO_SNAPSHOT_STATE["next_run"] = 0.0
+    _AUTO_SNAPSHOT_EVENT.set()
+
+
+def _auto_snapshot_worker() -> None:
+    while True:
+        with _AUTO_SNAPSHOT_LOCK:
+            enabled = bool(_AUTO_SNAPSHOT_STATE.get("enabled"))
+            interval = float(_AUTO_SNAPSHOT_STATE.get("interval") or 0.0)
+            next_run = float(_AUTO_SNAPSHOT_STATE.get("next_run") or 0.0)
+        if not enabled or interval <= 0.0:
+            triggered = _AUTO_SNAPSHOT_EVENT.wait(timeout=600.0)
+            if triggered:
+                _AUTO_SNAPSHOT_EVENT.clear()
+            continue
+        now = time.time()
+        if next_run <= 0.0:
+            with _AUTO_SNAPSHOT_LOCK:
+                _AUTO_SNAPSHOT_STATE["next_run"] = now + interval
+            continue
+        if now >= next_run:
+            job = _snapshot_job_snapshot()
+            if job.get("active"):
+                with _AUTO_SNAPSHOT_LOCK:
+                    _AUTO_SNAPSHOT_STATE["next_run"] = now + max(60.0, min(interval, 300.0))
+                continue
+            ok, message, _ = _start_snapshot_job(None, mode="auto_snapshot", trigger="auto")
+            with _AUTO_SNAPSHOT_LOCK:
+                if ok:
+                    _AUTO_SNAPSHOT_STATE["next_run"] = now + max(interval, AUTO_SNAPSHOT_MIN_INTERVAL_SEC)
+                else:
+                    _AUTO_SNAPSHOT_STATE["next_run"] = now + max(AUTO_SNAPSHOT_RETRY_SEC, 120.0)
+            try:
+                if ok:
+                    app.logger.info("Auto snapshot started (interval %.0fs).", interval)
+                else:
+                    app.logger.warning("Auto snapshot skipped: %s", message)
+            except Exception:
+                pass
+            continue
+        wait_time = max(30.0, min(300.0, next_run - now))
+        triggered = _AUTO_SNAPSHOT_EVENT.wait(timeout=wait_time)
+        if triggered:
+            _AUTO_SNAPSHOT_EVENT.clear()
 def _update_snapshot_dir(new_dir: Path) -> bool:
     normalized = _normalize_path(new_dir)
     if not normalized:
@@ -1325,9 +1435,13 @@ def _run_snapshot_job(details: Dict[str, object]) -> None:
                     "ended": time.time(),
                 }
             )
+        if details.get("trigger") == "auto":
+            _auto_snapshot_mark_result(status)
 
 
-def _start_snapshot_job(node_id: Optional[str]) -> Tuple[bool, str, Dict[str, object]]:
+def _start_snapshot_job(
+    node_id: Optional[str], *, mode: Optional[str] = None, trigger: Optional[str] = None
+) -> Tuple[bool, str, Dict[str, object]]:
     details: Dict[str, object] = {}
     target_ctx: Optional["NodeContext"] = None
     if node_id:
@@ -1351,7 +1465,9 @@ def _start_snapshot_job(node_id: Optional[str]) -> Tuple[bool, str, Dict[str, ob
         height = last_metrics.get("local_height")
         if isinstance(height, int) and height >= 0:
             details["height"] = height
-    details["mode"] = "snapshot"
+    details["mode"] = mode or "snapshot"
+    if trigger:
+        details["trigger"] = trigger
     with _SNAPSHOT_JOB_LOCK:
         if _SNAPSHOT_JOB_STATE.get("active"):
             return False, "Snapshot already in progress", _snapshot_job_snapshot()
@@ -2642,11 +2758,23 @@ def api_snapshots():
     snapshots = list_snapshots()
     job = _snapshot_job_snapshot()
     locations = _scan_snapshot_locations()
+    with _AUTO_SNAPSHOT_LOCK:
+        interval_sec = float(_AUTO_SNAPSHOT_STATE.get("interval") or 0.0)
+        next_run = float(_AUTO_SNAPSHOT_STATE.get("next_run") or 0.0)
+        last_run = float(_AUTO_SNAPSHOT_STATE.get("last_run") or 0.0)
+        auto_snapshot_state = {
+            "enabled": bool(_AUTO_SNAPSHOT_STATE.get("enabled")),
+            "interval_seconds": interval_sec if interval_sec > 0.0 else None,
+            "next_run": next_run if next_run > 0.0 else None,
+            "last_run": last_run if last_run > 0.0 else None,
+            "last_result": _AUTO_SNAPSHOT_STATE.get("last_result"),
+        }
     response: Dict[str, object] = {
         "snapshots": snapshots,
         "job": job,
         "directory": str(SNAPSHOT_DIR),
         "locations": locations,
+        "automation": {"auto_snapshot": auto_snapshot_state},
     }
     message = job.get("message") if isinstance(job, dict) else None
     if message:
@@ -2827,3 +2955,12 @@ try:
     refresh_discovered_nodes()
 except Exception:
     pass
+
+try:
+    get_settings()
+except Exception:
+    pass
+
+_AUTO_SNAPSHOT_THREAD = threading.Thread(target=_auto_snapshot_worker, daemon=True)
+_AUTO_SNAPSHOT_THREAD.start()
+_AUTO_SNAPSHOT_EVENT.set()
