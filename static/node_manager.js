@@ -445,12 +445,12 @@
       tick: formatBlocksTick,
     },
     sync: {
-      label: 'Sync activity',
+      label: 'Sync rate',
       color: '#44f2a8',
       background: 'rgba(68,242,168,0.18)',
-      data: (metrics, length) => normalizeSeries(metrics.sync_progress_series, length),
-      tooltip: formatPercentValue,
-      tick: formatPercentTick,
+      data: (metrics, length) => normalizeSeries(metrics.block_rate_series, length),
+      tooltip: formatRateValue,
+      tick: formatRateTick,
       fallback: {
         label: 'Height Δ',
         color: '#ffb74d',
