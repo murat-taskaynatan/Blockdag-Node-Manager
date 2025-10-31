@@ -916,7 +916,7 @@
     try {
       const entry = state.nodes.get(nodeId);
       const label = entry && entry.meta ? (entry.meta.label || entry.meta.id || nodeId) : nodeId;
-      setSnapshotStatus(`Starting snapshot for ${label}…`, { level: 'warn' });
+      setSnapshotStatus(`Snapshot requested for ${label}`);
       const res = await fetch('/api/snapshots/create', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -986,7 +986,7 @@
     try {
       const entry = state.nodes.get(nodeId);
       const label = entry && entry.meta ? (entry.meta.label || entry.meta.id || nodeId) : nodeId;
-      setSnapshotStatus(`Restoring snapshot for ${label}…`, { level: 'warn' });
+      setSnapshotStatus(`Restore requested for ${label}`);
       const res = await fetch('/api/snapshots/restore', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
