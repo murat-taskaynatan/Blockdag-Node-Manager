@@ -92,7 +92,8 @@
 
   function formatPercent(value) {
     if (!Number.isFinite(value)) return null;
-    if (value >= 99.95) return '100%';
+    if (value >= 99.995) return '100%';
+    if (value >= 99.5) return `${value.toFixed(2)}%`;
     if (value >= 10) return `${value.toFixed(1)}%`;
     return `${value.toFixed(2)}%`;
   }
