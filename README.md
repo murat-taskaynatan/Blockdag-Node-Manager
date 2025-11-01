@@ -66,7 +66,7 @@ Node definitions live in `config/nodes.json`. Each entry can specify:
 Environment variables (`BDAG_RPC_BASE`, `BDAG_REMOTE_RPC_BASES`, etc.) are honoured and can be referenced inside the JSON using `${VAR:-default}` placeholders.
 
 ## Production Install
-Use the bundled helper to deploy under `/opt/blockdag-node-manager` with systemd integration:
+Use the bundled helper to deploy under `/opt/blockdag-node-manager` with systemd integration.
 Run the following from any directory where you want the repository placed (no elevated permissions needed):
 ```bash
 
