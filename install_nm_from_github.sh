@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPO_URL="${REPO_URL:-https://github.com/murat-taskaynatan/Blockdag-Node-Manager.git}"
-REPO_REF="${REPO_REF:-${REPO_BRANCH:-v1.3.0}}"
+REPO_REF="${REPO_REF:-${REPO_BRANCH:-v1.4.0}}"
 
 : "${INSTALL_DIR:=/opt/blockdag-node-manager}"
 : "${SERVICE_NAME:=blockdag-node-manager.service}"
