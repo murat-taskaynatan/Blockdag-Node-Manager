@@ -5,8 +5,8 @@
 ## v1.4.0 - 2025-10-31
 
 ### Overclock tab
-- New Overclock tab with safe NVMe/CPU/FS tweaks and an optional VWC toggle.
-- Preflight PLP/VWC safety check and clear VWC hint inside the tile.
+- New Overclock tab with safe NVMe/CPU/FS tweaks and OverlayFS controls.
+- Preflight outlines PLP safety status alongside detected device context.
 - Apply/Verify/Revert actions with auto-open logs panel and compact spacing.
 - Verify benchmark (fio) with robust JSON parsing and derived IOPS when missing.
 - Always-on chart with canvas fallback if Chart.js is unavailable; auto-prime on load.

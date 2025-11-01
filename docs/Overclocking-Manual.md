@@ -11,9 +11,6 @@ Overclock applies a set of host‑level optimizations that typically reduce fsyn
 - Filesystem remount with tuned options
   - ext4: `noatime,commit=30,data=ordered`
   - xfs: `noatime,logbufs=8,logbsize=256k`
-- Optional: Enable NVMe Volatile Write Cache (VWC, write‑back)
-
-Important: Enabling VWC on consumer NVMe without power‑loss protection (PLP) risks data loss on power failure. Use a UPS or an enterprise NVMe with PLP if you enable VWC.
 
 ## Prerequisites
 
@@ -29,18 +26,17 @@ Important: Enabling VWC on consumer NVMe without power‑loss protection (PLP) r
    - Auto‑filled from discovered containers that bind host data to `/bdag/data`.
    - You can enter any path under your node’s data filesystem; we’ll detect the mountpoint automatically.
 3) Preflight safety check (runs automatically)
-   - Shows VWC safety hint (PLP detected / no PLP / unknown).
-   - If unknown, you may need root for `smartctl` or your device may not expose PLP.
+   - Summarizes detected device, mountpoint, and PLP (power loss protection) info when available.
+   - If PLP shows “unknown”, you may need root for `smartctl` or your device may not expose it.
 4) Select Tweaks
    - CPU governor: performance
    - NVMe low‑latency mode
    - I/O scheduler: none (mq‑deadline fallback)
    - Filesystem remount (ext4/xfs tuned)
-   - Optional: Write‑back cache (VWC) — only if safe for your hardware/risk profile
-5) Apply Tweaks
-   - Click “Apply Tweaks”. If the service isn’t root, the UI shows a copy‑pasteable sudo command.
+5) Tweaks apply automatically as soon as you toggle them.
+   - The status line (left of the buttons) confirms success or reports if root access is required.
 6) Verify
-   - Click “Verify” to run a 10‑second fsync micro‑benchmark on the same filesystem.
+   - Click “Test” to run a 10‑second fsync micro‑benchmark on the same filesystem.
    - The UI shows IOPS, bandwidth, p50/p99 and plots IOPS/p50 over time.
 7) Revert
    - Click “Revert” to best‑effort restore typical defaults (see Revert section).
@@ -59,10 +55,6 @@ Important: Enabling VWC on consumer NVMe without power‑loss protection (PLP) r
 - Filesystem remount
   - ext4: `noatime,commit=30,data=ordered` reduces metadata writes from access time updates and batches journal commits.
   - xfs: `noatime,logbufs=8,logbsize=256k` increases log buffers and reduces metadata write overhead.
-
-- NVMe VWC (write‑back cache)
-  - Dramatically reduces fsync latency on many drives by caching writes in volatile memory.
-  - Safe if your NVMe has PLP (enterprise drives). Risky on consumer NVMe without PLP (power loss may lose recent writes).
 
 ## Verify Benchmark (fio)
 
@@ -88,7 +80,7 @@ Revert restores typical defaults:
 - NVMe latency → `default_ps_max_latency_us=200000`
 - I/O scheduler → `mq-deadline` (fallback `none` if not available)
 - Filesystem remount → ext4 `relatime,commit=5,data=ordered`; xfs `relatime`
-- Disable NVMe VWC if supported
+- Ensure NVMe VWC remains disabled (when the controller exposes the feature)
 
 Note: Device/vendor defaults can vary. Revert aims for sensible, generally safe defaults rather than exact pre‑tuning state.
 
@@ -125,7 +117,7 @@ See also: `docs/nvme_tuning.md` for detailed persistence steps.
 - Apply shows “Needs root”
   - Copy the hinted `sudo scripts/tune_nvme_node.sh ...` command into a root shell and re‑try.
 - Preflight says “unknown”
-  - Some drives do not expose PLP. This does not necessarily mean unsafe; if in doubt, do not enable VWC unless you accept the risk.
+  - Some drives do not expose PLP. This does not necessarily mean unsafe; treat the preflight summary as informational.
 
 ## CLI Script (Advanced)
 
@@ -133,8 +125,7 @@ All tweaks are implemented by `scripts/tune_nvme_node.sh` and can be run manuall
 
 ```
 sudo scripts/tune_nvme_node.sh --mountpoint /mnt/node \
-  --cpu yes --nvme-latency yes --scheduler yes --remount yes \
-  --enable-vwc no
+  --cpu yes --nvme-latency yes --scheduler yes --remount yes
 
 # Revert example
 sudo scripts/tune_nvme_node.sh --mountpoint /mnt/node --revert yes \
@@ -143,8 +134,7 @@ sudo scripts/tune_nvme_node.sh --mountpoint /mnt/node --revert yes \
 
 ## Safety Notes
 
-- Always understand the write‑back cache (VWC) risk: without PLP, sudden power loss can corrupt recent writes.
-- Prefer an enterprise NVMe with PLP for production nodes. If not available, use a UPS and regular snapshots.
+- Prefer an enterprise NVMe with PLP for production nodes; if not available, use a UPS and regular snapshots.
 - Avoid using Overclock on ZFS/Btrfs for the DB volume unless you are familiar with the trade‑offs (fsync often slower without a proper SLOG).
 
 ## FAQ
@@ -157,4 +147,3 @@ sudo scripts/tune_nvme_node.sh --mountpoint /mnt/node --revert yes \
 
 - Can I apply only some tweaks?
   - Yes. Toggle each item on/off in the Overclock tab before applying.
-

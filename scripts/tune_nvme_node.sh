@@ -218,31 +218,36 @@ remount_fs() {
 }
 
 enable_vwc_if_requested() {
-  if [[ "$ENABLE_VWC" != "yes" ]]; then
-    info "NVMe Volatile Write Cache: not enabled (use --enable-vwc yes to enable; understand power-loss risk)"
-    return 0
-  fi
   if ! command -v nvme >/dev/null 2>&1; then
-    warn "nvme-cli not installed; cannot set VWC"
+    warn "nvme-cli not installed; cannot manage VWC"
     return 0
   fi
   local ctrl="/dev/${BASE%%p*}"
   [[ -b "$ctrl" ]] || ctrl="$DEVICE"
-  info "Checking NVMe VWC support on $ctrl"
-  if nvme get-feature -f 0x06 -H "$ctrl" >/tmp/nvme_vwc.$$ 2>/dev/null; then
-    if grep -qi "Volatile Write Cache: Present" /tmp/nvme_vwc.$$ || grep -qi "(ENABLED)" /tmp/nvme_vwc.$$; then
-      info "Enabling NVMe VWC on $ctrl (risk: data loss on power failure without PLP)"
-      if nvme set-feature -f 0x06 -v=1 "$ctrl" >/dev/null 2>&1; then
-        info "VWC enabled"
+  if [[ "$ENABLE_VWC" == "yes" ]]; then
+    info "Checking NVMe VWC support on $ctrl"
+    if nvme get-feature -f 0x06 -H "$ctrl" >/tmp/nvme_vwc.$$ 2>/dev/null; then
+      if grep -qi "Volatile Write Cache: Present" /tmp/nvme_vwc.$$ || grep -qi "(ENABLED)" /tmp/nvme_vwc.$$; then
+        info "Enabling NVMe VWC on $ctrl (risk: data loss on power failure without PLP)"
+        if nvme set-feature -f 0x06 -v=1 "$ctrl" >/dev/null 2>&1; then
+          info "VWC enabled"
+        else
+          warn "Failed to enable VWC via nvme set-feature"
+        fi
       else
-        warn "Failed to enable VWC via nvme set-feature"
+        warn "Controller does not report VWC support; skipping"
       fi
+      rm -f /tmp/nvme_vwc.$$ || true
     else
-      warn "Controller does not report VWC support; skipping"
+      warn "nvme get-feature failed on $ctrl"
     fi
-    rm -f /tmp/nvme_vwc.$$ || true
+    return 0
+  fi
+  info "Ensuring NVMe VWC disabled on $ctrl"
+  if nvme set-feature -f 0x06 -v=0 "$ctrl" >/dev/null 2>&1; then
+    info "VWC disabled"
   else
-    warn "nvme get-feature failed on $ctrl"
+    warn "Failed to disable VWC via nvme set-feature"
   fi
 }
 

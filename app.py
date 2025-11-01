@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from decimal import Decimal, ROUND_UP, getcontext
 from collections import OrderedDict, deque
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 from urllib.parse import urlparse
 
 import requests
@@ -125,6 +125,52 @@ def _oc_log(message: str) -> None:
         line = message
     with _OVERCLOCK_LOGS_LOCK:
         _OVERCLOCK_LOGS.append(line)
+
+
+def _auto_detect_data_dir(preferred: Optional[str] = None) -> Optional[Path]:
+    """Best-effort detection of the node data directory.
+    Order:
+      1) Preferred path if it exists
+      2) Any discovered node context chain_data_dir that exists
+      3) Common locations and known symlinks
+    """
+    # 1) Preferred
+    try:
+        if preferred:
+            p = _normalize_path(preferred)
+            if p and p.exists() and p.is_dir():
+                return p
+    except Exception:
+        pass
+    # 2) Discovered nodes
+    try:
+        for ctx in NODES.values():
+            candidate = ctx.chain_data_dir
+            if candidate and Path(candidate).exists():
+                return Path(candidate)
+    except Exception:
+        pass
+    # 3) Common paths
+    candidates = [
+        Path.home() / "blockdag",
+        Path("/home/node/blockdag"),
+        Path("/media/node/nvme1/blockdag"),
+        Path.home() / "blockdag-scripts" / "bin" / "bdag" / "data",
+    ]
+    # If /home/node/blockdag symlink exists, resolve
+    try:
+        link = Path("/home/node/blockdag")
+        if link.exists():
+            candidates.insert(0, link.resolve())
+    except Exception:
+        pass
+    for c in candidates:
+        try:
+            if c.exists() and c.is_dir():
+                return c
+        except Exception:
+            continue
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -287,7 +333,9 @@ DEFAULT_SETTINGS: Dict[str, object] = {
     "overclock_nvme_latency": False,
     "overclock_scheduler": False,
     "overclock_remount": False,
-    "overclock_enable_vwc": False,
+    "overclock_vm_mode": False,
+    "overclock_overlay_bdagchain": False,
+    "overclock_overlay_bdageth": False,
 }
 _SETTINGS_LOCK = threading.Lock()
 _SETTINGS_CACHE: Dict[str, object] = {}
@@ -566,61 +614,80 @@ def _estimate_dir_size_bytes(directory: Optional[Path]) -> int:
     normalized = _normalize_path(directory)
     if not normalized or not normalized.exists():
         return 0
-    size: Optional[int] = None
-    try:
-        out = subprocess.check_output(
-            ["du", "-sb", str(normalized)],
-            stderr=subprocess.DEVNULL,
-            text=True,
-        )
-        parts = out.strip().split()
-        if parts:
-            size = max(int(parts[0]), 0)
-    except Exception:
-        size = None
-    if size and size > 0:
-        return size
-    total = 0
-    try:
-        for root, _, files in os.walk(normalized):
-            for name in files:
-                try:
-                    total += (Path(root) / name).stat().st_size
-                except Exception:
-                    continue
-    except Exception:
-        total = max(total, 0)
-    if total > 0:
-        return total
-    if DOCKER_BIN:
+
+    exclude_dirs = {"overlay-backup"}
+
+    def _path_size(path: Path, *, prune: Optional[Set[str]] = None) -> int:
+        if not path.exists():
+            return 0
+        if prune is None:
+            try:
+                out = subprocess.check_output(
+                    ["du", "-sb", str(path)],
+                    stderr=subprocess.DEVNULL,
+                    text=True,
+                )
+                parts = out.strip().split()
+                if parts:
+                    size_val = max(int(parts[0]), 0)
+                    if size_val > 0:
+                        return size_val
+            except Exception:
+                pass
+        total_size = 0
         try:
-            out = subprocess.check_output(
-                [
-                    DOCKER_BIN,
-                    "run",
-                    "--rm",
-                    "--init",
-                    "-u",
-                    "0",
-                    "-v",
-                    f"{normalized}:/data:ro",
-                    "busybox",
-                    "du",
-                    "-sb",
-                    "/data",
-                ],
-                stderr=subprocess.DEVNULL,
-                text=True,
-                timeout=300,
-            )
-            parts = out.strip().split()
-            if parts:
-                docker_size = max(int(parts[0]), 0)
-                if docker_size > 0:
-                    return docker_size
+            for root, dirs, files in os.walk(path):
+                if prune:
+                    dirs[:] = [d for d in dirs if d not in prune]
+                for name in files:
+                    try:
+                        total_size += (Path(root) / name).stat().st_size
+                    except Exception:
+                        continue
         except Exception:
             pass
-    return total
+        if total_size > 0:
+            return total_size
+        if DOCKER_BIN and prune is None:
+            try:
+                out = subprocess.check_output(
+                    [
+                        DOCKER_BIN,
+                        "run",
+                        "--rm",
+                        "--init",
+                        "-u",
+                        "0",
+                        "-v",
+                        f"{path}:/data:ro",
+                        "busybox",
+                        "du",
+                        "-sb",
+                        "/data",
+                    ],
+                    stderr=subprocess.DEVNULL,
+                    text=True,
+                    timeout=300,
+                )
+                parts = out.strip().split()
+                if parts:
+                    docker_size = max(int(parts[0]), 0)
+                    if docker_size > 0:
+                        return docker_size
+            except Exception:
+                pass
+        return max(total_size, 0)
+
+    base_size = _path_size(normalized, prune=None)
+    if base_size > 0:
+        for name in exclude_dirs:
+            sub_path = normalized / name
+            if sub_path.exists():
+                base_size -= _path_size(sub_path, prune=None)
+        return max(base_size, 0)
+
+    # Fallback: direct walk while pruning excluded directories
+    return _path_size(normalized, prune=exclude_dirs)
 
 
 def _snapshot_progress_update(payload: Optional[Dict[str, object]]) -> None:
@@ -1383,7 +1450,7 @@ def _auto_snapshot_worker() -> None:
                     _AUTO_SNAPSHOT_STATE["next_run"] = now + max(60.0, min(interval, 300.0))
                 continue
             best_node = _select_best_snapshot_node()
-            ok, message, _ = _start_snapshot_job(best_node, mode="auto_snapshot", trigger="auto")
+            ok, message, _ = _start_snapshot_job(best_node, mode="auto_snapshot", trigger="auto", quiesce_overlay=True)
             with _AUTO_SNAPSHOT_LOCK:
                 if ok:
                     _AUTO_SNAPSHOT_STATE["next_run"] = now + max(interval, AUTO_SNAPSHOT_MIN_INTERVAL_SEC)
@@ -1417,6 +1484,7 @@ def _run_snapshot_job(details: Dict[str, object]) -> None:
     dest_name: Optional[str] = None
     dest_path: Optional[Path] = None
     container = (details or {}).get("container") if details else None
+    quiesce_overlay = bool(details.get("quiesce_overlay", True)) if details else True
     restart_required = False
     try:
         locations = _scan_snapshot_locations()
@@ -1430,11 +1498,29 @@ def _run_snapshot_job(details: Dict[str, object]) -> None:
             data_dir = _normalize_path(SNAPSHOT_DATA_DIR)
         if not data_dir or not data_dir.exists() or not data_dir.is_dir():
             raise RuntimeError(f"Snapshot data directory not found: {data_dir}")
-        if container and DOCKER_BIN:
+        if container and DOCKER_BIN and quiesce_overlay:
             try:
                 restart_required = _stop_container(container)
             except Exception as exc:
                 raise RuntimeError(f"Failed to stop container {container}: {exc}")
+        overlay_targets: Set[str] = set()
+        flushed_overlays: List[str] = []
+        try:
+            overlay_targets = _overlay_targets_for_path(data_dir)
+        except Exception as exc:
+            _oc_log(f"Snapshot guard: failed to enumerate overlays: {exc}")
+            overlay_targets = set()
+        if overlay_targets:
+            try:
+                flushed_overlays = _overlay_flush_to_disk(overlay_targets)
+                if flushed_overlays:
+                    labs = ", ".join(sorted(flushed_overlays))
+                    _oc_log(f"Snapshot guard: overlays flushed to disk [{labs}]")
+            except Exception as exc:
+                _oc_log(f"Snapshot guard: overlay flush failed: {exc}")
+                raise RuntimeError(str(exc)) from exc
+        if flushed_overlays:
+            details.setdefault("overlays", sorted(flushed_overlays))
         total_bytes = _estimate_dir_size_bytes(data_dir)
         details.setdefault("total_bytes", total_bytes)
         start_time = time.time()
@@ -1468,6 +1554,8 @@ def _run_snapshot_job(details: Dict[str, object]) -> None:
                 f"{directory}:/backup",
                 "busybox",
                 "tar",
+                "--exclude=overlay-backup",
+                "--exclude=overlay-backup/*",
                 "-cf",
                 f"/backup/{dest_name}",
                 "-C",
@@ -1485,6 +1573,8 @@ def _run_snapshot_job(details: Dict[str, object]) -> None:
                 "tar",
                 "--warning=no-file-changed",
                 "--ignore-failed-read",
+                "--exclude=overlay-backup",
+                "--exclude=overlay-backup/*",
                 "-cf",
                 str(dest_path),
                 "-C",
@@ -1516,6 +1606,8 @@ def _run_snapshot_job(details: Dict[str, object]) -> None:
                     )
                     fallback_command = [
                         "tar",
+                        "--exclude=overlay-backup",
+                        "--exclude=overlay-backup/*",
                         "-cf",
                         str(dest_path),
                         "-C",
@@ -1531,6 +1623,9 @@ def _run_snapshot_job(details: Dict[str, object]) -> None:
                 else:
                     raise
         message = f"Snapshot saved as {dest_name}"
+        flushed = details.get("overlays") if isinstance(details, dict) else None
+        if flushed:
+            message += f" (overlays flushed: {', '.join(flushed)})"
         status = "completed"
         if SNAPSHOT_MAX > 0:
             _prune_snapshots()
@@ -1568,7 +1663,7 @@ def _run_snapshot_job(details: Dict[str, object]) -> None:
 
 
 def _start_snapshot_job(
-    node_id: Optional[str], *, mode: Optional[str] = None, trigger: Optional[str] = None
+    node_id: Optional[str], *, mode: Optional[str] = None, trigger: Optional[str] = None, quiesce_overlay: Optional[bool] = None
 ) -> Tuple[bool, str, Dict[str, object]]:
     details: Dict[str, object] = {}
     target_ctx: Optional["NodeContext"] = None
@@ -1594,6 +1689,9 @@ def _start_snapshot_job(
         if isinstance(height, int) and height >= 0:
             details["height"] = height
     details["mode"] = mode or "snapshot"
+    if quiesce_overlay is None:
+        quiesce_overlay = True
+    details["quiesce_overlay"] = bool(quiesce_overlay)
     if trigger:
         details["trigger"] = trigger
     with _SNAPSHOT_JOB_LOCK:
@@ -2908,13 +3006,18 @@ def api_overclock_apply():
     body = request.get_json(silent=True) or {}
     if not isinstance(body, dict):
         return jsonify({"ok": False, "error": "invalid payload"}), 400
-    data_path = str(body.get("data_path") or "/home/node/blockdag").strip() or "/"
-    enable_vwc = _coerce_bool(body.get("enable_vwc"), False)
+    data_path = str(body.get("data_path") or "").strip()
     do_cpu = _coerce_bool(body.get("cpu"), True)
     do_nvme = _coerce_bool(body.get("nvme_latency"), True)
     do_sched = _coerce_bool(body.get("scheduler"), True)
     do_remount = _coerce_bool(body.get("remount"), True)
 
+    # Auto-detect data directory when missing or invalid
+    resolved_dir = _auto_detect_data_dir(data_path)
+    if not resolved_dir:
+        return jsonify({"ok": False, "error": "could not detect data directory; please enter it explicitly"}), 400
+    data_path = str(resolved_dir)
+    _oc_log(f"Detected data dir: {data_path}")
     # Resolve mountpoint using findmnt so users can pass any path under the filesystem
     mountpoint = None
     try:
@@ -2923,7 +3026,6 @@ def api_overclock_apply():
     except Exception:
         mountpoint = None
     if not mountpoint:
-        # Fall back: if data_path is a mountpoint itself
         mountpoint = data_path if os.path.ismount(data_path) else "/"
 
     # Prefer bundled script inside install dir; fallback to workspace root
@@ -2934,8 +3036,6 @@ def api_overclock_apply():
         return jsonify({"ok": False, "error": f"script not found: {script_path}"}), 500
 
     cmd = [str(script_path), "--mountpoint", mountpoint]
-    if enable_vwc:
-        cmd.extend(["--enable-vwc", "yes"])
     cmd.extend(["--cpu", "yes" if do_cpu else "no"]) 
     cmd.extend(["--nvme-latency", "yes" if do_nvme else "no"]) 
     cmd.extend(["--scheduler", "yes" if do_sched else "no"]) 
@@ -2945,21 +3045,25 @@ def api_overclock_apply():
     if use_sudo:
         cmd = ["sudo", "-n"] + cmd
     try:
-        _oc_log(f"Apply: mount={mountpoint} cpu={do_cpu} nvme={do_nvme} sched={do_sched} remount={do_remount} vwc={'yes' if enable_vwc else 'no'}")
-        proc = subprocess.run(cmd, text=True, capture_output=True, check=False)
+        _oc_log(f"Apply: mount={mountpoint} cpu={do_cpu} nvme={do_nvme} sched={do_sched} remount={do_remount}")
+        # Use a stable working directory to avoid shell-init getcwd errors
+        proc = subprocess.run(cmd, text=True, capture_output=True, check=False, cwd="/")
         ok = proc.returncode == 0
-        # Stream a few lines to Overclock log buffer
+        # Stream a few lines to Overclock log buffer (filter noisy shell-init getcwd)
+        noisy = "shell-init: error retrieving current directory"
         for line in (proc.stdout or "").splitlines()[:12]:
-            _oc_log(f"apply stdout: {line}")
+            if not line.startswith(noisy):
+                _oc_log(f"apply stdout: {line}")
         for line in (proc.stderr or "").splitlines()[:12]:
-            _oc_log(f"apply stderr: {line}")
+            if not line.startswith(noisy):
+                _oc_log(f"apply stderr: {line}")
         _oc_log(f"Apply: {'OK' if ok else 'FAILED'} (rc={proc.returncode})")
-        payload = {"ok": ok, "stdout": proc.stdout, "stderr": proc.stderr}
+        payload = {"ok": ok, "stdout": proc.stdout, "stderr": proc.stderr, "resolved_data_path": data_path}
         if use_sudo and proc.returncode != 0:
             # Common case: sudo requires a TTY or password
             payload.update({
                 "needs_root": True,
-                "hint": f"sudo scripts/tune_nvme_node.sh --mountpoint {mountpoint}" + (" --enable-vwc yes" if enable_vwc else ""),
+                "hint": f"sudo scripts/tune_nvme_node.sh --mountpoint {mountpoint}",
             })
         status = 200 if ok or payload.get("needs_root") else 500
         return jsonify(payload), status
@@ -2974,7 +3078,11 @@ def api_overclock_revert():
     body = request.get_json(silent=True) or {}
     if not isinstance(body, dict):
         return jsonify({"ok": False, "error": "invalid payload"}), 400
-    data_path = str(body.get("data_path") or "/home/node/blockdag").strip() or "/"
+    data_path = str(body.get("data_path") or "").strip()
+    resolved_dir = _auto_detect_data_dir(data_path)
+    if not resolved_dir:
+        return jsonify({"ok": False, "error": "could not detect data directory; please enter it explicitly"}), 400
+    data_path = str(resolved_dir)
     try:
         out = subprocess.check_output(["findmnt", "-no", "TARGET", "--target", data_path], text=True, stderr=subprocess.DEVNULL)
         mountpoint = (out or "").strip() or None
@@ -2993,14 +3101,17 @@ def api_overclock_revert():
         cmd = ["sudo", "-n"] + cmd
     try:
         _oc_log(f"Revert: mount={mountpoint}")
-        proc = subprocess.run(cmd, text=True, capture_output=True, check=False)
+        proc = subprocess.run(cmd, text=True, capture_output=True, check=False, cwd="/")
         ok = proc.returncode == 0
+        noisy = "shell-init: error retrieving current directory"
         for line in (proc.stdout or "").splitlines()[:12]:
-            _oc_log(f"revert stdout: {line}")
+            if not line.startswith(noisy):
+                _oc_log(f"revert stdout: {line}")
         for line in (proc.stderr or "").splitlines()[:12]:
-            _oc_log(f"revert stderr: {line}")
+            if not line.startswith(noisy):
+                _oc_log(f"revert stderr: {line}")
         _oc_log(f"Revert: {'OK' if ok else 'FAILED'} (rc={proc.returncode})")
-        payload = {"ok": ok, "stdout": proc.stdout, "stderr": proc.stderr}
+        payload = {"ok": ok, "stdout": proc.stdout, "stderr": proc.stderr, "resolved_data_path": data_path}
         if use_sudo and proc.returncode != 0:
             payload.update({"needs_root": True, "hint": f"sudo scripts/tune_nvme_node.sh --mountpoint {mountpoint} --revert yes"})
         return jsonify(payload), (200 if ok or payload.get("needs_root") else 500)
@@ -3015,13 +3126,17 @@ def api_overclock_verify():
     body = request.get_json(silent=True) or {}
     if not isinstance(body, dict):
         return jsonify({"ok": False, "error": "invalid payload"}), 400
-    data_path = str(body.get("data_path") or "/home/node/blockdag").strip() or "/"
+    data_path = str(body.get("data_path") or "").strip()
     try:
         runtime_req = int(body.get("runtime")) if body.get("runtime") is not None else 10
     except Exception:
         runtime_req = 10
     runtime = max(5, min(runtime_req, 30))
-    # Resolve mountpoint and create a temporary directory on that filesystem
+    # Auto-detect data dir, resolve mountpoint, and create a temporary directory on that filesystem
+    resolved_dir = _auto_detect_data_dir(data_path)
+    if not resolved_dir:
+        return jsonify({"ok": False, "error": "could not detect data directory; please enter it explicitly"}), 400
+    data_path = str(resolved_dir)
     try:
         out = subprocess.check_output(["findmnt", "-no", "TARGET", "--target", data_path], text=True, stderr=subprocess.DEVNULL)
         mountpoint = (out or "").strip() or None
@@ -3029,7 +3144,9 @@ def api_overclock_verify():
         mountpoint = None
     if not mountpoint:
         mountpoint = data_path if os.path.ismount(data_path) else "/"
-    tmp_dir = Path(mountpoint) / f".oc-verify-{int(time.time())}"
+    # Place the temp directory inside the requested data_path so tests reflect overlays/dir-specific mounts
+    base_dir = Path(data_path) if Path(data_path).exists() else Path(mountpoint)
+    tmp_dir = base_dir / f".oc-test-{int(time.time())}"
     try:
         tmp_dir.mkdir(parents=True, exist_ok=True)
     except Exception as exc:
@@ -3085,13 +3202,13 @@ def api_overclock_verify():
         "--output-format=json",
     ]
     try:
-        _oc_log(f"Verify: running fio on mount={mountpoint}")
-        proc = subprocess.run(cmd, text=True, capture_output=True, check=False)
+        _oc_log(f"Test: running fio on mount={mountpoint}")
+        proc = subprocess.run(cmd, text=True, capture_output=True, check=False, cwd="/")
         stdout = proc.stdout or ""
         stderr = proc.stderr or ""
         ok = proc.returncode == 0
-        # Parse simple metrics: IOPS, BW, clat percentiles if present
-        metrics = {}
+        # Parse metrics: write IOPS/BW + write and fsync (sync) percentiles when present
+        metrics: Dict[str, str] = {}
         # Prefer JSON parsing (robust across fio versions)
         parsed = None
         try:
@@ -3102,9 +3219,10 @@ def api_overclock_verify():
             try:
                 jobs = parsed.get("jobs") or []
                 job = jobs[0] if jobs else {}
-                section = job.get("write") or job.get("sync") or {}
-                iops_val = section.get("iops")
-                bw_kib = section.get("bw")  # KiB/s
+                write_sec = job.get("write") or {}
+                sync_sec = job.get("sync") or {}
+                iops_val = write_sec.get("iops")
+                bw_kib = write_sec.get("bw")  # KiB/s
                 if iops_val is not None:
                     try:
                         metrics["iops"] = f"{float(iops_val):.0f}"
@@ -3112,26 +3230,41 @@ def api_overclock_verify():
                         metrics["iops"] = str(iops_val)
                 if bw_kib is not None:
                     metrics["bw"] = f"{bw_kib}KiB/s"
-                # Percentiles in ns
-                p = (
-                    (job.get("clat_ns") or {}).get("percentile")
-                    or (section.get("clat_ns") or {}).get("percentile")
-                    or (job.get("lat_ns") or {}).get("percentile")
-                    or (section.get("lat_ns") or {}).get("percentile")
-                )
+                # Percentiles in ns — capture both write and sync (fsync)
+                write_pct = (
+                    (write_sec.get("clat_ns") or {}).get("percentile")
+                    or (job.get("clat_ns") or {}).get("percentile")
+                    or (write_sec.get("lat_ns") or {}).get("percentile")
+                ) or {}
+                sync_pct = (
+                    (sync_sec.get("clat_ns") or {}).get("percentile")
+                    or (sync_sec.get("lat_ns") or {}).get("percentile")
+                ) or {}
                 def _fmt_us(val_ns):
                     try:
                         us = float(val_ns) / 1000.0
                         return f"{us:.0f}us"
                     except Exception:
                         return None
-                if isinstance(p, dict):
-                    p50_ns = p.get("50.000000") or p.get("50.00th")
-                    p99_ns = p.get("99.000000") or p.get("99.00th")
-                    if p50_ns is not None:
-                        metrics["p50"] = _fmt_us(p50_ns)
-                    if p99_ns is not None:
-                        metrics["p99"] = _fmt_us(p99_ns)
+                # Write (submit) lat percentiles
+                if isinstance(write_pct, dict):
+                    wp50_ns = write_pct.get("50.000000") or write_pct.get("50.00th")
+                    wp99_ns = write_pct.get("99.000000") or write_pct.get("99.00th")
+                    if wp50_ns is not None:
+                        metrics["write_p50"] = _fmt_us(wp50_ns) or ""
+                        # Back-compat default p50 to write_p50
+                        metrics.setdefault("p50", metrics["write_p50"])  # nosec - informational only
+                    if wp99_ns is not None:
+                        metrics["write_p99"] = _fmt_us(wp99_ns) or ""
+                        metrics.setdefault("p99", metrics["write_p99"])  # nosec
+                # Fsync (sync) lat percentiles
+                if isinstance(sync_pct, dict):
+                    sp50_ns = sync_pct.get("50.000000") or sync_pct.get("50.00th")
+                    sp99_ns = sync_pct.get("99.000000") or sync_pct.get("99.00th")
+                    if sp50_ns is not None:
+                        metrics["fsync_p50"] = _fmt_us(sp50_ns) or ""
+                    if sp99_ns is not None:
+                        metrics["fsync_p99"] = _fmt_us(sp99_ns) or ""
             except Exception:
                 pass
         # Derive IOPS from bandwidth if missing
@@ -3179,17 +3312,22 @@ def api_overclock_verify():
         except Exception:
             pass
         if metrics:
-            _oc_log(f"Verify: IOPS={metrics.get('iops')} BW={metrics.get('bw')} p50={metrics.get('p50')} p99={metrics.get('p99')}")
+            _oc_log(
+                "Test: "
+                f"IOPS={metrics.get('iops')} BW={metrics.get('bw')} "
+                f"write_p50={metrics.get('write_p50')} write_p99={metrics.get('write_p99')} "
+                f"fsync_p50={metrics.get('fsync_p50')} fsync_p99={metrics.get('fsync_p99')}"
+            )
         else:
-            _oc_log(f"Verify: rc={proc.returncode}")
-        return jsonify({"ok": ok, "stdout": stdout, "stderr": stderr, "metrics": metrics}), (200 if ok else 500)
+            _oc_log(f"Test: rc={proc.returncode}")
+        return jsonify({"ok": ok, "stdout": stdout, "stderr": stderr, "metrics": metrics, "resolved_data_path": data_path}), (200 if ok else 500)
     except Exception as exc:
         try:
             shutil.rmtree(tmp_dir, ignore_errors=True)
         except Exception:
             pass
-        _oc_log(f"Verify: exception {exc}")
-        return jsonify({"ok": False, "error": str(exc)}), 500
+        _oc_log(f"Test: exception {exc}")
+    return jsonify({"ok": False, "error": str(exc)}), 500
 
 
 @app.route("/api/overclock/preflight", methods=["POST"])
@@ -3197,7 +3335,11 @@ def api_overclock_preflight():
     body = request.get_json(silent=True) or {}
     if not isinstance(body, dict):
         return jsonify({"ok": False, "error": "invalid payload"}), 400
-    data_path = str(body.get("data_path") or "/home/node/blockdag").strip() or "/"
+    data_path = str(body.get("data_path") or "").strip()
+    resolved_dir = _auto_detect_data_dir(data_path)
+    if not resolved_dir:
+        return jsonify({"ok": False, "error": "could not detect data directory; please enter it explicitly"}), 400
+    data_path = str(resolved_dir)
     try:
         out = subprocess.check_output(["findmnt", "-no", "SOURCE,TARGET", "--target", data_path], text=True, stderr=subprocess.DEVNULL)
         parts = (out or "").strip().split()
@@ -3214,21 +3356,10 @@ def api_overclock_preflight():
     m = re.match(r"(nvme\d+)n\d+", base)
     if m:
         ctrl = f"/dev/{m.group(1)}"
-    if not ctrl:
-        # Fallback for non-NVMe; we only report VWC/PLP for NVMe controllers
-        return jsonify({"ok": True, "device": dev_path, "mountpoint": mountpoint, "plp": "unknown", "vwc_present": None})
-    # Try nvme id-ctrl (no root needed)
-    vwc_present = None
-    try:
-        out = subprocess.check_output(["nvme", "id-ctrl", "-H", ctrl], text=True, stderr=subprocess.DEVNULL)
-        text = out.lower()
-        if "volatile write cache" in text:
-            # naive check
-            vwc_present = ("present" in text and "volatile write cache" in text)
-    except Exception:
-        vwc_present = None
     plp = "unknown"
     needs_root = False
+    if not ctrl:
+        return jsonify({"ok": True, "device": dev_path, "mountpoint": mountpoint, "controller": None, "plp": plp, "needs_root": needs_root, "resolved_data_path": data_path})
     # Try smartctl for PLP hint
     smartctl = shutil.which("smartctl")
     if smartctl:
@@ -3244,8 +3375,1009 @@ def api_overclock_preflight():
             needs_root = True
         except Exception:
             pass
-    _oc_log(f"Preflight: dev={dev_path} ctrl={ctrl or 'n/a'} plp={plp} vwc_present={vwc_present}")
-    return jsonify({"ok": True, "device": dev_path, "mountpoint": mountpoint, "controller": ctrl, "vwc_present": vwc_present, "plp": plp, "needs_root": needs_root})
+    _oc_log(f"Preflight: dev={dev_path} ctrl={ctrl or 'n/a'} plp={plp}")
+    return jsonify({"ok": True, "device": dev_path, "mountpoint": mountpoint, "controller": ctrl, "plp": plp, "needs_root": needs_root, "resolved_data_path": data_path})
+
+
+@app.route("/api/overclock/detect", methods=["GET"])
+def api_overclock_detect():
+    try:
+        resolved = _auto_detect_data_dir(None)
+        if not resolved:
+            return jsonify({"ok": False, "error": "not found"}), 404
+        data_path = str(resolved)
+        mountpoint = None
+        try:
+            out = subprocess.check_output(["findmnt", "-no", "TARGET", "--target", data_path], text=True, stderr=subprocess.DEVNULL)
+            mountpoint = (out or "").strip() or None
+        except Exception:
+            mountpoint = None
+        _oc_log(f"Detect: data_dir={data_path} mount={mountpoint or 'n/a'}")
+        return jsonify({"ok": True, "resolved_data_path": data_path, "mountpoint": mountpoint})
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@app.route("/api/overclock/verify-dbs", methods=["POST"])
+def api_overclock_verify_dbs():
+    """Run fio verify inside BdagChain and bdageth/chaindata when present.
+    Body: { runtime?: int }
+    Returns: { ok: true, results: { BdagChain?: {metrics}, bdageth-chaindata?: {metrics} } }
+    """
+    body = request.get_json(silent=True) or {}
+    try:
+        runtime_req = int(body.get("runtime")) if body.get("runtime") is not None else 10
+    except Exception:
+        runtime_req = 10
+    runtime = max(5, min(runtime_req, 30))
+    base = _auto_detect_data_dir(None)
+    if not base:
+        return jsonify({"ok": False, "error": "data directory not found"}), 404
+    # Discover DB dirs
+    dirs = _detect_db_dirs(base)
+    results: Dict[str, object] = {}
+    for name, path in dirs.items():
+        try:
+            if not path.exists() or not path.is_dir():
+                continue
+            _oc_log(f"Test: running fio in {name} ({path})")
+            with app.test_request_context(json={"data_path": str(path), "runtime": runtime}):
+                resp = api_overclock_verify()
+            payload = None
+            try:
+                payload, status = resp
+                data = payload.get_json() if hasattr(payload, 'get_json') else payload
+            except Exception:
+                data = None
+            if isinstance(data, dict) and data.get("ok"):
+                results[name] = data.get("metrics") or {}
+                # Log a concise line
+                met = results[name]
+                if isinstance(met, dict):
+                    _oc_log(
+                        f"Test:{name}: IOPS={met.get('iops')} BW={met.get('bw')} "
+                        f"write_p50={met.get('write_p50')} write_p99={met.get('write_p99')} "
+                        f"fsync_p50={met.get('fsync_p50')} fsync_p99={met.get('fsync_p99')}"
+                    )
+        except Exception as exc:
+            _oc_log(f"Test:{name}: exception {exc}")
+            continue
+    return jsonify({"ok": True, "results": results, "base": str(base)})
+
+@app.route("/api/overclock/wal-tmpfs", methods=["POST"])
+def api_overclock_wal_tmpfs():
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body, dict):
+        return jsonify({"ok": False, "error": "invalid payload"}), 400
+    enabled = _coerce_bool(body.get("enabled"), False)
+    wal_dir = str(body.get("wal_dir") or "/dev/shm/node-wal").strip() or "/dev/shm/node-wal"
+    user = os.getenv("SUDO_USER") or os.getenv("USER") or "node"
+    group = None
+    try:
+        import grp, pwd  # noqa: F401
+        group = grp.getgrgid(os.getgid()).gr_name  # type: ignore
+    except Exception:
+        group = None
+    # Ensure directory exists and is owned by service user if possible
+    try:
+        cmd_mkdir = ["mkdir", "-p", wal_dir]
+        cmd_chown = ["chown", f"{user}:{group or user}", wal_dir]
+        # Try direct first
+        try:
+            subprocess.run(cmd_mkdir, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd="/")
+            subprocess.run(cmd_chown, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd="/")
+        except Exception:
+            # Fallback to sudo -n if needed
+            subprocess.run(["sudo", "-n", *cmd_mkdir], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd="/")
+            subprocess.run(["sudo", "-n", *cmd_chown], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd="/")
+        return jsonify({"ok": False, "error": "wal tmpfs disabled"}), 410
+    except Exception as exc:
+        _oc_log(f"WAL tmpfs error: {exc}")
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@app.route("/api/overclock/wal-checkpoint", methods=["POST"])
+def api_overclock_wal_checkpoint():
+    return jsonify({"ok": False, "error": "wal checkpoint disabled"}), 410
+
+
+@app.route("/api/overclock/wal-checkpoint/status", methods=["GET"])
+def api_overclock_wal_checkpoint_status():
+    return jsonify({"ok": False, "error": "wal checkpoint disabled"}), 410
+
+
+@app.route("/api/overclock/wal-config", methods=["POST"])
+def api_overclock_wal_config():
+    """Disabled: WAL config removed."""
+    return jsonify({"ok": False, "error": "wal config disabled"}), 410
+
+
+@app.route("/api/overclock/vm-mode", methods=["POST"])
+def api_overclock_vm_mode():
+    """One-click path to emulate VM-like sync speeds without WAL features.
+    Steps:
+      - Apply safe tunings (CPU perf, nvme latency=0, scheduler, remount)
+      - Run a short DB-scoped test and return metrics
+    """
+    body = request.get_json(silent=True) or {}
+    runtime = 10
+    try:
+        if body.get("runtime") is not None:
+            runtime = max(5, min(int(body.get("runtime")), 20))
+    except Exception:
+        runtime = 10
+    # 1) Apply safe tunings
+    _oc_log("VM-Mode: applying safe tunings…")
+    try:
+        r = api_overclock_apply()
+    except Exception as exc:
+        _oc_log(f"VM-Mode: apply error {exc}")
+    # WAL steps removed
+    # 4) Run short test on data filesystem for reference
+    metrics = {}
+    try:
+        _oc_log("VM-Mode: running test (10s)…")
+        with app.test_request_context(json={"runtime": runtime}):
+            resp = api_overclock_verify()
+            try:
+                payload, status = resp
+                if isinstance(payload, Response):
+                    data = json.loads(payload.get_data(as_text=True))
+                else:
+                    data = payload.get_json() if hasattr(payload, 'get_json') else payload
+            except Exception:
+                data = None
+            if isinstance(data, dict):
+                metrics = data.get("metrics") or {}
+    except Exception:
+        pass
+    return jsonify({"ok": True, "metrics": metrics})
+
+
+@app.route("/api/overclock/redeploy", methods=["POST"])
+def api_overclock_redeploy():
+    return jsonify({"ok": False, "error": "redeploy with WAL env disabled"}), 410
+
+
+@app.route("/api/overclock/vm-mode-revert", methods=["POST"])
+def api_overclock_vm_mode_revert():
+    """Revert VM-Mode: revert tunings and run a quick test (WAL features removed)."""
+    # 1) Revert tunings
+    try:
+        _oc_log("VM-Mode revert: reverting tunings…")
+        _ = api_overclock_revert()
+    except Exception as exc:
+        _oc_log(f"VM-Mode revert: revert error {exc}")
+    # 2) Test after revert
+    metrics = {}
+    try:
+        _oc_log("VM-Mode revert: running test (10s)…")
+        with app.test_request_context(json={"runtime": 10}):
+            resp = api_overclock_verify()
+            try:
+                payload, status = resp
+                if isinstance(payload, Response):
+                    data = json.loads(payload.get_data(as_text=True))
+                else:
+                    data = payload.get_json() if hasattr(payload, 'get_json') else payload
+            except Exception:
+                data = None
+            if isinstance(data, dict):
+                metrics = data.get("metrics") or {}
+    except Exception:
+        pass
+    return jsonify({"ok": True, "metrics": metrics})
+
+
+@app.route("/api/overclock/redeploy/suggest", methods=["GET"])
+def api_overclock_redeploy_suggest():
+    return jsonify({"ok": False, "error": "redeploy suggest disabled"}), 410
+
+
+def _detect_db_dirs(data_dir: Path) -> Dict[str, Path]:
+    """Detect key RocksDB directories under the data dir."""
+    mapping: Dict[str, Path] = {}
+    candidates = [
+        ("BdagChain", data_dir / "testnet" / "BdagChain"),
+        ("bdageth-chaindata", data_dir / "testnet" / "bdageth" / "chaindata"),
+        ("BdagChain", data_dir / "BdagChain"),
+        ("bdageth-chaindata", data_dir / "bdageth" / "chaindata"),
+    ]
+    for name, path in candidates:
+        try:
+            if path.exists() and path.is_dir():
+                mapping[name] = path
+        except Exception:
+            continue
+    return mapping
+
+
+def _overlay_mapping_path() -> Path:
+    return Path("/etc/overlayfs-node-manager.json")
+
+
+def _overlay_state_path() -> Path:
+    return Path("/var/lib/overlay-commit-state.json")
+
+
+def _overlay_read_mappings() -> Dict[str, Dict[str, object]]:
+    mapping_path = _overlay_mapping_path()
+    if not mapping_path.exists():
+        return {}
+    try:
+        return json.loads(mapping_path.read_text())
+    except Exception:
+        return {}
+
+
+def _overlay_write_mappings(mappings: Dict[str, Dict[str, object]]) -> None:
+    try:
+        _overlay_mapping_path().write_text(json.dumps(mappings, indent=2))
+    except Exception:
+        pass
+
+
+def _overlay_simple_name(key: str, entry: Dict[str, object]) -> str:
+    name = entry.get("name")
+    if isinstance(name, str) and name:
+        return name
+    if "@" in key:
+        return key.split("@", 1)[0]
+    return key
+
+
+def _overlay_matches_targets(key: str, entry: Dict[str, object], targets: Optional[Iterable[str]]) -> bool:
+    if targets is None:
+        return True
+    simple = _overlay_simple_name(key, entry)
+    for target in targets:
+        if not isinstance(target, str):
+            continue
+        if target == "all":
+            return True
+        if key == target or simple == target:
+            return True
+        if target and key.startswith(f"{target}@"):
+            return True
+    return False
+
+
+def _overlay_commit_targets(
+    targets: Optional[Iterable[str]] = None,
+    *,
+    only_mounted: bool = False,
+    sync_backup_to_lower: bool = False,
+) -> Tuple[int, List[str]]:
+    mappings = _overlay_read_mappings()
+    if not mappings:
+        return 0, []
+    state_path = _overlay_state_path()
+    try:
+        state = json.loads(state_path.read_text())
+    except Exception:
+        state = {}
+    committed = 0
+    touched: List[str] = []
+    for key, entry in mappings.items():
+        if not _overlay_matches_targets(key, entry, targets):
+            continue
+        lower = entry.get("lower")
+        backup = entry.get("backup")
+        if not (lower and backup):
+            continue
+        lower_path = Path(str(lower))
+        backup_path = Path(str(backup))
+        if only_mounted:
+            mounted = False
+            try:
+                out = subprocess.check_output(
+                    ["findmnt", "-no", "FSTYPE", "--target", str(lower_path)],
+                    text=True,
+                    stderr=subprocess.DEVNULL,
+                )
+                mounted = (out or "").strip() == "overlay"
+            except Exception:
+                mounted = False
+            if not mounted:
+                continue
+        try:
+            backup_path.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+        _oc_log(f"Overlay: committing {key} -> {backup_path}")
+        subprocess.run(
+            [
+                "rsync",
+                "-a",
+                "--delete",
+                f"{str(lower_path).rstrip('/')}/",
+                f"{str(backup_path).rstrip('/')}/",
+            ],
+            check=False,
+            cwd="/",
+        )
+        state[key] = int(time.time())
+        committed += 1
+        touched.append(key)
+    try:
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        state_path.write_text(json.dumps(state))
+    except Exception:
+        pass
+    return committed, touched
+
+
+def _overlay_flush_to_disk(targets: Iterable[str], *, remount: bool = True) -> List[str]:
+    """Ensure overlay-backed directories are written back to disk.
+    For each selected overlay:
+        1. rsync the union view (mountpoint) into the overlay backup directory
+        2. Unmount the overlay to expose the real filesystem again
+        3. rsync the backup contents into the lower directory (now on disk)
+        4. Optionally recreate empty upper/work dirs and remount the overlay
+    """
+    mappings = _overlay_read_mappings()
+    if not mappings:
+        return []
+    targets_set = {str(t) for t in targets}
+    flushed: List[str] = []
+    for key, entry in mappings.items():
+        if not _overlay_matches_targets(key, entry, targets_set):
+            continue
+        lower = Path(entry.get("lower", ""))
+        upper = Path(entry.get("upper", ""))
+        work = Path(entry.get("work", ""))
+        backup = Path(entry.get("backup", ""))
+        if not lower.exists():
+            continue
+        try:
+            backup.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+        simple = _overlay_simple_name(key, entry)
+        label = entry.get("name") or simple
+        # Step 1: copy union view to backup
+        try:
+            _oc_log(f"Snapshot guard: syncing overlay {label} (union -> backup)")
+            subprocess.run(
+                [
+                    "rsync",
+                    "-a",
+                    "--delete",
+                    f"{str(lower).rstrip('/')}/",
+                    f"{str(backup).rstrip('/')}/",
+                ],
+                check=True,
+                cwd="/",
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            raise RuntimeError(
+                f"overlay sync union->backup failed for {label}: {(exc.stderr or exc.stdout or str(exc)).strip()}"
+            ) from exc
+        # Step 2: unmount overlay (if mounted)
+        was_mounted = False
+        try:
+            out = subprocess.check_output(
+                ["findmnt", "-no", "FSTYPE", "--target", str(lower)],
+                text=True,
+                stderr=subprocess.DEVNULL,
+            )
+            was_mounted = (out or "").strip() == "overlay"
+        except Exception:
+            was_mounted = False
+        if was_mounted:
+            subprocess.run(
+                ["umount", str(lower)],
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+        # Step 3: copy backup back to lower (now on disk)
+        try:
+            _oc_log(f"Snapshot guard: syncing overlay {label} (backup -> lower)")
+            subprocess.run(
+                [
+                    "rsync",
+                    "-a",
+                    "--delete",
+                    f"{str(backup).rstrip('/')}/",
+                    f"{str(lower).rstrip('/')}/",
+                ],
+                check=True,
+                cwd="/",
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            raise RuntimeError(
+                f"overlay sync backup->lower failed for {label}: {(exc.stderr or exc.stdout or str(exc)).strip()}"
+            ) from exc
+        # Step 4: optionally remount overlay with fresh dirs
+        if remount and upper and work:
+            try:
+                subprocess.run(["rm", "-rf", str(upper)], check=False, cwd="/")
+                subprocess.run(["rm", "-rf", str(work)], check=False, cwd="/")
+            except Exception:
+                pass
+            try:
+                upper.mkdir(parents=True, exist_ok=True)
+            except Exception:
+                pass
+            try:
+                work.mkdir(parents=True, exist_ok=True)
+            except Exception:
+                pass
+            opts = f"lowerdir={lower},upperdir={upper},workdir={work}"
+            subprocess.run(
+                ["mount", "-t", "overlay", "overlay", "-o", opts, str(lower)],
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                cwd="/",
+            )
+        flushed.append(label)
+    return flushed
+
+
+def _overlay_targets_for_path(root: Path) -> Set[str]:
+    mappings = _overlay_read_mappings()
+    if not mappings:
+        return set()
+    try:
+        root_resolved = root.resolve()
+    except Exception:
+        root_resolved = root
+    selected: Set[str] = set()
+    for key, entry in mappings.items():
+        lower = entry.get("lower")
+        if not lower:
+            continue
+        try:
+            lower_path = Path(str(lower)).resolve()
+        except Exception:
+            continue
+        try:
+            lower_path.relative_to(root_resolved)
+        except ValueError:
+            continue
+        selected.add(key)
+        selected.add(_overlay_simple_name(key, entry))
+    return selected
+
+
+@app.route("/api/overclock/overlay/apply", methods=["POST"])
+def api_overclock_overlay_apply():
+    """Apply OverlayFS with tmpfs upper over DB directories to redirect writes to RAM.
+    Periodically commits overlay mount view to disk backup via a systemd timer.
+    """
+    body = request.get_json(silent=True) or {}
+    target = (body.get("target") or "BdagChain").strip()
+    try:
+        interval_req = body.get("interval_sec")
+        interval_sec = max(5, min(int(interval_req), 600)) if interval_req is not None else 15
+    except Exception:
+        interval_sec = 15
+    try:
+        # Optional per-overlay RAM limit
+        limit_bytes = None
+        if body.get("limit_gib") is not None:
+            try:
+                gib = float(body.get("limit_gib"))
+                if gib > 0:
+                    limit_bytes = int(gib * (1024**3))
+            except Exception:
+                limit_bytes = None
+        elif body.get("limit_bytes") is not None:
+            try:
+                limit_bytes = max(0, int(body.get("limit_bytes")))
+            except Exception:
+                limit_bytes = None
+
+        data_dir = _auto_detect_data_dir(None)
+        if not data_dir:
+            return jsonify({"ok": False, "error": "data directory not found"}), 404
+        db_map = _detect_db_dirs(data_dir)
+        if target not in db_map:
+            return jsonify({"ok": False, "error": f"db '{target}' not found"}), 404
+        lower = db_map[target]
+        upper = Path("/dev/shm/overlay") / (target + "-upper")
+        work = Path("/dev/shm/overlay") / (target + "-work")
+        backup = data_dir / "overlay-backup" / target
+        # Create dirs
+        for p in (upper, work, backup):
+            try:
+                p.mkdir(parents=True, exist_ok=True)
+            except Exception:
+                pass
+        # Mount overlay if not already
+        mounted = False
+        try:
+            out = subprocess.check_output(["findmnt", "-no", "FSTYPE", "--target", str(lower)], text=True, stderr=subprocess.DEVNULL)
+            mounted = (out or "").strip() == "overlay"
+        except Exception:
+            mounted = False
+        if not mounted:
+            opts = f"lowerdir={lower},upperdir={upper},workdir={work}"
+            cmd = ["mount", "-t", "overlay", "overlay", "-o", opts, str(lower)]
+            _oc_log(f"Overlay: mounting {target} with {opts}")
+            subprocess.run(cmd, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd="/")
+            # recheck
+            try:
+                out = subprocess.check_output(["findmnt", "-no", "FSTYPE", "--target", str(lower)], text=True, stderr=subprocess.DEVNULL)
+                mounted = (out or "").strip() == "overlay"
+            except Exception:
+                mounted = False
+        # Persist mapping
+        mapping_path = Path("/etc/overlayfs-node-manager.json")
+        mappings: Dict[str, Dict[str, str]] = {}
+        try:
+            if mapping_path.exists():
+                mappings = json.loads(mapping_path.read_text())
+        except Exception:
+            mappings = {}
+        entry = mappings.get(target) or {}
+        entry.update({
+            "lower": str(lower),
+            "upper": str(upper),
+            "work": str(work),
+            "backup": str(backup),
+            "interval_sec": interval_sec,
+        })
+        if limit_bytes is not None:
+            entry["limit_bytes"] = limit_bytes
+        if not entry.get("node"):
+            entry["node"] = "local"
+        mappings[target] = entry
+        try:
+            mapping_path.write_text(json.dumps(mappings, indent=2))
+        except Exception:
+            pass
+        # Install/enable commit timer (per-entry interval handled in script state)
+        try:
+            script = """#!/usr/bin/env bash
+set -euo pipefail
+MAP=/etc/overlayfs-node-manager.json
+STATE=/var/lib/overlay-commit-state.json
+mkdir -p /var/lib || true
+if [ ! -f "$MAP" ]; then exit 0; fi
+python3 - "$MAP" <<'PY'
+import json,os,sys,subprocess,time
+mp=json.load(open(sys.argv[1]))
+state_path = '/var/lib/overlay-commit-state.json'
+try:
+    st = json.load(open(state_path))
+except Exception:
+    st = {}
+for name,entry in mp.items():
+    mnt=entry.get('lower'); bkp=entry.get('backup')
+    interval=entry.get('interval_sec') or 15
+    if not (mnt and bkp):
+        continue
+    os.makedirs(bkp, exist_ok=True)
+    last = st.get(name) or 0
+    now = int(time.time())
+    if now - int(last) >= int(interval):
+        # mirror overlay mount view into backup (handles deletions)
+        subprocess.run(['rsync','-a','--delete',f"{mnt.rstrip('/')}/",f"{bkp.rstrip('/')}/"], check=False)
+        st[name] = now
+json.dump(st, open(state_path,'w'))
+PY
+"""
+            p = Path("/usr/local/bin/overlay-commit.sh")
+            p.write_text(script)
+            os.chmod(p, 0o755)
+            svc = """[Unit]
+Description=Commit OverlayFS mounts to disk backup
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/overlay-commit.sh
+"""
+            tim = f"""[Unit]
+Description=Periodic OverlayFS commit
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec={interval_sec}s
+Unit=overlay-commit.service
+
+[Install]
+WantedBy=timers.target
+"""
+            Path("/etc/systemd/system/overlay-commit.service").write_text(svc)
+            Path("/etc/systemd/system/overlay-commit.timer").write_text(tim)
+            subprocess.run(["systemctl","daemon-reload"], check=False)
+            subprocess.run(["systemctl","enable","--now","overlay-commit.timer"], check=False)
+            subprocess.run(["systemctl","restart","overlay-commit.timer"], check=False)
+        except Exception as exc:
+            _oc_log(f"Overlay: failed to setup commit timer: {exc}")
+        return jsonify({"ok": mounted, "mounted": mounted, "target": target, "lower": str(lower), "upper": str(upper), "backup": str(backup), "interval_sec": interval_sec, "limit_bytes": limit_bytes})
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@app.route("/api/overclock/overlay/revert", methods=["POST"])
+def api_overclock_overlay_revert():
+    body = request.get_json(silent=True) or {}
+    target = (body.get("target") or "BdagChain").strip()
+    commit = _coerce_bool(body.get("commit"), True)
+    try:
+        mapping_path = Path("/etc/overlayfs-node-manager.json")
+        if not mapping_path.exists():
+            return jsonify({"ok": True, "message": "no overlay mappings"})
+        mappings = json.loads(mapping_path.read_text())
+        entry = mappings.get(target)
+        if not entry:
+            return jsonify({"ok": True, "message": "target not mapped"})
+        lower = Path(entry.get("lower",""))
+        upper = Path(entry.get("upper",""))
+        backup = Path(entry.get("backup",""))
+        # Commit backup back to lower if requested
+        if commit and lower.exists() and backup.exists():
+            _oc_log(f"Overlay: committing backup -> lower for {target}")
+            subprocess.run(["rsync","-a","--delete",f"{str(backup).rstrip('/')}/",f"{str(lower).rstrip('/')}/"], check=False)
+        # Unmount overlay
+        try:
+            subprocess.run(["umount", str(lower)], check=False)
+        except Exception:
+            pass
+        # Cleanup tmpfs dirs
+        try:
+            subprocess.run(["rm","-rf", str(upper), str(entry.get("work",""))], check=False)
+        except Exception:
+            pass
+        # Remove mapping
+        try:
+            mappings.pop(target, None)
+            mapping_path.write_text(json.dumps(mappings, indent=2))
+        except Exception:
+            pass
+        return jsonify({"ok": True, "reverted": True, "target": target})
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@app.route("/api/overclock/overlay/status", methods=["GET"])
+def api_overclock_overlay_status():
+    """Return overlay mappings and metrics: mounted state and upperdir size in bytes."""
+    try:
+        mapping_path = Path("/etc/overlayfs-node-manager.json")
+        mappings = {}
+        if mapping_path.exists():
+            try:
+                mappings = json.loads(mapping_path.read_text())
+            except Exception:
+                mappings = {}
+        items: List[Dict[str, object]] = []
+        for name, entry in (mappings or {}).items():
+            lower = Path(entry.get("lower",""))
+            upper = Path(entry.get("upper",""))
+            backup = Path(entry.get("backup",""))
+            limit_bytes = entry.get("limit_bytes")
+            interval_item = entry.get("interval_sec")
+            mounted = False
+            fstype = None
+            try:
+                out = subprocess.check_output(["findmnt","-no","FSTYPE","--target", str(lower)], text=True, stderr=subprocess.DEVNULL)
+                fstype = (out or "").strip()
+                mounted = (fstype == "overlay")
+            except Exception:
+                mounted = False
+            upper_bytes = 0
+            try:
+                out = subprocess.check_output(["du","-sb", str(upper)], text=True, stderr=subprocess.DEVNULL)
+                parts = out.split()
+                if parts:
+                    upper_bytes = max(int(parts[0]), 0)
+            except Exception:
+                upper_bytes = 0
+            items.append({
+                "name": name,
+                "lower": str(lower),
+                "upper": str(upper),
+                "backup": str(backup),
+                "mounted": mounted,
+                "fstype": fstype,
+                "upper_bytes": upper_bytes,
+                "limit_bytes": limit_bytes,
+                "interval_sec": interval_item,
+                "overlay": entry.get("name") or _overlay_simple_name(name, entry),
+                "node": entry.get("node"),
+            })
+        # Discover current timer interval
+        interval_sec = None
+        try:
+            text = Path("/etc/systemd/system/overlay-commit.timer").read_text()
+            for line in text.splitlines():
+                if line.startswith("OnUnitActiveSec="):
+                    val = line.split("=",1)[1].strip()
+                    if val.endswith("s"):
+                        val = val[:-1]
+                    interval_sec = int(val)
+                    break
+        except Exception:
+            interval_sec = None
+        return jsonify({"ok": True, "items": items, "interval_sec": interval_sec})
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@app.route("/api/overclock/overlay/align", methods=["POST"])
+def api_overclock_overlay_align():
+    """Ensure all blockdag-testnet-network* containers' /bdag/data bind sources have overlays for
+    BdagChain and bdageth/chaindata. Accepts optional interval/limits.
+    Body: { interval_bdagchain?: int, limit_bdagchain_gib?: float, interval_bdageth?: int, limit_bdageth_gib?: float }
+    """
+    body = request.get_json(silent=True) or {}
+    def _ival(name: str, default: int) -> int:
+        try:
+            v = int(body.get(name)) if body.get(name) is not None else default
+            return max(5, min(v, 600))
+        except Exception:
+            return default
+    def _fval(name: str, default: float) -> float:
+        try:
+            v = float(body.get(name)) if body.get(name) is not None else default
+            return max(0.5, min(v, 64.0))
+        except Exception:
+            return default
+    int_b = _ival("interval_bdagchain", 30)
+    lim_b = _fval("limit_bdagchain_gib", 3.0)
+    int_e = _ival("interval_bdageth", 30)
+    lim_e = _fval("limit_bdageth_gib", 4.0)
+    binds: list[str] = []
+    try:
+        if not DOCKER_BIN:
+            return jsonify({"ok": False, "error": "docker not available"}), 400
+        out = subprocess.check_output([DOCKER_BIN, "ps", "--format", "{{.Names}}"], text=True)
+        names = [n.strip() for n in out.splitlines() if n.strip().startswith("blockdag-testnet-network")]
+        for name in names:
+            try:
+                j = json.loads(subprocess.check_output([DOCKER_BIN, "inspect", name], text=True))[0]
+                for b in (j.get("HostConfig", {}).get("Binds") or []):
+                    if isinstance(b, str) and b.endswith(":/bdag/data"):
+                        host = b.split(":")[0]
+                        if host and host not in binds:
+                            binds.append(host)
+            except Exception:
+                continue
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
+    applied: list[dict] = []
+    mapping_path = Path("/etc/overlayfs-node-manager.json")
+    try:
+        mappings = json.loads(mapping_path.read_text()) if mapping_path.exists() else {}
+    except Exception:
+        mappings = {}
+    for base in binds:
+        for target, ival, lim in (("BdagChain", int_b, lim_b), ("bdageth-chaindata", int_e, lim_e)):
+            lower = Path(base) / "testnet" / ("BdagChain" if target == "BdagChain" else Path("bdageth") / "chaindata")
+            if not lower.exists() or not lower.is_dir():
+                continue
+            # unique key per base
+            key = f"{target}@{abs(hash(str(lower))) & 0xffffffff:x}"
+            upper = Path("/dev/shm/overlay") / f"{key}-upper"
+            work = Path("/dev/shm/overlay") / f"{key}-work"
+            backup = Path(base) / "overlay-backup" / key
+            try:
+                upper.mkdir(parents=True, exist_ok=True)
+                work.mkdir(parents=True, exist_ok=True)
+                backup.mkdir(parents=True, exist_ok=True)
+            except Exception:
+                pass
+            # mount if not already overlay
+            mounted = False
+            try:
+                fstype = subprocess.check_output(["findmnt","-no","FSTYPE","--target", str(lower)], text=True, stderr=subprocess.DEVNULL).strip()
+                mounted = (fstype == "overlay")
+            except Exception:
+                mounted = False
+            if not mounted:
+                opts = f"lowerdir={lower},upperdir={upper},workdir={work}"
+                _oc_log(f"Overlay align: mounting {target} base={base}")
+                subprocess.run(["mount","-t","overlay","overlay","-o",opts,str(lower)], check=False, cwd="/")
+            # update mapping
+            mappings[key] = {
+                "name": target,
+                "lower": str(lower),
+                "upper": str(upper),
+                "work": str(work),
+                "backup": str(backup),
+                "interval_sec": ival,
+                "limit_bytes": int(lim * (1024**3)),
+                "node": name,
+            }
+            applied.append({"base": base, "target": target, "lower": str(lower)})
+    # persist mappings and (re)start timer
+    try:
+        mapping_path.write_text(json.dumps(mappings, indent=2))
+    except Exception:
+        pass
+    try:
+        subprocess.run(["systemctl","daemon-reload"], check=False)
+        subprocess.run(["systemctl","enable","--now","overlay-commit.timer"], check=False)
+        subprocess.run(["systemctl","restart","overlay-commit.timer"], check=False)
+    except Exception:
+        pass
+    return jsonify({"ok": True, "applied": applied, "binds": binds, "count": len(applied)})
+
+
+@app.route("/api/overclock/overlay/disable", methods=["POST"])
+def api_overclock_overlay_disable():
+    """Disable overlays across all mapped entries for a target.
+    Body: { target: 'BdagChain'|'bdageth-chaindata', commit?: bool }
+    """
+    body = request.get_json(silent=True) or {}
+    target = (body.get("target") or "").strip() or None
+    do_commit = _coerce_bool(body.get("commit"), True)
+    if target not in {"BdagChain", "bdageth-chaindata"}:
+        return jsonify({"ok": False, "error": "invalid or missing target"}), 400
+    targets = {target}
+    if do_commit:
+        try:
+            _overlay_commit_targets(targets, only_mounted=False, sync_backup_to_lower=True)
+        except Exception as exc:
+            _oc_log(f"Overlay disable: commit before disable failed: {exc}")
+    mapping_path = _overlay_mapping_path()
+    if not mapping_path.exists():
+        return jsonify({"ok": True, "reverted": 0})
+    try:
+        mappings = json.loads(mapping_path.read_text())
+    except Exception:
+        mappings = {}
+    reverted = 0
+    kept: dict = {}
+    for key, entry in list(mappings.items()):
+        name = entry.get("name") or key
+        lower = entry.get("lower") or ""
+        # Match by stored name or by lower path suffix
+        is_target = (target in str(name)) or (target == "BdagChain" and str(lower).endswith("/BdagChain")) or (target == "bdageth-chaindata" and str(lower).endswith("/bdageth/chaindata"))
+        if not is_target:
+            kept[key] = entry
+            continue
+        # Commit backup back to lower if requested
+        if do_commit:
+            try:
+                bkp = entry.get("backup")
+                if bkp and lower:
+                    subprocess.run(["rsync","-a","--delete",f"{str(bkp).rstrip('/')}/",f"{str(lower).rstrip('/')}/"], check=False)
+            except Exception:
+                pass
+        # Unmount overlay
+        try:
+            subprocess.run(["umount", str(lower)], check=False)
+        except Exception:
+            pass
+        # Cleanup tmpfs dirs
+        try:
+            up = entry.get("upper"); wk = entry.get("work")
+            if up:
+                subprocess.run(["rm","-rf", str(up)], check=False)
+            if wk:
+                subprocess.run(["rm","-rf", str(wk)], check=False)
+        except Exception:
+            pass
+        reverted += 1
+    try:
+        mapping_path.write_text(json.dumps(kept, indent=2))
+    except Exception:
+        pass
+    return jsonify({"ok": True, "reverted": reverted})
+
+
+    return jsonify({"ok": False, "error": "unsupported action"}), 400
+
+
+@app.route("/api/overclock/status", methods=["GET"])
+def api_overclock_status():
+    try:
+        data_path_param = request.args.get("data_path") or ""
+        resolved = _auto_detect_data_dir(data_path_param)
+        if not resolved:
+            return jsonify({"ok": False, "error": "data directory not found"}), 404
+        data_path = str(resolved)
+        # mountpoint
+        try:
+            out = subprocess.check_output(["findmnt", "-no", "SOURCE,TARGET,OPTIONS", "--target", data_path], text=True, stderr=subprocess.DEVNULL)
+            parts = (out or "").strip().split()
+            source = parts[0] if parts else None
+            mountpoint = parts[1] if len(parts) > 1 else None
+            fs_options = parts[2] if len(parts) > 2 else None
+        except Exception:
+            source = None
+            mountpoint = None
+            fs_options = None
+        # base device for scheduler and controller path
+        base = None
+        ctrl = None
+        scheduler = None
+        if source:
+            try:
+                base_name = os.path.basename(os.path.realpath(str(source)))
+                # nvmeXnYpZ -> nvmeXnY
+                m = re.match(r"(nvme\d+n\d+)p\d+", base_name)
+                base = m.group(1) if m else re.sub(r"\d+$", "", base_name)
+                if base and os.path.isdir(f"/sys/block/{base}"):
+                    # read scheduler
+                    try:
+                        raw = Path(f"/sys/block/{base}/queue/scheduler").read_text().strip()
+                        # active scheduler is in brackets: 'mq-deadline [none]'
+                        if "[" in raw and "]" in raw:
+                            scheduler = raw.split("[")[-1].split("]")[0]
+                        else:
+                            scheduler = raw
+                    except Exception:
+                        scheduler = None
+                m2 = re.match(r"(nvme\d+)n\d+", base_name)
+                if m2:
+                    ctrl = f"/dev/{m2.group(1)}"
+            except Exception:
+                pass
+        # cpu governor (first cpu)
+        try:
+            cpu_gov = Path("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor").read_text().strip()
+        except Exception:
+            cpu_gov = None
+        # nvme latency
+        try:
+            nvme_lat_us = Path("/sys/module/nvme_core/parameters/default_ps_max_latency_us").read_text().strip()
+        except Exception:
+            nvme_lat_us = None
+        # quick booleans
+        status = {
+            "ok": True,
+            "data_path": data_path,
+            "mountpoint": mountpoint,
+            "device": source,
+            "base_device": base,
+            "cpu_governor": cpu_gov,
+            "cpu_is_performance": (cpu_gov == "performance") if cpu_gov else None,
+            "nvme_latency_us": nvme_lat_us,
+            "nvme_latency_is_0": (nvme_lat_us == "0") if nvme_lat_us is not None else None,
+            "scheduler": scheduler,
+            "fs_options": fs_options,
+        }
+        # status line
+        bits = []
+        if status["cpu_is_performance"] is not None:
+            bits.append(f"CPU={'perf' if status['cpu_is_performance'] else status['cpu_governor']}")
+        if status["nvme_latency_us"] is not None:
+            bits.append(f"NVMe-lat={status['nvme_latency_us']}us")
+        if status["scheduler"]:
+            bits.append(f"sched={status['scheduler']}")
+        if status["fs_options"]:
+            opt = status["fs_options"]
+            bits.append(f"fs={opt.split(',')[0]}")
+        status_line = "Status: " + ", ".join(bits) if bits else "Status: n/a"
+        _oc_log(status_line)
+        status["status_line"] = status_line
+        return jsonify(status)
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
+@app.route("/api/overclock/overlay/commit", methods=["POST"])
+def api_overclock_overlay_commit():
+    """Commit overlays immediately by syncing the mounted view to backup.
+    Body: { target?: 'BdagChain'|'bdageth-chaindata'|'all' }
+    Returns: { ok, committed, target }
+    """
+    body = request.get_json(silent=True) or {}
+    sel = (body.get("target") or "all").strip()
+    try:
+        targets = None if sel == "all" else {sel}
+        committed, touched = _overlay_commit_targets(targets, only_mounted=False)
+        if committed == 0 and touched == [] and sel != "all":
+            return jsonify({"ok": False, "error": "target not found"}), 404
+        return jsonify({"ok": True, "committed": committed, "target": sel, "entries": touched})
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
 
 
 @app.route("/api/overclock/logs")
@@ -3306,7 +4438,11 @@ def api_snapshots():
 def api_snapshots_create():
     body = request.get_json(silent=True) or {}
     node_id = body.get("node")
-    ok, message, job = _start_snapshot_job(str(node_id) if node_id else None)
+    quiesce_overlay = _coerce_bool(body.get("quiesce_overlay"), True)
+    ok, message, job = _start_snapshot_job(
+        str(node_id) if node_id else None,
+        quiesce_overlay=quiesce_overlay,
+    )
     if not ok:
         return jsonify({"ok": False, "error": message, "job": job}), 409
     return jsonify({"ok": True, "message": message, "job": job})
