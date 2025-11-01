@@ -68,6 +68,14 @@ HOST="$HOST" \
 PORT="$PORT" \
 bash "$TEMP_ROOT/repo/install_node_manager.sh"
 
+# Ensure post-install ownership matches the service account
+SERVICE_USER="$(sudo awk -F= '/^User=/{print $2}' "$SYSTEMD_DIR/$SERVICE_NAME" 2>/dev/null | tail -n1)"
+if [[ -n "$SERVICE_USER" ]]; then
+  SERVICE_GROUP="$(sudo awk -F= '/^Group=/{print $2}' "$SYSTEMD_DIR/$SERVICE_NAME" 2>/dev/null | tail -n1)"
+  SERVICE_GROUP="${SERVICE_GROUP:-$SERVICE_USER}"
+  sudo chown -R "$SERVICE_USER":"$SERVICE_GROUP" "$INSTALL_DIR"
+fi
+
 echo "[3/4] Cleaning temporary checkout"
 cleanup
 trap - EXIT
