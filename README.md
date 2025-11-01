@@ -68,10 +68,10 @@ Environment variables (`BDAG_RPC_BASE`, `BDAG_REMOTE_RPC_BASES`, etc.) are honou
 ## Production Install
 Use the bundled helper to deploy under `/opt/blockdag-node-manager` with systemd integration:
 Run the following from any directory where you want the repository placed (no elevated permissions needed):
-
-  git clone https://github.com/murat-taskaynatan/Blockdag-Node-Manager.git
-
 ```bash
+
+git clone https://github.com/murat-taskaynatan/Blockdag-Node-Manager.git
+
 ./install_node_manager.sh
 ```
 
