@@ -62,12 +62,12 @@ if [[ ! -f "$SOURCE_DIR/app.py" ]]; then
   need_cmd git
   TEMP_DIR="$(mktemp -d)"
   trap cleanup EXIT
-  echo "[0/8] Source tree missing; cloning $REPO_URL (ref $REPO_REF)"
+  echo "[0/9] Source tree missing; cloning $REPO_URL (ref $REPO_REF)"
   git clone --depth 1 --branch "$REPO_REF" --single-branch "$REPO_URL" "$TEMP_DIR/repo"
   SOURCE_DIR="$TEMP_DIR/repo"
 fi
 
-echo "[1/8] Removing any existing installation of $SERVICE_NAME (if present)"
+echo "[1/9] Removing any existing installation of $SERVICE_NAME (if present)"
 if systemctl list-unit-files --type=service 2>/dev/null | grep -q "^${SERVICE_NAME}"; then
   sudo systemctl disable --now "$SERVICE_NAME" >/dev/null 2>&1 || true
 fi
@@ -78,7 +78,7 @@ if [[ -d "$INSTALL_DIR" ]]; then
 fi
 sudo systemctl daemon-reload
 
-echo "[2/8] Syncing files to $INSTALL_DIR"
+echo "[2/9] Syncing files to $INSTALL_DIR"
 sudo mkdir -p "$INSTALL_DIR"
 sudo chown "$SERVICE_USER":"$SERVICE_GROUP" "$INSTALL_DIR"
 rsync -a --delete \
@@ -91,7 +91,7 @@ sudo chown -R "$SERVICE_USER":"$SERVICE_GROUP" "$INSTALL_DIR"
 sudo mkdir -p "$INSTALL_DIR/data"
 sudo chown "$SERVICE_USER":"$SERVICE_GROUP" "$INSTALL_DIR/data"
 
-echo "[3/8] Preparing Python environment"
+echo "[3/9] Preparing Python environment"
 "$PYTHON_BIN" -m venv "$INSTALL_DIR/.venv"
 source "$INSTALL_DIR/.venv/bin/activate"
 pip install --upgrade pip >/dev/null
@@ -102,7 +102,7 @@ else
 fi
 deactivate
 
-echo "[4/8] Writing environment file $ENV_FILE"
+echo "[4/9] Writing environment file $ENV_FILE"
 sudo mkdir -p "$ENV_DIR"
 if [[ ! -f "$ENV_FILE" ]]; then
   sudo tee "$ENV_FILE" >/dev/null <<EOF
@@ -117,7 +117,26 @@ fi
 sudo chown "$SERVICE_USER":"$SERVICE_GROUP" "$ENV_FILE"
 sudo chmod 640 "$ENV_FILE"
 
-echo "[5/8] Writing launch helper $INSTALL_DIR/run_node_manager.sh"
+DOCKER_GROUP_NOTICE=0
+echo "[5/9] Ensuring Docker access for service user $SERVICE_USER"
+if command -v docker >/dev/null 2>&1; then
+  if id -nG "$SERVICE_USER" 2>/dev/null | tr ' ' '\n' | grep -qx "docker"; then
+    echo " - $SERVICE_USER already belongs to docker group"
+  else
+    if getent group docker >/dev/null 2>&1; then
+      echo " - Adding $SERVICE_USER to docker group"
+      sudo usermod -aG docker "$SERVICE_USER"
+      DOCKER_GROUP_NOTICE=1
+    else
+      echo " - Warning: docker group not found; skipping group membership adjustment"
+      DOCKER_GROUP_NOTICE=2
+    fi
+  fi
+else
+  echo " - Docker binary not found; skipping access check"
+fi
+
+echo "[6/9] Writing launch helper $INSTALL_DIR/run_node_manager.sh"
 RUNNER="$INSTALL_DIR/run_node_manager.sh"
 sudo tee "$RUNNER" >/dev/null <<'EOF'
 #!/usr/bin/env bash
@@ -145,7 +164,7 @@ sudo sed -i \
 sudo chown "$SERVICE_USER":"$SERVICE_GROUP" "$RUNNER"
 sudo chmod 750 "$RUNNER"
 
-echo "[6/8] Installing systemd unit $SERVICE_NAME"
+echo "[7/9] Installing systemd unit $SERVICE_NAME"
 sudo tee "$SYSTEMD_DIR/$SERVICE_NAME" >/dev/null <<EOF
 [Unit]
 Description=BlockDAG Node Manager
@@ -167,7 +186,7 @@ RestartSec=2
 WantedBy=multi-user.target
 EOF
 
-echo "[7/8] Reloading systemd and starting service"
+echo "[8/9] Reloading systemd and starting service"
 sudo systemctl daemon-reload
 sudo systemctl enable --now "$SERVICE_NAME"
 
@@ -184,8 +203,8 @@ if [[ "$DISPLAY_HOST" == *:* && "$DISPLAY_HOST" != \[* ]]; then
   DISPLAY_HOST="[$DISPLAY_HOST]"
 fi
 
+echo "[9/9] Installation summary"
 cat <<EOF
-[8/8] Installation summary:
 BlockDAG Node Manager installation complete.
   - Service name: $SERVICE_NAME
   - Config file: $ENV_FILE
@@ -194,3 +213,17 @@ BlockDAG Node Manager installation complete.
   - Logs: journalctl -u $SERVICE_NAME -f
 
 EOF
+
+if [[ "$DOCKER_GROUP_NOTICE" -eq 1 ]]; then
+  cat <<EOF
+Additional action required:
+  - Added $SERVICE_USER to docker group. Log out and back in (or restart the BlockDAG Node Manager service) so the new permissions take effect.
+
+EOF
+elif [[ "$DOCKER_GROUP_NOTICE" -eq 2 ]]; then
+  cat <<EOF
+Warning:
+  - docker group not found; ensure Docker is installed and the service user can access /var/run/docker.sock before running discovery.
+
+EOF
+fi

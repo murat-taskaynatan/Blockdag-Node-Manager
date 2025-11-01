@@ -7,6 +7,7 @@ import subprocess
 import tarfile
 import threading
 import time
+import pwd
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_UP, getcontext
 from collections import OrderedDict, deque
@@ -117,6 +118,17 @@ _RECENT_LOGS_CACHE: Dict[Tuple[str, int], Dict[str, object]] = {}
 _OVERCLOCK_LOGS: deque[str] = deque(maxlen=500)
 _OVERCLOCK_LOGS_LOCK = threading.Lock()
 
+_DOCKER_HEALTH_LOCK = threading.Lock()
+_DOCKER_HEALTH: Dict[str, object] = {
+    "available": bool(DOCKER_BIN),
+    "docker_bin": DOCKER_BIN or "",
+    "last_error": None,
+    "last_checked": 0.0,
+    "last_success": 0.0,
+}
+if not DOCKER_BIN:
+    _DOCKER_HEALTH["last_error"] = "docker binary not found; install docker or set BDAG_DOCKER_BIN"
+
 
 def _oc_log(message: str) -> None:
     try:
@@ -125,6 +137,53 @@ def _oc_log(message: str) -> None:
         line = message
     with _OVERCLOCK_LOGS_LOCK:
         _OVERCLOCK_LOGS.append(line)
+
+
+def _service_username() -> str:
+    try:
+        return pwd.getpwuid(os.geteuid()).pw_name
+    except Exception:
+        return os.getenv("USER") or "node"
+
+
+def _docker_health_record(success: bool, message: Optional[str] = None) -> None:
+    now = time.time()
+    with _DOCKER_HEALTH_LOCK:
+        previous_error = _DOCKER_HEALTH.get("last_error")
+        if success:
+            _DOCKER_HEALTH["available"] = True
+            _DOCKER_HEALTH["last_checked"] = now
+            _DOCKER_HEALTH["last_success"] = now
+            if message:
+                _DOCKER_HEALTH["last_error"] = message
+            else:
+                _DOCKER_HEALTH["last_error"] = None
+        else:
+            _DOCKER_HEALTH["available"] = False
+            _DOCKER_HEALTH["last_checked"] = now
+            if message:
+                _DOCKER_HEALTH["last_error"] = message
+    if not success and message and message != previous_error:
+        try:
+            app.logger.warning("Docker access issue: %s", message)
+        except Exception:
+            pass
+
+
+def _docker_health_snapshot() -> Dict[str, object]:
+    with _DOCKER_HEALTH_LOCK:
+        return dict(_DOCKER_HEALTH)
+
+
+def _normalize_docker_error(message: str) -> str:
+    if not message:
+        return "docker command failed"
+    text = message.strip()
+    lowered = text.lower()
+    if "permission denied" in lowered and "/var/run/docker.sock" in lowered:
+        user = _service_username()
+        return f"permission denied accessing Docker socket; add user '{user}' to the 'docker' group and restart the node manager service"
+    return text
 
 
 def _auto_detect_data_dir(preferred: Optional[str] = None) -> Optional[Path]:
@@ -1891,15 +1950,24 @@ def _start_restore_job(node_id: Optional[str]) -> Tuple[bool, str, Dict[str, obj
 
 def _list_docker_containers() -> List[str]:
     if not DOCKER_BIN:
+        _docker_health_record(False, "docker binary not available")
         return []
     try:
         out = subprocess.check_output(
             [DOCKER_BIN, "ps", "-a", "--format", "{{.Names}}"],
             text=True,
+            stderr=subprocess.STDOUT,
             timeout=5,
         )
-        return [line.strip() for line in out.splitlines() if line.strip()]
-    except Exception:
+        containers = [line.strip() for line in out.splitlines() if line.strip()]
+        _docker_health_record(True)
+        return containers
+    except subprocess.CalledProcessError as exc:
+        message = _normalize_docker_error((exc.output or exc.stderr or str(exc)).strip())
+        _docker_health_record(False, message)
+        return []
+    except Exception as exc:
+        _docker_health_record(False, _normalize_docker_error(str(exc)))
         return []
 
 
@@ -2876,6 +2944,7 @@ def _fleet_summary(nodes: List[dict]) -> dict:
         "max_remote_height": max(remote_heights) if remote_heights else 0,
         "timestamp": time.time(),
     }
+    summary["docker"] = _docker_health_snapshot()
     settings = get_settings()
     wallet_enabled = bool(settings.get("display_wallet_balance"))
     summary["wallet_enabled"] = wallet_enabled
