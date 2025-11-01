@@ -85,6 +85,11 @@ rsync -a --delete \
   --exclude='.git/' \
   --exclude='.venv/' \
   "$SOURCE_DIR/" "$INSTALL_DIR/"
+# Ensure service account owns the synced tree (covers data/ after upgrades)
+sudo chown -R "$SERVICE_USER":"$SERVICE_GROUP" "$INSTALL_DIR"
+# Guarantee runtime data directory exists and is writable
+sudo mkdir -p "$INSTALL_DIR/data"
+sudo chown "$SERVICE_USER":"$SERVICE_GROUP" "$INSTALL_DIR/data"
 
 echo "[3/8] Preparing Python environment"
 "$PYTHON_BIN" -m venv "$INSTALL_DIR/.venv"
