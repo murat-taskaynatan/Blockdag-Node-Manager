@@ -49,6 +49,18 @@
   .setting-control input[type="checkbox"]{width:17px;height:17px;cursor:pointer;accent-color:#44f2a8}
   .setting-control input[type="text"]{width:48ch;max-width:100%;min-width:320px;padding:6px 10px;border:1px solid rgba(255,255,255,.15);border-radius:10px;background:rgba(255,255,255,.08);color:var(--text);font-size:13px;font-weight:600;box-sizing:border-box}
   .setting-control input[type="text"]:focus{outline:none;border-color:rgba(255,255,255,.35);background:rgba(255,255,255,.12)}
+  .setting-control select,
+  .setting-control select,
+  .setting-control input[type="number"]{padding:6px 10px;border:1px solid rgba(255,255,255,.15);border-radius:10px;background:rgba(255,255,255,.08);color:var(--text);font-size:12px;font-weight:600;box-sizing:border-box}
+  .setting-control select:focus,
+  .setting-control input[type="number"]:focus{outline:none;border-color:rgba(255,255,255,.35);background:rgba(255,255,255,.12)}
+  .overlay-chart-tile{width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:18px 22px;margin-top:8px}
+  .overlay-chart-wrapper{position:relative;display:flex;align-items:stretch;justify-content:stretch;width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.05);border-radius:12px;padding:14px 20px;min-height:180px}
+  .overlay-chart-wrapper canvas{width:100%;height:100%;min-height:160px;display:block}
+  .overlay-chart-wrapper.is-empty{opacity:.7}
+  .overlay-chart-wrapper.is-empty canvas{display:none}
+  .overlay-chart-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;color:var(--muted);font-size:12px;padding:16px}
+  .overlay-chart-wrapper:not(.is-empty) .overlay-chart-empty{display:none}
   .settings-actions{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
   .settings-actions .button-row{display:flex;align-items:center;gap:10px}
   .toggle{position:relative;display:inline-flex;width:46px;height:24px;cursor:pointer}
@@ -213,7 +225,7 @@
   .node-logs__toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px}
   .node-logs__meta{font-size:12px;color:var(--muted)}
   .node-logs__refresh{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;font-size:12px}
-  .node-logs__output{margin:0;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.45;max-height:180px;overflow:auto;white-space:pre-wrap;background:rgba(33,24,0,.45);border-radius:8px;padding:10px;color:#ffb74d!important;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.16) #20263d;}
+  .node-logs__output{margin:0;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.45;max-height:200px;overflow:auto;white-space:pre-wrap;background:rgba(33,24,0,.45);border-radius:8px;padding:10px;color:#ffb74d!important;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.16) #20263d;}
   .node-logs__output::-webkit-scrollbar{width:8px;height:8px}
   .node-logs__output::-webkit-scrollbar-track{background:#20263d;border-radius:8px}
   .node-logs__output::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.16);border-radius:8px}
@@ -393,15 +405,6 @@
         </div>
         <div class="summary-pane" data-summary-pane="overclock" hidden>
           <form class="settings-form" id="overclockForm">
-            <label class="setting-row">
-              <div class="setting-text">
-                <span class="setting-title">Data directory</span>
-                <span class="setting-desc">Path to your node’s data directory. We’ll detect the mountpoint automatically.</span>
-              </div>
-              <div class="setting-control">
-                <input type="text" id="ocDataPath" placeholder="/home/node/blockdag" value="/home/node/blockdag">
-              </div>
-            </label>
             <div class="setting-group">
               <div class="setting-row">
                 <div class="setting-text">
@@ -451,28 +454,70 @@
                   </label>
                 </div>
               </div>
+              <div class="setting-row">
+                <div class="setting-text">
+                  <span class="setting-title">OverlayFS (RAM) for BdagChain</span>
+                  <span class="setting-desc">Redirect BdagChain writes to RAM via OverlayFS; periodically commits to disk backup. Toggle OFF to commit and unmount.</span>
+                </div>
+                <div class="setting-control" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
+                  <label class="toggle" title="Mount OverlayFS for BdagChain">
+                    <input type="checkbox" class="toggle-input" id="ocOverlayBdagChain">
+                    <span class="toggle-slider"></span>
+                  </label>
+                  <label>Interval
+                    <select id="ocOverlayIntervalBdagChain" title="Commit interval (seconds)">
+                      <option value="15">15s</option>
+                      <option value="30">30s</option>
+                      <option value="60">60s</option>
+                    </select>
+                  </label>
+                  <label>Limit (GiB)
+                    <input type="number" id="ocOverlayLimitBdagChain" min="0.5" step="0.5" placeholder="3.0" style="width:90px" />
+                  </label>
+                </div>
+              </div>
+              <div class="setting-row">
+                <div class="setting-text">
+                  <span class="setting-title">OverlayFS (RAM) for bdageth/chaindata</span>
+                  <span class="setting-desc">Redirect bdageth writes to RAM via OverlayFS; periodically commits to disk backup. Toggle OFF to commit and unmount.</span>
+                </div>
+                <div class="setting-control" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
+                  <label class="toggle" title="Mount OverlayFS for bdageth/chaindata">
+                    <input type="checkbox" class="toggle-input" id="ocOverlayBdagEth">
+                    <span class="toggle-slider"></span>
+                  </label>
+                  <label>Interval
+                    <select id="ocOverlayIntervalBdagEth" title="Commit interval (seconds)">
+                      <option value="15">15s</option>
+                      <option value="30">30s</option>
+                      <option value="60">60s</option>
+                    </select>
+                  </label>
+                  <label>Limit (GiB)
+                    <input type="number" id="ocOverlayLimitBdagEth" min="0.5" step="0.5" placeholder="3.0" style="width:90px" />
+                  </label>
+                </div>
+              </div>
+              <div class="setting-row">
+                <div class="setting-text">
+                  <span class="setting-title">Overlay status</span>
+                  <span class="setting-desc">Shows current RAM upper usage and state per overlay.</span>
+                  <span class="settings-status" id="ocOverlayStatus"></span>
+                </div>
+              </div>
+              <div class="overlay-chart-tile">
+                <div class="overlay-chart-wrapper is-empty" id="ocOverlayChartWrapper">
+                  <canvas id="ocOverlayChart"></canvas>
+                  <div class="overlay-chart-empty" id="ocOverlayChartEmpty">No overlay activity yet.</div>
+                </div>
+              </div>
             </div>
-            <label class="setting-row">
-              <div class="setting-text">
-                <span class="setting-title">Enable write‑back cache (VWC)</span>
-                <span class="setting-desc">Bigger speedup, but risk of data loss on power failure unless your NVMe has PLP. Use only if you accept the risk.</span>
-                <span class="setting-hint" id="ocVwcRisk" style="font-size:12px;color:var(--muted)">VWC safety: unknown (run preflight)</span>
-              </div>
-              <div class="setting-control">
-                <label class="toggle" title="Enable NVMe volatile write cache (write‑back)">
-                  <input type="checkbox" class="toggle-input" id="ocEnableVWC">
-                  <span class="toggle-slider"></span>
-                </label>
-              </div>
-            </label>
-            <div class="settings-actions">
+            <!-- VWC option removed per request -->
+              <div class="settings-actions">
               <span class="settings-status" id="overclockStatus"></span>
               <div class="button-row">
-                <button type="button" class="btn btn--primary" id="btnApplyOverclock">
-                  Apply Tweaks
-                </button>
-                <button type="button" class="btn btn--ghost" id="btnVerifyOverclock" title="Run a short fsync micro-benchmark (fio)">
-                  Verify
+                <button type="button" class="btn btn--ghost" id="btnVerifyOverclock" title="Run a short disk test (fio)">
+                  Test
                 </button>
                 <button type="button" class="btn btn--ghost" id="btnRevertOverclock" title="Revert tweaks to defaults">
                   Revert
@@ -483,11 +528,6 @@
             <div class="node-logs" id="ocLogsPanel">
               <div class="node-logs__header">
                 <span class="node-logs__title">Overclock Logs</span>
-                <span class="node-logs__meta" id="ocLogsMeta">Not loaded yet.</span>
-                <button class="pill-btn node-logs__refresh" type="button" id="btnOcLogsRefresh" title="Refresh">
-                  <span class="icon">↻</span>
-                  Refresh
-                </button>
               </div>
               <pre class="node-logs__output" id="ocLogsOutput">No log lines yet.</pre>
             </div>
@@ -655,5 +695,6 @@
   </details>
 </template>
 
+<script src="{{ url_for('static', filename='chart.umd.min.js') }}"></script>
 <script src="{{ url_for('static', filename='node_manager.js') }}?v={{ app_version }}-{{ cache_buster }}"></script>
 <div class="version-badge"><strong>{{ app_version }}</strong></div>

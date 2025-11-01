@@ -19,6 +19,7 @@
     },
     snapshotsLoaded: false,
     snapshotStatus: { text: '', level: '', manual: false },
+    overlayStatus: { items: [], byNode: new Map() },
   };
 
   const cardsContainer = document.getElementById('fleetCards');
@@ -36,12 +37,12 @@
   const settingsStatus = document.getElementById('settingsStatus');
   const overclockForm = document.getElementById('overclockForm');
   const overclockStatus = document.getElementById('overclockStatus');
-  const ocDataPath = document.getElementById('ocDataPath');
-  const ocEnableVWC = document.getElementById('ocEnableVWC');
+  // Data directory input removed; backend auto-detects
   const ocCpu = document.getElementById('ocCpu');
   const ocNvmeLatency = document.getElementById('ocNvmeLatency');
   const ocScheduler = document.getElementById('ocScheduler');
   const ocRemount = document.getElementById('ocRemount');
+  // WAL/VWC controls removed from UI
   const ocVwcRisk = document.getElementById('ocVwcRisk');
   let ocChart = null;
   const ocHistory = [];
@@ -63,7 +64,6 @@
   const autoSnapshotHoursInput = document.getElementById('settingAutoSnapshotHours');
   const ocLogsPanel = document.getElementById('ocLogsPanel');
   const ocLogsOutput = document.getElementById('ocLogsOutput');
-  const ocLogsMeta = document.getElementById('ocLogsMeta');
   let ocLogPollTimer = null;
   const ocChartPane = document.getElementById('overclockChartPane');
   const ocManualPane = document.getElementById('overclockManualPane');
@@ -71,6 +71,18 @@
   let ocManualLoaded = false;
   const ocChartEmpty = document.getElementById('overclockChartEmpty');
   const ocCanvas = document.getElementById('overclockVerifyChart');
+  // VM‑Mode removed
+  const ocOverlayBdagChain = document.getElementById('ocOverlayBdagChain');
+  const ocOverlayBdagEth = document.getElementById('ocOverlayBdagEth');
+  const ocOverlayIntervalBdagChain = document.getElementById('ocOverlayIntervalBdagChain');
+  const ocOverlayLimitBdagChain = document.getElementById('ocOverlayLimitBdagChain');
+  const ocOverlayIntervalBdagEth = document.getElementById('ocOverlayIntervalBdagEth');
+  const ocOverlayLimitBdagEth = document.getElementById('ocOverlayLimitBdagEth');
+  const ocOverlayStatus = document.getElementById('ocOverlayStatus');
+  const ocOverlayChartWrapper = document.getElementById('ocOverlayChartWrapper');
+  const ocOverlayChartCanvas = document.getElementById('ocOverlayChart');
+  const ocOverlayChartEmpty = document.getElementById('ocOverlayChartEmpty');
+  let ocOverlayChart = null;
   // Allow init() to push a metric once auto-verify returns
   let ocAppendMetric = null;
   function drawFallbackChart(labels, iopsData, p50Data) {
@@ -293,6 +305,7 @@
   }
 
   let walletChart = null;
+  const walletFallbackCtx = walletChartCanvas ? walletChartCanvas.getContext('2d') : null;
 
   function ensureWalletChart() {
     if (!walletChartCanvas || typeof Chart === 'undefined') {
@@ -360,10 +373,9 @@
   }
 
   function updateWalletChart(history = state.walletBalanceHistory, { enabled = false } = {}) {
-    if (!walletChartWrapper) return;
+    if (!walletChartWrapper || !walletChartCanvas) return;
     walletChartWrapper.classList.toggle('is-disabled', !enabled);
     const chart = ensureWalletChart();
-    if (!chart) return;
     const processed = Array.isArray(history)
       ? history
           .map((entry) => {
@@ -383,10 +395,12 @@
           .filter(Boolean)
       : [];
     if (!processed.length) {
-      chart.data.labels = [];
-      chart.data.datasets[0].data = [];
-      chart.data.datasets[0].meta = [];
-      chart.update('none');
+      if (chart) {
+        chart.data.labels = [];
+        chart.data.datasets[0].data = [];
+        chart.data.datasets[0].meta = [];
+        chart.update('none');
+      }
       walletChartWrapper.classList.add('is-empty');
       if (walletChartEmpty) {
         walletChartEmpty.textContent = enabled
@@ -394,16 +408,73 @@
           : 'Wallet monitoring disabled in settings.';
         walletChartEmpty.hidden = false;
       }
+      drawWalletFallback(processed);
       return;
     }
     walletChartWrapper.classList.remove('is-empty');
     if (walletChartEmpty) {
       walletChartEmpty.hidden = true;
     }
-    chart.data.labels = processed.map((entry) => entry.label);
-    chart.data.datasets[0].data = processed.map((entry) => entry.value);
-    chart.data.datasets[0].meta = processed;
-    chart.update('none');
+    if (chart) {
+      chart.data.labels = processed.map((entry) => entry.label);
+      chart.data.datasets[0].data = processed.map((entry) => entry.value);
+      chart.data.datasets[0].meta = processed;
+      chart.update('none');
+    } else {
+      walletChartWrapper.classList.remove('is-empty');
+      drawWalletFallback(processed);
+    }
+  }
+
+  function drawWalletFallback(processed) {
+    if (!walletFallbackCtx || !walletChartCanvas) return;
+    const canvas = walletChartCanvas;
+    const ctx = walletFallbackCtx;
+    const width = canvas.width = canvas.clientWidth || 420;
+    const height = canvas.height = canvas.clientHeight || 160;
+    ctx.clearRect(0, 0, width, height);
+    const padL = 40;
+    const padR = 18;
+    const padT = 20;
+    const padB = 28;
+    const plotW = Math.max(10, width - padL - padR);
+    const plotH = Math.max(10, height - padT - padB);
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let i = 0; i <= 4; i++) {
+      const y = padT + (plotH * i) / 4;
+      ctx.moveTo(padL, y);
+      ctx.lineTo(padL + plotW, y);
+    }
+    ctx.stroke();
+    const points = processed && processed.length ? processed : [
+      { label: 'Now', value: 0, formatted: '0 BDAG' },
+    ];
+    const values = points.map((p) => Number(p.value || 0));
+    const maxVal = Math.max(...values, 1);
+    ctx.strokeStyle = '#44f2a8';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    points.forEach((point, idx) => {
+      const fracX = points.length === 1 ? 1 : idx / (points.length - 1);
+      const fracY = Number(point.value || 0) / maxVal;
+      const x = padL + fracX * plotW;
+      const y = padT + (1 - fracY) * plotH;
+      if (idx === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+      ctx.fillStyle = '#44f2a8';
+      ctx.beginPath();
+      ctx.arc(x, y, 3, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.stroke();
+    ctx.fillStyle = '#e7eaf6';
+    ctx.font = '11px "Segoe UI",sans-serif';
+    const last = points[points.length - 1];
+    ctx.fillText(last.formatted || `${Number(last.value || 0).toFixed(4)} BDAG`, padL + plotW - 6, padT + 12);
+    ctx.textAlign = 'left';
+    ctx.fillText('Balance (fallback)', padL, padT - 8);
   }
 
   function syncLinkedSettingInputs(key, source) {
@@ -1017,11 +1088,32 @@
     try {
       const entry = state.nodes.get(nodeId);
       const label = entry && entry.meta ? (entry.meta.label || entry.meta.id || nodeId) : nodeId;
-      setSnapshotStatus(`Snapshot requested for ${label}`);
+      let overlayNote = '';
+      const overlayState = state.overlayStatus;
+      if (overlayState && overlayState.byNode) {
+        let overlayMap = overlayState.byNode;
+        if (overlayMap && typeof overlayMap.get !== 'function') {
+          overlayMap = new Map(Object.entries(overlayMap || {}));
+        }
+        if (overlayMap && typeof overlayMap.get === 'function') {
+          const overlaysForNode = overlayMap.get(nodeId);
+          if (Array.isArray(overlaysForNode) && overlaysForNode.length) {
+            const overlayParts = overlaysForNode.map((info) => {
+              const used = Number.isFinite(info.upperBytes) ? formatBytes(info.upperBytes) : 'active';
+              const limitSuffix = Number.isFinite(info.limitBytes) && info.limitBytes > 0
+                ? ` / ${formatBytes(info.limitBytes)} limit`
+                : '';
+              return `${info.name} (${used}${limitSuffix})`;
+            });
+            overlayNote = ` — flushing overlays: ${overlayParts.join(', ')}`;
+          }
+        }
+      }
+      setSnapshotStatus(`Snapshot requested for ${label}${overlayNote}`);
       const res = await fetch('/api/snapshots/create', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ node: nodeId }),
+        body: JSON.stringify({ node: nodeId, quiesce_overlay: true }),
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok || payload.ok === false) {
@@ -1364,14 +1456,14 @@ function updateSettingsStatus(message, options = {}) {
   updateSettingsStatus('');
   // Also apply Overclock preferences to Overclock form
   try {
-    if (ocDataPath && typeof merged.overclock_data_path === 'string' && merged.overclock_data_path) {
-      ocDataPath.value = merged.overclock_data_path;
-    }
     if (typeof merged.overclock_cpu === 'boolean' && ocCpu) ocCpu.checked = !!merged.overclock_cpu;
     if (typeof merged.overclock_nvme_latency === 'boolean' && ocNvmeLatency) ocNvmeLatency.checked = !!merged.overclock_nvme_latency;
     if (typeof merged.overclock_scheduler === 'boolean' && ocScheduler) ocScheduler.checked = !!merged.overclock_scheduler;
     if (typeof merged.overclock_remount === 'boolean' && ocRemount) ocRemount.checked = !!merged.overclock_remount;
-    if (typeof merged.overclock_enable_vwc === 'boolean' && ocEnableVWC) ocEnableVWC.checked = !!merged.overclock_enable_vwc;
+    // VWC removed
+    // WAL tmpfs setting removed
+    // VM‑Mode removed
+    if (typeof merged.overclock_overlay_bdagchain === 'boolean' && ocOverlayBdagChain) ocOverlayBdagChain.checked = !!merged.overclock_overlay_bdagchain;
   } catch (_) {}
 }
 
@@ -2681,13 +2773,7 @@ async function saveSettings() {
         if (kind === 'error') overclockStatus.classList.add('is-error');
         if (kind === 'success') overclockStatus.classList.add('is-success');
       };
-      const setVwcRisk = (text, level='') => {
-        if (!ocVwcRisk) return;
-        ocVwcRisk.textContent = `VWC safety: ${text}`;
-        ocVwcRisk.classList.remove('is-error','is-success');
-        if (level === 'error') ocVwcRisk.classList.add('is-error');
-        if (level === 'success') ocVwcRisk.classList.add('is-success');
-      };
+      // VWC UI removed
       const parseIops = (value) => {
         if (!value) return null;
         const v = String(value).trim().toLowerCase().replace('iops','').trim();
@@ -2737,107 +2823,123 @@ async function saveSettings() {
       };
       // Expose to init() so auto-prime can push a point
       ocAppendMetric = updateOcChart;
-      const preflight = async () => {
+      // Preflight VWC removed
+      const collectOverclockPayload = () => ({
+        cpu: !!ocCpu?.checked,
+        nvme_latency: !!ocNvmeLatency?.checked,
+        scheduler: !!ocScheduler?.checked,
+        remount: !!ocRemount?.checked,
+      });
+
+      async function applyOverclockTweaks() {
         try {
-          setVwcRisk('checking…');
-          const payload = { data_path: ocDataPath?.value?.trim() || '/home/node/blockdag' };
-          const res = await fetch('/api/overclock/preflight', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+          setOCStatus('Applying…');
+          openOcLogs();
+          updateOcLayout();
+          const payload = collectOverclockPayload();
+          const res = await fetch('/api/overclock/apply', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
           const json = await res.json().catch(() => ({}));
           if (!res.ok || json.ok === false) {
-            setVwcRisk(json.error || `error`, 'error');
+            const msg = json.error || `HTTP ${res.status}`;
+            setOCStatus(msg, 'error');
             return;
           }
-          const plp = json.plp || 'unknown';
-          if (plp === 'yes') setVwcRisk('PLP detected (safer)', 'success');
-          else if (plp === 'no') setVwcRisk('No PLP (risk on power loss)', 'error');
-          else setVwcRisk('unknown');
-        } catch (err) {
-          setVwcRisk('check failed', 'error');
-        }
-      };
-      ocDataPath?.addEventListener('change', preflight);
-      // Kick off preflight on load
-      setTimeout(preflight, 0);
-      const btn = document.getElementById('btnApplyOverclock');
-      if (btn) {
-        btn.addEventListener('click', async () => {
           try {
-            setOCStatus('Applying…');
-            openOcLogs();
-            updateOcLayout();
-            const payload = {
-              data_path: ocDataPath?.value?.trim() || '/home/node/blockdag',
-              enable_vwc: !!ocEnableVWC?.checked,
-              cpu: !!ocCpu?.checked,
-              nvme_latency: !!ocNvmeLatency?.checked,
-              scheduler: !!ocScheduler?.checked,
-              remount: !!ocRemount?.checked,
+            const pref = {
+              overclock_cpu: payload.cpu,
+              overclock_nvme_latency: payload.nvme_latency,
+              overclock_scheduler: payload.scheduler,
+              overclock_remount: payload.remount,
             };
-            const res = await fetch('/api/overclock/apply', {
+            void fetch('/api/settings', {
               method: 'POST',
               headers: { 'content-type': 'application/json' },
-              body: JSON.stringify(payload),
-            });
-            const json = await res.json().catch(() => ({}));
-            if (!res.ok || json.ok === false) {
-              const msg = json.error || `HTTP ${res.status}`;
-              setOCStatus(msg, 'error');
-              return;
+              body: JSON.stringify(pref),
+            }).catch(() => {});
+          } catch (_) {}
+          let msg = 'Tweaks applied';
+          if (json.needs_root) msg = 'Needs root: ' + (json.hint || 'run via sudo');
+          setOCStatus(msg, json.needs_root ? '' : 'success');
+          try {
+            const sres = await fetch('/api/overclock/status', { cache: 'no-store' });
+            if (sres.ok) {
+              const st = await sres.json();
+              if (st && st.status_line) setOCStatus(st.status_line);
             }
-            // Persist Overclock preferences so they survive refresh
-            try {
-              const pref = {
-                overclock_data_path: payload.data_path,
-                overclock_cpu: payload.cpu,
-                overclock_nvme_latency: payload.nvme_latency,
-                overclock_scheduler: payload.scheduler,
-                overclock_remount: payload.remount,
-                overclock_enable_vwc: payload.enable_vwc,
-              };
-              void fetch('/api/settings', {
-                method: 'POST',
-                headers: { 'content-type': 'application/json' },
-                body: JSON.stringify(pref),
-              }).catch(() => {});
-            } catch (_) {}
-            let msg = 'Tweaks applied';
-            if (json.needs_root) msg = 'Needs root: ' + (json.hint || 'run via sudo');
-            setOCStatus(msg, json.needs_root ? '' : 'success');
-          } catch (err) {
-            console.error('[overclock] failed', err);
-            setOCStatus(err.message || 'Failed to apply', 'error');
-          }
-        });
+          } catch (_) {}
+        } catch (err) {
+          console.error('[overclock] failed', err);
+          setOCStatus(err.message || 'Failed to apply', 'error');
+        }
       }
+
+      let autoApplyTimer = null;
+      function scheduleAutoApply() {
+        if (autoApplyTimer) {
+          clearTimeout(autoApplyTimer);
+        }
+        autoApplyTimer = window.setTimeout(() => {
+          autoApplyTimer = null;
+          void applyOverclockTweaks();
+        }, 200);
+      }
+
+      if (ocCpu) ocCpu.addEventListener('change', scheduleAutoApply);
+      if (ocNvmeLatency) ocNvmeLatency.addEventListener('change', scheduleAutoApply);
+      if (ocScheduler) ocScheduler.addEventListener('change', scheduleAutoApply);
+      if (ocRemount) ocRemount.addEventListener('change', scheduleAutoApply);
       const verifyBtn = document.getElementById('btnVerifyOverclock');
       if (verifyBtn) {
         verifyBtn.addEventListener('click', async () => {
           try {
-            setOCStatus('Running verify (10s)…');
+            setOCStatus('Running DB tests (10s)…');
             openOcLogs();
             updateOcLayout();
-            const payload = { data_path: ocDataPath?.value?.trim() || '/home/node/blockdag' };
-            const res = await fetch('/api/overclock/verify', {
-              method: 'POST',
-              headers: { 'content-type': 'application/json' },
-              body: JSON.stringify(payload),
-            });
+            const res = await fetch('/api/overclock/verify-dbs', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ runtime: 10 }) });
             const json = await res.json().catch(() => ({}));
             if (!res.ok || json.ok === false) {
-              setOCStatus(json.error || `HTTP ${res.status}`, 'error');
+              // Fallback to single test
+              const r2 = await fetch('/api/overclock/verify', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({}) });
+              const j2 = await r2.json().catch(() => ({}));
+              if (!r2.ok || j2.ok === false) {
+                setOCStatus((json.error || j2.error || `Test failed (HTTP ${res.status})`), 'error');
+                return;
+              }
+              const m = j2.metrics || {};
+              const parts = [];
+              if (m.iops) parts.push(`${m.iops} iops`);
+              if (m.bw) parts.push(`${m.bw}`);
+              if (m.fsync_p50 || m.fsync_p99) parts.push(`fsync p50 ${m.fsync_p50 || '—'} p99 ${m.fsync_p99 || '—'}`);
+              if (m.write_p50 || m.write_p99) parts.push(`write p50 ${m.write_p50 || '—'} p99 ${m.write_p99 || '—'}`);
+              setOCStatus(parts.length ? `Test: ${parts.join(' | ')}` : 'Test complete', 'success');
               return;
             }
-            const m = json.metrics || {};
+            const resmap = json.results || {};
             const parts = [];
-            if (m.iops) parts.push(`${m.iops} IOPS`);
-            if (m.bw) parts.push(`${m.bw}`);
-            if (m.p50) parts.push(`p50 ${m.p50}`);
-            if (m.p99) parts.push(`p99 ${m.p99}`);
-            setOCStatus(parts.length ? `Verify: ${parts.join(', ')}` : 'Verify complete', 'success');
-            updateOcChart(m);
+            for (const [name, m] of Object.entries(resmap)) {
+              const seg = [];
+              if (m.iops) seg.push(`${m.iops} iops`);
+              if (m.bw) seg.push(`${m.bw}`);
+              if (m.fsync_p50 || m.fsync_p99) seg.push(`fsync p50 ${m.fsync_p50 || '—'} p99 ${m.fsync_p99 || '—'}`);
+              if (m.write_p50 || m.write_p99) seg.push(`write p50 ${m.write_p50 || '—'} p99 ${m.write_p99 || '—'}`);
+              parts.push(`${name}: ${seg.join(' | ')}`);
+            }
+            setOCStatus(parts.length ? `DB Tests: ${parts.join(' ; ')}` : 'Test complete', 'success');
+            // Also show current status
+            try {
+              const sres = await fetch('/api/overclock/status', { cache: 'no-store' });
+              if (sres.ok) {
+                const st = await sres.json();
+                if (st && st.status_line) setOCStatus(st.status_line);
+              }
+            } catch (_) {}
           } catch (err) {
-            console.error('[overclock verify] failed', err);
-            setOCStatus(err.message || 'Verify failed', 'error');
+            console.error('[overclock test] failed', err);
+            setOCStatus(err.message || 'Test failed', 'error');
           }
         });
       }
@@ -2848,7 +2950,7 @@ async function saveSettings() {
             setOCStatus('Reverting…');
             openOcLogs();
             updateOcLayout();
-            const payload = { data_path: ocDataPath?.value?.trim() || '/home/node/blockdag' };
+            const payload = { };
             const res = await fetch('/api/overclock/revert', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
             const json = await res.json().catch(() => ({}));
             if (!res.ok || json.ok === false) {
@@ -2860,17 +2962,496 @@ async function saveSettings() {
             setOCStatus(msg, json.needs_root ? '' : 'success');
             // Refresh preflight after revert
             setTimeout(() => { void preflight(); }, 500);
+            // Refresh status
+            try {
+              const sres = await fetch('/api/overclock/status', { cache: 'no-store' });
+              if (sres.ok) {
+                const st = await sres.json();
+                if (st && st.status_line) setOCStatus(st.status_line);
+              }
+            } catch (_) {}
           } catch (err) {
             console.error('[overclock revert] failed', err);
             setOCStatus(err.message || 'Revert failed', 'error');
           }
         });
       }
-      // Logs button removed; always show logs and poll
-      const refreshLogsBtn = document.getElementById('btnOcLogsRefresh');
-      if (refreshLogsBtn) {
-        refreshLogsBtn.addEventListener('click', () => { void loadOcLogs({ force: true }); });
+      // Overclock logs auto-refresh; manual refresh removed
+      // WAL checkpoint UI removed
+
+      // VM‑Mode removed
+
+      // WAL config UI removed
+
+      // Redeploy helper
+      const btnWalRedeploy = document.getElementById('btnWalRedeploy');
+      const ocWalImageTag = document.getElementById('ocWalImageTag');
+      // Redeploy helper removed
+
+      // OverlayFS toggle (BdagChain)
+      if (ocOverlayBdagChain) {
+        ocOverlayBdagChain.addEventListener('change', async () => {
+          try {
+            if (ocOverlayBdagChain.checked) {
+              setOCStatus('Applying OverlayFS to all BdagChain…');
+              openOcLogs();
+              updateOcLayout();
+              try { await fetch('/api/settings', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ overclock_overlay_bdagchain: true })}); } catch(_) {}
+              const interval = Number(ocOverlayIntervalBdagChain?.value || 30);
+              const limitGiB = Number(ocOverlayLimitBdagChain?.value || 3);
+              const res = await fetch('/api/overclock/overlay/align', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ interval_bdagchain: interval, limit_bdagchain_gib: limitGiB }) });
+              const j = await res.json().catch(()=>({}));
+              if (!res.ok || j.ok === false) throw new Error(j.error || `HTTP ${res.status}`);
+              setOCStatus(`OverlayFS active across ${j.count||0} targets for BdagChain`, 'success');
+            } else {
+              setOCStatus('Reverting OverlayFS for all BdagChain…');
+              openOcLogs();
+              updateOcLayout();
+              try { await fetch('/api/settings', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ overclock_overlay_bdagchain: false })}); } catch(_) {}
+              const res = await fetch('/api/overclock/overlay/disable', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ target: 'BdagChain', commit: true }) });
+              const j = await res.json().catch(()=>({}));
+              if (!res.ok || j.ok === false) throw new Error(j.error || `HTTP ${res.status}`);
+              setOCStatus(`OverlayFS reverted for BdagChain (reverted ${j.reverted||0})`, 'success');
+            }
+          } catch (err) {
+            setOCStatus(err.message || 'OverlayFS action failed', 'error');
+          }
+        });
       }
+
+      // OverlayFS toggle (bdageth/chaindata)
+      if (ocOverlayBdagEth) {
+        ocOverlayBdagEth.addEventListener('change', async () => {
+          try {
+            if (ocOverlayBdagEth.checked) {
+              setOCStatus('Applying OverlayFS to all bdageth…');
+              openOcLogs();
+              updateOcLayout();
+              const interval = Number(ocOverlayIntervalBdagEth?.value || 30);
+              const limitGiB = Number(ocOverlayLimitBdagEth?.value || 4);
+              const res = await fetch('/api/overclock/overlay/align', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ interval_bdageth: interval, limit_bdageth_gib: limitGiB }) });
+              const j = await res.json().catch(()=>({}));
+              if (!res.ok || j.ok === false) throw new Error(j.error || `HTTP ${res.status}`);
+              try { await fetch('/api/settings', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ overclock_overlay_bdageth: true })}); } catch(_) {}
+              setOCStatus(`OverlayFS active across ${j.count||0} targets for bdageth`, 'success');
+            } else {
+              setOCStatus('Reverting OverlayFS for all bdageth…');
+              openOcLogs();
+              updateOcLayout();
+              try { await fetch('/api/settings', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ overclock_overlay_bdageth: false })}); } catch(_) {}
+              const res = await fetch('/api/overclock/overlay/disable', { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify({ target: 'bdageth-chaindata', commit: true }) });
+              const j = await res.json().catch(()=>({}));
+              if (!res.ok || j.ok === false) throw new Error(j.error || `HTTP ${res.status}`);
+              setOCStatus(`OverlayFS reverted for bdageth (reverted ${j.reverted||0})`, 'success');
+            }
+            void refreshOverlayStatus();
+          } catch (err) {
+            setOCStatus(err.message || 'OverlayFS action failed', 'error');
+          }
+        });
+      }
+
+      // Overlay commit interval selector
+      const applyOverlayParams = async (target) => {
+        const isBdagChain = target === 'BdagChain';
+        const intervalEl = isBdagChain ? ocOverlayIntervalBdagChain : ocOverlayIntervalBdagEth;
+        const limitEl = isBdagChain ? ocOverlayLimitBdagChain : ocOverlayLimitBdagEth;
+        const interval = Number(intervalEl?.value || 15);
+        const limitGiB = Number(limitEl?.value || 3);
+        await fetch('/api/overclock/overlay/apply', {
+          method:'POST', headers:{'content-type':'application/json'},
+          body: JSON.stringify({ target, interval_sec: interval, limit_gib: limitGiB })
+        });
+      };
+      if (ocOverlayIntervalBdagChain) {
+        ocOverlayIntervalBdagChain.addEventListener('change', async () => {
+          try { if (ocOverlayBdagChain?.checked) { await applyOverlayParams('BdagChain'); setOCStatus(`BdagChain interval set`);} } catch(_) {}
+        });
+      }
+      if (ocOverlayLimitBdagChain) {
+        ocOverlayLimitBdagChain.addEventListener('change', async () => {
+          try { if (ocOverlayBdagChain?.checked) { await applyOverlayParams('BdagChain'); setOCStatus(`BdagChain RAM limit set`);} } catch(_) {}
+        });
+      }
+      if (ocOverlayIntervalBdagEth) {
+        ocOverlayIntervalBdagEth.addEventListener('change', async () => {
+          try { if (ocOverlayBdagEth?.checked) { await applyOverlayParams('bdageth-chaindata'); setOCStatus(`bdageth interval set`);} } catch(_) {}
+        });
+      }
+      if (ocOverlayLimitBdagEth) {
+        ocOverlayLimitBdagEth.addEventListener('change', async () => {
+          try { if (ocOverlayBdagEth?.checked) { await applyOverlayParams('bdageth-chaindata'); setOCStatus(`bdageth RAM limit set`);} } catch(_) {}
+        });
+      }
+
+      function overlayTypeFromName(raw) {
+        if (!raw) return 'overlay';
+        const base = String(raw);
+        const part = base.includes('@') ? base.split('@')[0] : base;
+        if (part === 'bdageth-chaindata') return 'bdageth';
+        return part;
+      }
+
+      function findOverlayNodeLabel(item) {
+        const lower = String(item?.lower || '');
+        let label = '';
+        if (lower) {
+          state.nodes.forEach((entry) => {
+            if (label) return;
+            const meta = entry?.meta;
+            if (!meta) return;
+            const chainDir = meta.status?.chain_data_dir || meta.status?.data_dir || meta.status?.data_path || meta.chain_data_dir;
+            if (chainDir && lower.startsWith(chainDir)) {
+              label = meta.label || meta.id || '';
+            }
+          });
+        }
+        if (lower && (!label || label === item?.node)) {
+          const match = lower.match(/blockdag-scripts\/(bin[^/]+)/i);
+          if (match && match[1]) label = match[1];
+        }
+        if (!label && typeof item?.node === 'string' && item.node) {
+          label = item.node;
+        }
+        if (!label && item?.overlay) {
+          label = overlayTypeFromName(item.overlay);
+        }
+        if (!label && item?.name) {
+          label = overlayTypeFromName(item.name);
+        }
+      return label || 'overlay';
+      }
+
+      function canonicalOverlayNodeId(nodeId, label) {
+        const match = typeof label === 'string' ? label.match(/^bin(\d*)$/i) : null;
+        if (match) {
+          const suffix = match[1] || '';
+          if (suffix) {
+            const base = typeof nodeId === 'string' && nodeId ? nodeId.replace(/-\d+$/, '') : 'blockdag-testnet-network';
+            return `${base}-${suffix}`;
+          }
+          const base = typeof nodeId === 'string' && nodeId ? nodeId.replace(/-\d+$/, '') : 'blockdag-testnet-network';
+          return base;
+        }
+        return nodeId || label || 'overlay';
+      }
+
+      function displayOverlayNodeLabel(nodeId, label) {
+        const canonicalId = canonicalOverlayNodeId(nodeId, label);
+        const nodeEntry = state.nodes.get(canonicalId);
+        if (nodeEntry?.meta?.label) return nodeEntry.meta.label;
+        if (nodeEntry?.meta?.id) return nodeEntry.meta.id;
+        if (typeof label === 'string' && /^bin(\d*)$/i.test(label)) {
+          const match = label.match(/^bin(\d*)$/i);
+          const suffix = match?.[1] || '';
+          const base = typeof nodeId === 'string' && nodeId ? nodeId.replace(/-\d+$/, '') : 'blockdag-testnet-network';
+          return suffix ? `${base}-${suffix}` : base;
+        }
+        if (typeof nodeId === 'string' && nodeId) return nodeId;
+        return label || 'overlay';
+      }
+
+      function ensureOverlayChart() {
+        if (!ocOverlayChartCanvas || typeof Chart !== 'function') {
+          return null;
+        }
+        if (ocOverlayChart) {
+          if (ocOverlayChart.options?.indexAxis !== 'y') {
+            ocOverlayChart.options.indexAxis = 'y';
+            try { ocOverlayChart.update(); } catch (_) {}
+          }
+          return ocOverlayChart;
+        }
+        const ctx = ocOverlayChartCanvas.getContext('2d');
+        ocOverlayChart = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: [],
+            datasets: [{
+              label: 'Used (GiB)',
+              data: [],
+              backgroundColor: 'rgba(255,99,132,0.65)',
+              borderColor: 'rgba(255,99,132,1)',
+              borderWidth: 1,
+              maxBarThickness: 32,
+              parsing: false,
+            }],
+          },
+          options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            layout: {
+              padding: { top: 8, right: 16, bottom: 12, left: 24 },
+            },
+            scales: {
+              x: {
+                beginAtZero: true,
+                grid: { color: 'rgba(255,255,255,0.08)' },
+                ticks: {
+                  color: '#e7eaf6',
+                  callback: (value) => `${value} GiB`,
+                },
+                stacked: true,
+              },
+              y: {
+                grid: { color: 'rgba(255,255,255,0.08)' },
+                ticks: {
+                  color: '#e7eaf6',
+                  maxRotation: 0,
+                  minRotation: 0,
+                  autoSkip: false,
+                  crossAlign: 'far',
+                },
+                stacked: true,
+              },
+            },
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  title: (contexts) => {
+                    const ctx = contexts[0];
+                    return ctx.label || '';
+                  },
+                  label: (context) => {
+                    const datasetLabel = context.dataset?.label || 'Value';
+                    const value = Number(context.raw || context.parsed?.x || 0);
+                    return `${datasetLabel}: ${value.toFixed(2)} GiB`;
+                  },
+                  afterBody: (items) => {
+                    const ctx = items[0];
+                    const chart = ctx?.chart;
+                    const idx = ctx?.dataIndex ?? -1;
+                    const totals = chart?.$overlayTotals && idx >= 0 ? chart.$overlayTotals[idx] : null;
+                    const segments = chart?.$overlaySegments && idx >= 0 ? chart.$overlaySegments[idx] : null;
+                    if (!totals) return undefined;
+                    const lines = [];
+                    const limitLine = totals.limit ? `Limit: ${totals.limit.toFixed(2)} GiB` : null;
+                    if (limitLine) lines.push(limitLine);
+                    if (segments && segments.length) {
+                      lines.push('Breakdown:');
+                      segments.forEach((seg) => {
+                        lines.push(`  ${seg.type}: ${seg.value.toFixed(2)} GiB`);
+                      });
+                    }
+                    return lines.length ? lines : undefined;
+                  },
+                },
+              },
+            },
+          },
+        });
+        return ocOverlayChart;
+      }
+
+      function updateOverlayChartItems(items, aggregatedMap) {
+        if (!ocOverlayChartWrapper) return;
+        const hasData = aggregatedMap && aggregatedMap.size > 0;
+        const emptyMessage = 'No overlay activity yet.';
+        if (!hasData) {
+          ocOverlayChartWrapper.classList.add('is-empty');
+          if (ocOverlayChart) {
+            ocOverlayChart.data.labels = [];
+            ocOverlayChart.data.datasets[0].data = [];
+            ocOverlayChart.$overlaySegments = [];
+            ocOverlayChart.update();
+          }
+          if (ocOverlayChartEmpty) ocOverlayChartEmpty.textContent = emptyMessage;
+          return;
+        }
+        const entries = Array.from(aggregatedMap.entries());
+        const sortedEntries = entries
+          .map(([key, info]) => [key, info])
+          .sort(([, aInfo], [, bInfo]) => Number(bInfo.total || 0) - Number(aInfo.total || 0));
+        const chart = ensureOverlayChart();
+        if (!chart) return;
+        const hasLimits = sortedEntries.some(([, info]) => Number(info.limitGiB || 0) > 0);
+        if (!chart.data.datasets || chart.data.datasets.length !== (hasLimits ? 2 : 1)) {
+          chart.data.datasets = hasLimits
+            ? [
+                {
+                  label: 'Used (GiB)',
+                  data: [],
+                  backgroundColor: 'rgba(255,99,132,0.65)',
+                  borderColor: 'rgba(255,99,132,1)',
+                  borderWidth: 1,
+                  maxBarThickness: 32,
+                },
+                {
+                  label: 'Remaining (GiB)',
+                  data: [],
+                  backgroundColor: 'rgba(68,242,168,0.35)',
+                  borderColor: '#44f2a8',
+                  borderWidth: 1,
+                  maxBarThickness: 32,
+                },
+              ]
+            : [
+                {
+                  label: 'Used (GiB)',
+                  data: [],
+                  backgroundColor: 'rgba(68,242,168,0.35)',
+                  borderColor: '#44f2a8',
+                  borderWidth: 1,
+                  maxBarThickness: 32,
+                },
+              ];
+        }
+        if (ocOverlayChartCanvas) {
+          const desiredHeight = Math.max(180, sortedEntries.length * 28);
+          ocOverlayChartCanvas.style.height = `${desiredHeight}px`;
+          ocOverlayChartCanvas.height = desiredHeight;
+        }
+        const allZero = sortedEntries.every(([, info]) => Number(info.total || 0) === 0);
+        if (allZero) {
+          ocOverlayChartWrapper.classList.add('is-empty');
+          if (ocOverlayChartEmpty) ocOverlayChartEmpty.textContent = emptyMessage;
+        } else {
+          ocOverlayChartWrapper.classList.remove('is-empty');
+          if (ocOverlayChartEmpty) ocOverlayChartEmpty.textContent = emptyMessage;
+        }
+        chart.data.labels = sortedEntries.map(([, info]) => info.label || 'overlay');
+        const usedData = sortedEntries.map(([, info]) => Number(info.usedGiB?.toFixed(2) || 0));
+        const remainingData = sortedEntries.map(([, info]) => Number(info.remainingGiB?.toFixed(2) || 0));
+        chart.data.datasets[0].data = usedData;
+        if (chart.data.datasets[1]) {
+          chart.data.datasets[1].data = remainingData;
+        }
+        chart.$overlaySegments = sortedEntries.map(([, info]) => info.segments);
+        chart.$overlayTotals = sortedEntries.map(([, info]) => ({
+          used: Number(info.usedGiB || 0),
+          remaining: Number(info.remainingGiB || 0),
+          limit: Number(info.limitGiB || 0),
+        }));
+        chart.update();
+      }
+
+      async function refreshOverlayStatus() {
+        try {
+          const res = await fetch('/api/overclock/overlay/status', { cache: 'no-store' });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const j = await res.json();
+          const items = Array.isArray(j.items) ? j.items : [];
+          const overlaysByNode = new Map();
+          let autoReverted = false;
+          const aggregated = new Map();
+          items.forEach((it) => {
+            const controlTypeRaw = String(it.overlay || it.name || '');
+            const controlType = controlTypeRaw.includes('@') ? controlTypeRaw.split('@')[0] : controlTypeRaw;
+            const typeLabel = overlayTypeFromName(controlTypeRaw);
+            const active = !!it.mounted;
+            const upperBytes = Number(it.upper_bytes || 0);
+            const upperGiB = upperBytes / (1024 * 1024 * 1024);
+            const valueRounded = Number(upperGiB.toFixed(2));
+            const nodeLabel = findOverlayNodeLabel(it);
+            const rawNodeId = typeof it.node === 'string' && it.node ? it.node : null;
+            const canonicalId = canonicalOverlayNodeId(rawNodeId, nodeLabel);
+            const displayLabel = displayOverlayNodeLabel(rawNodeId, nodeLabel);
+            if (!aggregated.has(canonicalId)) {
+              aggregated.set(canonicalId, {
+                total: 0,
+                segments: new Map(),
+                label: displayLabel,
+                $nodeId: canonicalId,
+                limitGiB: 0,
+              });
+            }
+            const entry = aggregated.get(canonicalId);
+            entry.label = displayLabel;
+            entry.total += valueRounded;
+            const limitBytes = Number(it.limit_bytes || 0);
+            if (limitBytes > 0) {
+              const limitGiB = limitBytes / (1024 * 1024 * 1024);
+              entry.limitGiB += limitGiB;
+            }
+            if (!entry.segments.has(typeLabel)) {
+              entry.segments.set(typeLabel, 0);
+            }
+            entry.segments.set(typeLabel, entry.segments.get(typeLabel) + valueRounded);
+            if (rawNodeId) {
+              if (!overlaysByNode.has(rawNodeId)) {
+                overlaysByNode.set(rawNodeId, []);
+              }
+              overlaysByNode.get(rawNodeId).push({
+                name: overlayTypeFromName(controlTypeRaw),
+                raw: controlTypeRaw,
+                mounted: active,
+                upperBytes,
+                limitBytes: Number(it.limit_bytes || 0) || null,
+              });
+            }
+
+            const limit = Number(it.limit_bytes || (3 * 1024 * 1024 * 1024));
+            if (active && upperBytes > limit) {
+              autoReverted = true;
+              fetch('/api/overclock/overlay/revert', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ target: controlType, commit: true }),
+              }).catch(() => {});
+              if (controlType === 'BdagChain' && ocOverlayBdagChain) ocOverlayBdagChain.checked = false;
+              if (controlType === 'bdageth-chaindata' && ocOverlayBdagEth) ocOverlayBdagEth.checked = false;
+            }
+
+            if (controlType === 'BdagChain') {
+              if (ocOverlayIntervalBdagChain && it.interval_sec) ocOverlayIntervalBdagChain.value = String(it.interval_sec);
+              if (ocOverlayLimitBdagChain && it.limit_bytes) ocOverlayLimitBdagChain.value = (Number(it.limit_bytes) / (1024 * 1024 * 1024)).toFixed(1);
+            } else if (controlType === 'bdageth-chaindata') {
+              if (ocOverlayIntervalBdagEth && it.interval_sec) ocOverlayIntervalBdagEth.value = String(it.interval_sec);
+              if (ocOverlayLimitBdagEth && it.limit_bytes) ocOverlayLimitBdagEth.value = (Number(it.limit_bytes) / (1024 * 1024 * 1024)).toFixed(1);
+            }
+          });
+
+          aggregated.forEach((info, key) => {
+            if (info.segments instanceof Map) {
+              info.segments = Array.from(info.segments.entries()).map(([segType, segValue]) => ({
+                type: segType,
+                value: segValue,
+              }));
+            }
+            const limitGiB = Number(info.limitGiB || 0);
+            info.usedGiB = Number(info.total.toFixed(2));
+            info.limitGiB = limitGiB ? Number(limitGiB.toFixed(2)) : null;
+            const remaining = limitGiB ? Math.max(0, limitGiB - info.usedGiB) : null;
+            info.remainingGiB = remaining != null ? Number(remaining.toFixed(2)) : null;
+            info.hasLimit = Number(info.limitGiB || 0) > 0;
+          });
+          const summaryParts = Array.from(aggregated.values())
+            .sort((a, b) => Number(b.total || 0) - Number(a.total || 0))
+            .map((info) => {
+              const label = info.label || 'overlay';
+              const used = info.usedGiB?.toFixed(2) ?? '0.00';
+              if (info.hasLimit && info.limitGiB) {
+                const remain = info.remainingGiB != null ? info.remainingGiB.toFixed(2) : '0.00';
+                return `${label}: ${used} GiB used / ${remain} GiB free (limit ${info.limitGiB.toFixed(2)} GiB)`;
+              }
+              return `${label}: ${used} GiB used`;
+            });
+          state.overlayStatus = { items, byNode: overlaysByNode };
+          if (ocOverlayStatus) {
+            ocOverlayStatus.textContent = summaryParts.length ? summaryParts.join(' | ') : 'No overlays active';
+          }
+          updateOverlayChartItems(items, aggregated);
+          const hasOverlayData = aggregated.size && Array.from(aggregated.values()).some((info) => Number(info.total || 0) > 0);
+          if (ocOverlayBdagChain) {
+            const hasBdag = Array.from(aggregated.values()).some((info) => (info.segments || []).some((seg) => seg.type === 'BdagChain' && Number(seg.value || 0) > 0));
+            if (!hasBdag) ocOverlayBdagChain.checked = false;
+          }
+          if (ocOverlayBdagEth) {
+            const hasEth = Array.from(aggregated.values()).some((info) => (info.segments || []).some((seg) => seg.type === 'bdageth' && Number(seg.value || 0) > 0));
+            if (!hasEth) ocOverlayBdagEth.checked = false;
+          }
+          if (autoReverted) setOCStatus('Overlay auto-reverted due to RAM limit', 'error');
+        } catch (err) {
+          if (ocOverlayStatus) ocOverlayStatus.textContent = 'Overlay status unavailable';
+          updateOverlayChartItems([], new Map());
+          state.overlayStatus = { items: [], byNode: new Map() };
+        }
+      }
+
+      // Initial status refresh
+      void refreshOverlayStatus();
       // Manual removed
     }
     if (snapshotRefreshBtn) {
@@ -2903,6 +3484,7 @@ async function saveSettings() {
       switchSummaryTab(initialTab);
     }
     await loadSettings();
+    // No manual data dir field; backend auto-detects on actions
     await loadNodes();
     await refreshMetrics();
     await loadSnapshots({ silent: true });
@@ -2924,12 +3506,8 @@ async function saveSettings() {
       if (ocLogsOutput) {
         ocLogsOutput.textContent = lines.length ? lines.join('\n') + '\n' : 'No log lines yet.';
       }
-      if (ocLogsMeta) {
-        const ts = payload.timestamp ? new Date(payload.timestamp * 1000) : new Date();
-        ocLogsMeta.textContent = `Updated ${fmtTime.format(ts)}`;
-      }
     } catch (err) {
-      if (ocLogsMeta) ocLogsMeta.textContent = 'Failed to load logs';
+      if (ocLogsOutput) ocLogsOutput.textContent = 'Failed to load logs';
     }
   }
 
