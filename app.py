@@ -619,7 +619,7 @@ def _append_candidate(collection: List[Path], seen: Set[str], candidate) -> None
 
 def _wallet_search_roots() -> List[Path]:
     roots: List[Path] = []
-    for raw in (Path("/home"), Path("/root")):
+    for raw in (Path("/home"), Path("/root"), Path("/media")):
         try:
             if raw.exists() and raw.is_dir():
                 roots.append(raw)
