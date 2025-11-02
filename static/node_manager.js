@@ -760,22 +760,14 @@
     if (walletPane) {
       walletPane.classList.toggle('is-disabled', !enabled);
     }
-    const displayAddress = hasWallet ? wallet.address : '—';
-    const displayBalance = hasWallet
-      ? wallet.balance_formatted || wallet.short || (wallet.balance_bdag ? `${wallet.balance_bdag} BDAG` : '—')
-      : '—';
-    const updatedMs = hasWallet && Number.isFinite(timestamp) ? timestamp * 1000 : NaN;
-    const updatedText = hasWallet ? formatWalletTimestamp(updatedMs) : '—';
-    if (walletAddressValue) walletAddressValue.textContent = displayAddress;
-    if (walletBalanceValue) walletBalanceValue.textContent = displayBalance;
-    if (walletUpdatedValue) walletUpdatedValue.textContent = updatedText;
 
+    let processedBalances = [];
     if (Array.isArray(wallet?.balance_history) && wallet.balance_history.length) {
-      state.walletBalanceHistory = wallet.balance_history
+      processedBalances = wallet.balance_history
         .map((entry) => {
           const ts = Number(entry.timestamp);
           const balance = Number(entry.balance);
-          if (!Number.isFinite(ts) || !Number.isFinite(balance)) {
+          if (!Number.isFinite(ts) || !Number.isFinite(balance) || balance === 0) {
             return null;
           }
           return {
@@ -786,9 +778,33 @@
         })
         .filter(Boolean)
         .sort((a, b) => a.timestamp - b.timestamp);
-    } else {
-      state.walletBalanceHistory = [];
     }
+    state.walletBalanceHistory = processedBalances;
+
+    const lastPositive = processedBalances.length ? processedBalances[processedBalances.length - 1] : null;
+    const displayAddress = hasWallet ? wallet.address : '—';
+    let displayBalance = '—';
+    if (hasWallet) {
+      if (lastPositive) {
+        displayBalance = lastPositive.formatted;
+      } else if (wallet.balance_formatted) {
+        displayBalance = wallet.balance_formatted;
+      } else if (wallet.short) {
+        displayBalance = wallet.short;
+      } else if (Number(wallet.balance_bdag) > 0) {
+        displayBalance = `${wallet.balance_bdag} BDAG`;
+      }
+    }
+    const summaryMs = hasWallet && Number.isFinite(timestamp) ? timestamp * 1000 : NaN;
+    const updatedText = lastPositive
+      ? formatWalletTimestamp(lastPositive.timestamp)
+      : hasWallet
+        ? formatWalletTimestamp(summaryMs)
+        : '—';
+    if (walletAddressValue) walletAddressValue.textContent = displayAddress;
+    if (walletBalanceValue) walletBalanceValue.textContent = displayBalance;
+    if (walletUpdatedValue) walletUpdatedValue.textContent = updatedText;
+
     updateWalletChart(state.walletBalanceHistory, { enabled });
 
     if (walletHistoryList && walletHistoryEmpty) {
