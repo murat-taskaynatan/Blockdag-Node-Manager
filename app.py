@@ -623,7 +623,7 @@ def _append_candidate(collection: List[Path], seen: Set[str], candidate) -> None
 
 def _wallet_search_roots() -> List[Path]:
     roots: List[Path] = []
-    for raw in (Path("/home"), Path("/root"), Path("/media")):
+    for raw in (Path("/home"), Path("/root")):
         try:
             if raw.exists() and raw.is_dir():
                 roots.append(raw)
@@ -655,7 +655,6 @@ def _scan_blockdag_dirs(root: Path, max_depth: int = _WALLET_SCAN_MAX_DEPTH) -> 
             continue
         if current.name == _BLOCKDAG_DIR_NAME:
             results.append(current)
-            # No need to traverse deeper within blockdag-scripts directories
             continue
         if depth >= max_depth:
             continue
