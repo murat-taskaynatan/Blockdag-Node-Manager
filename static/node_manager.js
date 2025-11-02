@@ -981,7 +981,7 @@
     }
     if (btn && btn.dataset.busy) return;
     if (btn) {
-      setBusy(btn, true, 'Restoring…');
+      setBusy(btn, true);
     }
     try {
       const entry = state.nodes.get(nodeId);
