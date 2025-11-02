@@ -53,7 +53,7 @@
   const snapshotScanBtn = document.getElementById('btnScanSnapshots');
   const walletAddressValue = document.getElementById('walletAddressValue');
   const walletBalanceValue = document.getElementById('walletBalanceValue');
-  const walletAverageValue = document.getElementById('walletAverageValue');
+  const walletTotalValue = document.getElementById('walletTotalValue');
   const walletUpdatedValue = document.getElementById('walletUpdatedValue');
   const walletHistoryList = document.getElementById('walletHistoryList');
   const walletHistoryEmpty = document.getElementById('walletHistoryEmpty');
@@ -462,12 +462,11 @@
       const fracY = Number(point.value || 0) / maxVal;
       const x = padL + fracX * plotW;
       const y = padT + (1 - fracY) * plotH;
-      if (idx === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
-      ctx.fillStyle = '#44f2a8';
-      ctx.beginPath();
-      ctx.arc(x, y, 3, 0, Math.PI * 2);
-      ctx.fill();
+      if (idx === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
     });
     ctx.stroke();
     ctx.fillStyle = '#e7eaf6';
@@ -785,15 +784,19 @@
     const lastPositive = processedBalances.length ? processedBalances[processedBalances.length - 1] : null;
     const dayMs = 24 * 60 * 60 * 1000;
     const cutoffMs = Date.now() - dayMs;
-    let average24h = null;
+    let total24h = null;
+    let windowSamples = [];
     if (hasWallet && processedBalances.length) {
-      const windowSamples = processedBalances.filter((entry) => entry.timestamp >= cutoffMs);
-      if (windowSamples.length) {
-        const total = windowSamples.reduce((sum, entry) => sum + entry.balance, 0);
-        average24h = total / windowSamples.length;
+      windowSamples = processedBalances.filter((entry) => entry.timestamp >= cutoffMs);
+      if (windowSamples.length >= 2) {
+        const first = windowSamples[0];
+        const last = windowSamples[windowSamples.length - 1];
+        total24h = last.balance - first.balance;
+      } else if (windowSamples.length === 1) {
+        total24h = 0;
       }
     }
-    state.wallet24hAverage = average24h;
+    state.wallet24hTotal = total24h;
     const displayAddress = hasWallet ? wallet.address : '—';
     let displayBalance = '—';
     if (hasWallet) {
@@ -816,12 +819,14 @@
     if (walletAddressValue) walletAddressValue.textContent = displayAddress;
     if (walletBalanceValue) walletBalanceValue.textContent = displayBalance;
     if (walletUpdatedValue) walletUpdatedValue.textContent = updatedText;
-    if (walletAverageValue) {
-      let averageText = '—';
-      if (hasWallet && Number.isFinite(average24h) && average24h > 0) {
-        averageText = `${average24h.toLocaleString(undefined, { maximumFractionDigits: 4 })} BDAG`;
+    if (walletTotalValue) {
+      let totalText = '—';
+      if (hasWallet && Number.isFinite(total24h)) {
+        const absVal = Math.abs(total24h);
+        const sign = total24h > 0 ? '+' : total24h < 0 ? '-' : '';
+        totalText = `${sign}${absVal.toLocaleString(undefined, { maximumFractionDigits: 4 })} BDAG`;
       }
-      walletAverageValue.textContent = averageText;
+      walletTotalValue.textContent = totalText;
     }
 
     updateWalletChart(state.walletBalanceHistory, { enabled });
