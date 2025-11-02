@@ -1454,7 +1454,7 @@ function switchSummaryTab(target) {
       },
       wallet: {
         title: 'Wallet',
-        desc: 'Wallet address, balance, and recent history collected from node snapshots.',
+        desc: 'Wallet address, balance, and recent history collected from rpc.awakening.bdagscan.com.',
       },
     };
     const next = copy[activeView] || copy.stats;
