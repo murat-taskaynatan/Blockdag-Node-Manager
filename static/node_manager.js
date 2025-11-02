@@ -860,7 +860,7 @@
         if (jobNode && jobNode === nodeId) {
           const progress = job && job.progress ? job.progress : {};
           const pctText = formatPercent(progress.pct);
-                    const etaText = formatDurationShort(progress.eta_seconds);
+          const etaText = formatDurationShort(progress.eta_seconds);
           const parts = [];
           if (pctText) parts.push(pctText);
           if (etaText) parts.push(`ETA ${etaText}`);
@@ -884,9 +884,39 @@
       btn.title = title;
       btn.setAttribute('aria-label', title);
       if (restoreBtn) {
-        restoreBtn.disabled = !!jobActive;
-        if (!jobActive) {
+        const pendingTs = Number(restoreBtn.dataset.restorePending || 0);
+        const pendingActive =
+          Number.isFinite(pendingTs) && pendingTs > 0 && Date.now() - pendingTs < 8000;
+        const isRestoreJob =
+          jobActive &&
+          jobNode &&
+          jobNode === nodeId &&
+          (jobDetails.mode === 'restore' || restoreBtn.dataset.restoreBusy === '1');
+        restoreBtn.disabled = !!jobActive || pendingActive;
+        if (isRestoreJob) {
+          if (restoreBtn.dataset.busy !== '1') {
+            setBusy(restoreBtn, true);
+          }
+          restoreBtn.dataset.restoreBusy = '1';
+          restoreBtn.classList.add('is-busy');
+          delete restoreBtn.dataset.restorePending;
+        } else if (pendingActive) {
+          if (restoreBtn.dataset.busy !== '1') {
+            setBusy(restoreBtn, true);
+          }
+          restoreBtn.classList.add('is-busy');
+        } else if (restoreBtn.dataset.restoreBusy === '1') {
+          setBusy(restoreBtn, false);
+          delete restoreBtn.dataset.restoreBusy;
+          delete restoreBtn.dataset.restorePending;
           restoreBtn.classList.remove('is-busy');
+        } else if (!jobActive) {
+          restoreBtn.classList.remove('is-busy');
+          if (restoreBtn.dataset.busy === '1') {
+            setBusy(restoreBtn, false);
+          }
+          delete restoreBtn.dataset.restoreBusy;
+          delete restoreBtn.dataset.restorePending;
         }
       }
 
@@ -1173,8 +1203,10 @@
       return;
     }
     if (btn && btn.dataset.busy) return;
+    let keepBusy = false;
     if (btn) {
-      setBusy(btn, true, 'Restoring…');
+      setBusy(btn, true);
+      btn.dataset.restorePending = Date.now().toString();
     }
     try {
       const entry = state.nodes.get(nodeId);
@@ -1191,6 +1223,9 @@
       }
       if (payload.job) {
         state.snapshots.job = payload.job;
+        if (payload.job.active !== false) {
+          keepBusy = true;
+        }
       }
       const message = payload.message || `Snapshot restore started for ${label}`;
       setSnapshotStatus(message, { level: 'warn' });
@@ -1199,7 +1234,14 @@
       setSnapshotStatus(err && err.message ? err.message : 'Failed to start restore', { level: 'error' });
     } finally {
       if (btn) {
-        setBusy(btn, false);
+        if (keepBusy) {
+          btn.dataset.restoreBusy = '1';
+          delete btn.dataset.restorePending;
+        } else {
+          delete btn.dataset.restoreBusy;
+          delete btn.dataset.restorePending;
+          setBusy(btn, false);
+        }
       }
       updateSnapshotButtons();
     }
