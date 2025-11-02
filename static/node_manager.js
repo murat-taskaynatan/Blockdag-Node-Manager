@@ -381,7 +381,7 @@
           .map((entry) => {
             const ts = Number(entry.timestamp);
             const balance = Number(entry.balance);
-            if (!Number.isFinite(ts) || !Number.isFinite(balance)) {
+            if (!Number.isFinite(ts) || !Number.isFinite(balance) || balance === 0) {
               return null;
             }
             return {
