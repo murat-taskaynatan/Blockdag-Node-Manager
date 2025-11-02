@@ -29,10 +29,9 @@ Log View
 
 
 ## Requirements
-- Python 3.9+ with `venv`.
-- `requests`, `flask`, and `waitress` Python packages (install via `pip install -r requirements.txt`).
+- Python 3.10+ with `venv`.
+- `Flask >= 3.0.0`, `Requests >= 2.31.0`, and `Waitress >= 3.0.0` (install via `pip install -r requirements.txt`).
 - Optional: Docker CLI for container discovery and controls.
- - Optional but recommended: `fio` for Overclock → Verify benchmark. The installer auto‑installs `fio` on apt/dnf systems; the app will attempt to install it on demand when you click Verify.
 
 ## Quick Start
 ```bash
@@ -66,12 +65,9 @@ Node definitions live in `config/nodes.json`. Each entry can specify:
 Environment variables (`BDAG_RPC_BASE`, `BDAG_REMOTE_RPC_BASES`, etc.) are honoured and can be referenced inside the JSON using `${VAR:-default}` placeholders.
 
 ## Production Install
-Use the bundled helper to deploy under `/opt/blockdag-node-manager` with systemd integration.
-Run the following from any directory where you want the repository placed (no elevated permissions needed):
+Use the bundled helper to deploy under `/opt/blockdag-node-manager` with systemd integration:
+
 ```bash
-
-git clone https://github.com/murat-taskaynatan/Blockdag-Node-Manager.git
-
 ./install_node_manager.sh
 ```
 
@@ -93,6 +89,19 @@ Need a zero-touch install on a fresh host? Use the remote installer:
 curl -fsSL https://raw.githubusercontent.com/murat-taskaynatan/Blockdag-Node-Manager/main/install_nm_from_github.sh \ | sudo bash
 ```
 
+## Uninstall
+To remove an installed service:
+
+```bash
+sudo systemctl stop blockdag-node-manager
+sudo systemctl disable blockdag-node-manager
+sudo rm -rf /opt/blockdag-node-manager
+sudo rm -f /etc/systemd/system/blockdag-node-manager.service
+sudo rm -f /etc/blockdag-node-manager/node-manager.env
+sudo systemctl daemon-reload
+```
+
+Adjust the paths if you installed into a custom directory, and remove any leftover snapshot or backup directories you no longer need.
 
 
 ## API Overview
