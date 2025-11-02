@@ -2103,6 +2103,12 @@ async function saveSettings() {
       el.removeAttribute('title');
       return;
     }
+    const clean = text.replace(/[^0-9a-z]/gi, '').toLowerCase();
+    if (clean.length >= 14) {
+      el.textContent = clean.slice(0, 14);
+      el.title = text;
+      return;
+    }
     const short = text.length > 14 ? `${text.slice(0, 8)}…${text.slice(-5)}` : text;
     el.textContent = short;
     el.title = text;
