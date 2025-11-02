@@ -266,7 +266,7 @@ DEFAULT_SETTINGS: Dict[str, object] = {
     "auto_snapshot_hours": 0,
     "display_wallet_balance": _coerce_bool(os.getenv("BDAG_WALLET_DISPLAY", "0"), False),
     "snapshot_max": SNAPSHOT_MAX_DEFAULT,
-    "wallet_address": str(os.getenv("BDAG_WALLET_ADDRESS", "")).strip(),
+    "wallet_address": "",
 }
 _SETTINGS_LOCK = threading.Lock()
 _SETTINGS_CACHE: Dict[str, object] = {}
