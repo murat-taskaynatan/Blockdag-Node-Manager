@@ -29,8 +29,8 @@ Log View
 
 
 ## Requirements
-- Python 3.9+ with `venv`.
-- `requests`, `flask`, and `waitress` Python packages (install via `pip install -r requirements.txt`).
+- Python 3.10+ with `venv`.
+- `Flask >= 3.0.0`, `Requests >= 2.31.0`, and `Waitress >= 3.0.0` (install via `pip install -r requirements.txt`).
 - Optional: Docker CLI for container discovery and controls.
 
 ## Quick Start
