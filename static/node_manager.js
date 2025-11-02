@@ -2064,6 +2064,7 @@ async function saveSettings() {
     setStat(card, '.stat-remote', stats.remote_height);
     setStat(card, '.stat-delta', stats.height_delta, { sign: true });
     setStat(card, '.stat-peers', stats.peers);
+    setPeerId(card, stats.peer_id);
     updateUptime(card, stats.uptime_seconds);
     updateStartStopButton(card.querySelector('[data-role="toggle"]'), containerRunning, {
       effectiveRunning,
@@ -2091,6 +2092,20 @@ async function saveSettings() {
     if (selector.includes('delta')) {
       el.classList.toggle('is-warn', num > 8);
     }
+  }
+
+  function setPeerId(card, value) {
+    const el = card.querySelector('.stat-peer-id');
+    if (!el) return;
+    const text = typeof value === 'string' ? value.trim() : '';
+    if (!text) {
+      el.textContent = '—';
+      el.removeAttribute('title');
+      return;
+    }
+    const short = text.length > 16 ? `${text.slice(0, 8)}…${text.slice(-6)}` : text;
+    el.textContent = short;
+    el.title = text;
   }
 
   function updateUptime(card, seconds) {
@@ -2771,6 +2786,7 @@ async function saveSettings() {
         effectiveRunning,
         forcedOffline: forceOffline,
       });
+      setPeerId(card, metrics.peer_id);
       entry.meta.status = {
         ...(entry.meta.status || {}),
         ...metrics,

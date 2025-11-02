@@ -8,6 +8,7 @@ import tarfile
 import threading
 import time
 import pwd
+import string
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_UP, getcontext
 from collections import OrderedDict, deque
@@ -2439,6 +2440,8 @@ class NodeContext:
         self.last_sample_ts: float = 0.0
         self.running: bool = False
         self.auto_discovered = auto_discovered
+        self._peer_identity: Optional[str] = None
+        self._peer_identity_ts: float = 0.0
 
     def update_from_metadata(self, meta: dict) -> bool:
         changed = False
@@ -2477,6 +2480,8 @@ class NodeContext:
             normalized = _normalize_path(chain_dir)
             if normalized and normalized != self.chain_data_dir:
                 self.chain_data_dir = normalized
+                self._peer_identity = None
+                self._peer_identity_ts = 0.0
                 changed = True
         return changed
 
@@ -2549,12 +2554,15 @@ class NodeContext:
             self.rpc_latency_series.append((ts, metrics.get("rpc_latency_ms")))
             self.block_rate_series.append((ts, metrics.get("block_rate_per_sec")))
             self.sync_progress_series.append((ts, metrics.get("sync_progress")))
+            metrics["peer_id"] = self.peer_identity()
+            self.last_metrics["peer_id"] = metrics["peer_id"]
             return dict(self.last_metrics)
 
     def snapshot(self, *, include_series: bool = False) -> dict:
         with self.lock:
             metrics = dict(self.last_metrics or self._empty_metrics())
             metrics.setdefault("running", self.running)
+            metrics.setdefault("peer_id", self.peer_identity())
             if include_series:
                 labels = [ts for ts, _ in self.height_series]
                 local = [int(val) if val is not None else 0 for _, val in self.height_series]
@@ -2584,6 +2592,62 @@ class NodeContext:
                 metrics["block_rate_series"] = block_series
                 metrics["sync_progress_series"] = progress_series
         return metrics
+
+    def peer_identity(self) -> Optional[str]:
+        now = time.time()
+        if self._peer_identity is not None and (now - self._peer_identity_ts) < 60.0:
+            return self._peer_identity
+        identity = _read_peer_identity(self.chain_data_dir)
+        self._peer_identity = identity
+        self._peer_identity_ts = now
+        return identity
+
+
+def _read_peer_identity(chain_data_dir: Optional[Path]) -> Optional[str]:
+    if not chain_data_dir:
+        return None
+    candidates: List[Path] = []
+    try:
+        candidates.append(Path(chain_data_dir) / "network.key")
+        candidates.append(Path(chain_data_dir) / "testnet" / "network.key")
+    except Exception:
+        return None
+    seen: Set[str] = set()
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+        except Exception:
+            resolved = candidate
+        key = str(resolved)
+        if key in seen:
+            continue
+        seen.add(key)
+        if not candidate.exists() or not candidate.is_file():
+            continue
+        try:
+            raw = candidate.read_bytes().strip()
+        except Exception:
+            continue
+        if not raw:
+            continue
+        text: Optional[str] = None
+        try:
+            decoded = raw.decode("ascii").strip()
+            if decoded and all(ch in string.hexdigits for ch in decoded):
+                text = decoded.lower()
+            elif decoded:
+                text = decoded
+        except Exception:
+            text = None
+        if not text:
+            text = raw.hex()
+        text = text.strip().lower()
+        if not text:
+            continue
+        if len(text) > 256:
+            text = text[:256]
+        return text
+    return None
 
 
 def _purge_policy_state(container: Optional[str]) -> None:
