@@ -2,6 +2,11 @@
 
 # Changelog
 
+## v1.4.1 - 2025-11-02
+
+### Fixes
+- Keep restore progress ETA meaningful while data is unpacked via Docker helpers.
+
 ## v1.4.0 - 2025-10-31
 
 ### Overclock tab

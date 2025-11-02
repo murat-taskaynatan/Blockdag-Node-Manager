@@ -1165,7 +1165,17 @@ def _restore_via_docker(
     ]
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     bytes_written = 0
-    total_hint = max(expected_total, archive_bytes)
+    total_hint = float(max(expected_total, archive_bytes))
+    def _next_total_hint(current: float, observed: int) -> float:
+        """Provide a forward-looking upper bound so ETA does not collapse prematurely."""
+        observed = float(max(observed, 0))
+        baseline = current if current and current > 0 else 0.0
+        # Always stay at least a little ahead of the observed usage so remaining>0 while extracting.
+        growth = max(observed * 0.02, 256 * 1024 * 1024)  # min 256MB or 2%
+        candidate = observed + growth
+        if baseline <= 0:
+            return candidate
+        return max(baseline, candidate)
     try:
         while True:
             line = process.stdout.readline()
@@ -1185,9 +1195,11 @@ def _restore_via_docker(
                     except ValueError:
                         continue
                     now = time.time()
-                    total = max(total_hint, bytes_written, archive_bytes)
                     if bytes_written > total_hint:
-                        total_hint = bytes_written
+                        total_hint = _next_total_hint(total_hint, bytes_written)
+                    total = max(total_hint, archive_bytes)
+                    if total <= 0:
+                        total = max(bytes_written, archive_bytes, 1)
                     pct = None
                     eta = None
                     if total > 0:
