@@ -53,6 +53,7 @@
   const snapshotScanBtn = document.getElementById('btnScanSnapshots');
   const walletAddressValue = document.getElementById('walletAddressValue');
   const walletBalanceValue = document.getElementById('walletBalanceValue');
+  const walletTotalValue = document.getElementById('walletTotalValue');
   const walletUpdatedValue = document.getElementById('walletUpdatedValue');
   const walletHistoryList = document.getElementById('walletHistoryList');
   const walletHistoryEmpty = document.getElementById('walletHistoryEmpty');
@@ -790,6 +791,34 @@
       state.walletBalanceHistory = [];
     }
     updateWalletChart(state.walletBalanceHistory, { enabled });
+
+    let total24h = null;
+    if (hasWallet && state.walletBalanceHistory.length) {
+      const dayMs = 24 * 60 * 60 * 1000;
+      const cutoffMs = Date.now() - dayMs;
+      const windowSamples = state.walletBalanceHistory.filter((entry) => entry.timestamp >= cutoffMs);
+      if (windowSamples.length >= 2) {
+        const first = windowSamples[0];
+        const last = windowSamples[windowSamples.length - 1];
+        total24h = last.balance - first.balance;
+      } else if (windowSamples.length === 1) {
+        total24h = 0;
+      }
+    }
+
+    if (walletTotalValue) {
+      if (Number.isFinite(total24h)) {
+        const absVal = Math.abs(total24h);
+        const formatted = absVal.toLocaleString(undefined, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        });
+        const sign = total24h > 0 ? '+' : total24h < 0 ? '-' : '';
+        walletTotalValue.textContent = `${sign}${formatted} BDAG`;
+      } else {
+        walletTotalValue.textContent = '—';
+      }
+    }
 
     if (walletHistoryList && walletHistoryEmpty) {
       if (wallet && Array.isArray(wallet.history) && wallet.history.length) {
