@@ -2040,7 +2040,11 @@ DEFAULT_NODE_SETTINGS = {
     "container": os.getenv("BDAG_NODE_CONTAINER", "").strip(),
 }
 
-BALANCE_RPC_BASE = _normalize_rpc_endpoint("https://rpc.awakening.bdagscan.com")
+BALANCE_RPC_BASE = _normalize_rpc_endpoint(
+    os.getenv("BDAG_BALANCE_RPC_BASE")
+    or os.getenv("BDAG_RPC_BASE")
+    or PRIMARY_REMOTE_RPC_BASE
+)
 BALANCE_RPC_USER = os.getenv("BDAG_BALANCE_RPC_USER", DEFAULT_NODE_SETTINGS["rpc_user"])
 BALANCE_RPC_PASS = os.getenv("BDAG_BALANCE_RPC_PASS", DEFAULT_NODE_SETTINGS["rpc_pass"])
 BALANCE_RPC_TIMEOUT = float(os.getenv("BDAG_BALANCE_RPC_TIMEOUT", "6") or "6")
