@@ -10,6 +10,7 @@
     logPollTimers: new Map(),
     lastMetricsTs: 0,
     settings: {},
+    summary: null,
     settingsDirty: false,
     snapshots: {
       items: [],
@@ -1633,6 +1634,8 @@ async function saveSettings() {
     const maxLocalEl = document.getElementById('statMaxLocal');
     const maxRemoteEl = document.getElementById('statMaxRemote');
 
+    state.summary = summary && Object.keys(summary).length ? { ...summary } : null;
+
     if (!state.settingsDirty && summary && summary.settings) {
       const incoming = summary.settings || {};
       const differs = Object.keys(defaultSettings).some((key) => {
@@ -2682,6 +2685,7 @@ async function saveSettings() {
 
   function applyMetrics(metricsByNode) {
     const now = Date.now();
+    let forcedCount = 0;
     Object.entries(metricsByNode).forEach(([nodeId, metrics]) => {
       const entry = state.nodes.get(nodeId);
       if (!entry) return;
@@ -2703,6 +2707,9 @@ async function saveSettings() {
       const previousProgress = state.lastProgress.get(nodeId);
       const forceOffline = shouldForceOffline(metrics, containerRunning, previousProgress);
       const health = resolveHealth(metrics, containerRunning, { forceOffline });
+      if (forceOffline) {
+        forcedCount += 1;
+      }
       const displayHealth = health.display;
       const healthDetail = health.detail;
       const code = health.code;
@@ -2788,6 +2795,19 @@ async function saveSettings() {
         refreshNodeChart(nodeId);
       }
     });
+    updateStalledSummary(forcedCount);
+  }
+
+  function updateStalledSummary(forcedCount) {
+    if (!Number.isFinite(forcedCount)) return;
+    const stalled = Math.max(0, forcedCount);
+    const stalledEl = document.getElementById('statStalled');
+    if (stalledEl) {
+      stalledEl.textContent = fmt.format(stalled);
+    }
+    if (state.summary) {
+      state.summary.stalled = stalled;
+    }
   }
 
   function attachEventHandlers() {
