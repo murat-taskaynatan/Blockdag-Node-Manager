@@ -89,6 +89,19 @@ Need a zero-touch install on a fresh host? Use the remote installer:
 curl -fsSL https://raw.githubusercontent.com/murat-taskaynatan/Blockdag-Node-Manager/main/install_nm_from_github.sh \ | sudo bash
 ```
 
+## Uninstall
+To remove an installed service:
+
+```bash
+sudo systemctl stop blockdag-node-manager
+sudo systemctl disable blockdag-node-manager
+sudo rm -rf /opt/blockdag-node-manager
+sudo rm -f /etc/systemd/system/blockdag-node-manager.service
+sudo rm -f /etc/blockdag-node-manager/node-manager.env
+sudo systemctl daemon-reload
+```
+
+Adjust the paths if you installed into a custom directory, and remove any leftover snapshot or backup directories you no longer need.
 
 
 ## API Overview
