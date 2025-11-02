@@ -91,6 +91,7 @@
   .wallet-tile{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px 16px}
   .wallet-tile .label{font-size:12px;color:var(--muted);letter-spacing:.02em;text-transform:none}
   .wallet-tile .value{font-size:13px;font-weight:600;margin-top:6px;word-break:break-all}
+  .wallet-updated{font-size:11px;color:var(--muted);text-align:right;margin-top:-8px;padding-right:4px}
   .wallet-chart{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:12px}
   .wallet-chart.is-disabled{opacity:.4}
   .wallet-chart__header{display:flex;align-items:center;justify-content:space-between;gap:12px}
@@ -548,10 +549,6 @@
                 <div class="label">Last 24h Total</div>
                 <div class="value" id="walletTotalValue">—</div>
               </div>
-              <div class="wallet-tile">
-                <div class="label">Last Updated</div>
-                <div class="value" id="walletUpdatedValue">—</div>
-              </div>
             </div>
             <div class="wallet-chart is-empty" id="walletChart">
               <div class="wallet-chart__header">
@@ -561,6 +558,9 @@
                 <canvas id="walletBalanceChart"></canvas>
               </div>
               <div class="wallet-chart__empty" id="walletChartEmpty">Balance history will appear here once collected.</div>
+            </div>
+            <div class="wallet-updated">
+              <span id="walletUpdatedValue">—</span>
             </div>
             <div class="wallet-history" id="walletHistory">
               <h4>History</h4>
