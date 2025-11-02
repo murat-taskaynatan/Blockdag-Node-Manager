@@ -53,7 +53,6 @@
   const snapshotScanBtn = document.getElementById('btnScanSnapshots');
   const walletAddressValue = document.getElementById('walletAddressValue');
   const walletBalanceValue = document.getElementById('walletBalanceValue');
-  const walletTotalValue = document.getElementById('walletTotalValue');
   const walletUpdatedValue = document.getElementById('walletUpdatedValue');
   const walletHistoryList = document.getElementById('walletHistoryList');
   const walletHistoryEmpty = document.getElementById('walletHistoryEmpty');
@@ -382,7 +381,7 @@
           .map((entry) => {
             const ts = Number(entry.timestamp);
             const balance = Number(entry.balance);
-            if (!Number.isFinite(ts) || !Number.isFinite(balance)) {
+            if (!Number.isFinite(ts) || !Number.isFinite(balance) || balance === 0) {
               return null;
             }
             return {
@@ -454,35 +453,28 @@
     ];
     const values = points.map((p) => Number(p.value || 0));
     const maxVal = Math.max(...values, 1);
-    const coords = points.map((point, idx) => {
+    ctx.strokeStyle = '#44f2a8';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    points.forEach((point, idx) => {
       const fracX = points.length === 1 ? 1 : idx / (points.length - 1);
       const fracY = Number(point.value || 0) / maxVal;
-      return {
-        x: padL + fracX * plotW,
-        y: padT + (1 - fracY) * plotH,
-      };
-    });
-    if (coords.length) {
+      const x = padL + fracX * plotW;
+      const y = padT + (1 - fracY) * plotH;
+      if (idx === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+      ctx.fillStyle = '#44f2a8';
       ctx.beginPath();
-      ctx.moveTo(coords[0].x, coords[0].y);
-      for (let i = 1; i < coords.length; i += 1) {
-        ctx.lineTo(coords[i].x, coords[i].y);
-      }
-      ctx.lineTo(coords[coords.length - 1].x, padT + plotH);
-      ctx.lineTo(coords[0].x, padT + plotH);
-      ctx.closePath();
-      ctx.fillStyle = 'rgba(68,242,168,0.18)';
+      ctx.arc(x, y, 3, 0, Math.PI * 2);
       ctx.fill();
-
-      ctx.beginPath();
-      ctx.moveTo(coords[0].x, coords[0].y);
-      for (let i = 1; i < coords.length; i += 1) {
-        ctx.lineTo(coords[i].x, coords[i].y);
-      }
-      ctx.strokeStyle = '#44f2a8';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    }
+    });
+    ctx.stroke();
+    ctx.fillStyle = '#e7eaf6';
+    ctx.font = '11px "Segoe UI",sans-serif';
+    const last = points[points.length - 1];
+    ctx.fillText(last.formatted || `${Number(last.value || 0).toFixed(4)} BDAG`, padL + plotW - 6, padT + 12);
+    ctx.textAlign = 'left';
+    ctx.fillText('Balance (fallback)', padL, padT - 8);
   }
 
   function syncLinkedSettingInputs(key, source) {
@@ -768,10 +760,18 @@
     if (walletPane) {
       walletPane.classList.toggle('is-disabled', !enabled);
     }
+    const displayAddress = hasWallet ? wallet.address : '—';
+    const displayBalance = hasWallet
+      ? wallet.balance_formatted || wallet.short || (wallet.balance_bdag ? `${wallet.balance_bdag} BDAG` : '—')
+      : '—';
+    const updatedMs = hasWallet && Number.isFinite(timestamp) ? timestamp * 1000 : NaN;
+    const updatedText = hasWallet ? formatWalletTimestamp(updatedMs) : '—';
+    if (walletAddressValue) walletAddressValue.textContent = displayAddress;
+    if (walletBalanceValue) walletBalanceValue.textContent = displayBalance;
+    if (walletUpdatedValue) walletUpdatedValue.textContent = updatedText;
 
-    let processedBalances = [];
     if (Array.isArray(wallet?.balance_history) && wallet.balance_history.length) {
-      processedBalances = wallet.balance_history
+      state.walletBalanceHistory = wallet.balance_history
         .map((entry) => {
           const ts = Number(entry.timestamp);
           const balance = Number(entry.balance);
@@ -786,59 +786,10 @@
         })
         .filter(Boolean)
         .sort((a, b) => a.timestamp - b.timestamp);
+    } else {
+      state.walletBalanceHistory = [];
     }
-    state.walletBalanceHistory = processedBalances;
     updateWalletChart(state.walletBalanceHistory, { enabled });
-
-    const positiveBalances = processedBalances.filter((entry) => entry.balance > 0);
-    const lastPositive = positiveBalances.length ? positiveBalances[positiveBalances.length - 1] : null;
-    const dayMs = 24 * 60 * 60 * 1000;
-    const cutoffMs = Date.now() - dayMs;
-    let total24h = null;
-    if (hasWallet && processedBalances.length) {
-      const windowSamples = processedBalances.filter((entry) => entry.timestamp >= cutoffMs);
-      if (windowSamples.length >= 2) {
-        const first = windowSamples[0];
-        const last = windowSamples[windowSamples.length - 1];
-        total24h = last.balance - first.balance;
-      } else if (windowSamples.length === 1) {
-        total24h = 0;
-      }
-    }
-    state.wallet24hTotal = total24h;
-
-    const displayAddress = hasWallet ? wallet.address : '—';
-    let displayBalance = '—';
-    if (hasWallet) {
-      if (lastPositive) {
-        displayBalance = lastPositive.formatted;
-      } else if (wallet.balance_formatted) {
-        displayBalance = wallet.balance_formatted;
-      } else if (wallet.short) {
-        displayBalance = wallet.short;
-      } else if (Number(wallet.balance_bdag) > 0) {
-        displayBalance = `${wallet.balance_bdag} BDAG`;
-      }
-    }
-    const updatedMs = hasWallet && Number.isFinite(timestamp) ? timestamp * 1000 : NaN;
-    const updatedText = lastPositive
-      ? formatWalletTimestamp(lastPositive.timestamp)
-      : hasWallet
-        ? formatWalletTimestamp(updatedMs)
-        : '—';
-
-    if (walletAddressValue) walletAddressValue.textContent = displayAddress;
-    if (walletBalanceValue) walletBalanceValue.textContent = displayBalance;
-    if (walletUpdatedValue) walletUpdatedValue.textContent = updatedText;
-    if (walletTotalValue) {
-      let totalText = '—';
-      if (hasWallet && Number.isFinite(total24h)) {
-        const absVal = Math.abs(total24h);
-        const sign = total24h > 0 ? '+' : total24h < 0 ? '-' : '';
-        totalText = `${sign}${absVal.toLocaleString(undefined, { maximumFractionDigits: 4 })} BDAG`;
-      }
-      walletTotalValue.textContent = totalText;
-    }
 
     if (walletHistoryList && walletHistoryEmpty) {
       if (wallet && Array.isArray(wallet.history) && wallet.history.length) {
