@@ -213,7 +213,10 @@ def _auto_detect_data_dir(preferred: Optional[str] = None) -> Optional[Path]:
     candidates = [
         Path.home() / "blockdag",
         Path("/home/node/blockdag"),
+        Path("/media/node/nvme1/blockdag-data"),
         Path("/media/node/nvme1/blockdag"),
+        Path("/media/nvme1/blockdag-data"),
+        Path("/media/nvme1/blockdag"),
         Path.home() / "blockdag-scripts" / "bin" / "bdag" / "data",
     ]
     # If /home/node/blockdag symlink exists, resolve
@@ -385,7 +388,7 @@ DEFAULT_SETTINGS: Dict[str, object] = {
     "auto_snapshot_hours": 0,
     "display_wallet_balance": _coerce_bool(os.getenv("BDAG_WALLET_DISPLAY", "0"), False),
     "snapshot_max": SNAPSHOT_MAX_DEFAULT,
-    "wallet_address": str(os.getenv("BDAG_WALLET_ADDRESS", "")).strip(),
+    "wallet_address": "",
     # Overclock preferences (persist UI selections)
     "overclock_data_path": "/home/node/blockdag",
     "overclock_cpu": False,
@@ -593,30 +596,167 @@ def _resolve_container_rpc_base(info: dict, env: Dict[str, str]) -> Optional[str
     return None
 
 
+_BLOCKDAG_DIR_NAME = "blockdag-scripts"
+_WALLET_FILE_NAME = "wallet.txt"
+_ENV_FILE_PATTERNS: Tuple[str, ...] = ("*.env", "*.env.*")
+_ENV_SKIP_SUFFIXES: Tuple[str, ...] = (".example", ".sample", ".template", ".dist")
+_WALLET_SCAN_MAX_DEPTH = 4
+_BLOCKDAG_SCAN_CACHE_TTL = 60.0
+_BLOCKDAG_SCAN_CACHE: Dict[str, Tuple[float, List[Path]]] = {}
+
+
+def _append_candidate(collection: List[Path], seen: Set[str], candidate) -> None:
+    if not candidate:
+        return
+    try:
+        path = candidate if isinstance(candidate, Path) else Path(candidate)
+        path = path.expanduser()
+    except Exception:
+        return
+    key = str(path)
+    if key in seen:
+        return
+    seen.add(key)
+    collection.append(path)
+
+
+def _wallet_search_roots() -> List[Path]:
+    roots: List[Path] = []
+    for raw in (Path("/home"), Path("/root"), Path("/media")):
+        try:
+            if raw.exists() and raw.is_dir():
+                roots.append(raw)
+        except Exception:
+            continue
+    return roots
+
+
+def _scan_blockdag_dirs(root: Path, max_depth: int = _WALLET_SCAN_MAX_DEPTH) -> List[Path]:
+    if max_depth < 0:
+        return []
+    results: List[Path] = []
+    queue: deque[Tuple[Path, int]] = deque()
+    queue.append((root, 0))
+    visited: Set[str] = set()
+    while queue:
+        current, depth = queue.popleft()
+        try:
+            current_key = str(current.resolve())
+        except Exception:
+            current_key = str(current)
+        if current_key in visited:
+            continue
+        visited.add(current_key)
+        try:
+            if not current.exists() or not current.is_dir():
+                continue
+        except Exception:
+            continue
+        if current.name == _BLOCKDAG_DIR_NAME:
+            results.append(current)
+            # No need to traverse deeper within blockdag-scripts directories
+            continue
+        if depth >= max_depth:
+            continue
+        try:
+            entries = list(current.iterdir())
+        except Exception:
+            continue
+        for entry in entries:
+            try:
+                if not entry.is_dir():
+                    continue
+            except Exception:
+                continue
+            if entry.is_symlink():
+                continue
+            queue.append((entry, depth + 1))
+    return results
+
+
+def _discover_blockdag_script_dirs() -> List[Path]:
+    now = time.time()
+    results: List[Path] = []
+    seen: Set[str] = set()
+    for root in _wallet_search_roots():
+        cache_key = str(root)
+        cached = _BLOCKDAG_SCAN_CACHE.get(cache_key)
+        if cached and now - cached[0] < _BLOCKDAG_SCAN_CACHE_TTL:
+            dirs = cached[1]
+        else:
+            dirs = _scan_blockdag_dirs(root)
+            _BLOCKDAG_SCAN_CACHE[cache_key] = (now, dirs)
+        for directory in dirs:
+            dir_key = str(directory)
+            if dir_key in seen:
+                continue
+            seen.add(dir_key)
+            results.append(directory)
+    return results
+
+
 def _wallet_candidate_paths() -> List[Path]:
     candidates: List[Path] = []
+    seen: Set[str] = set()
     env_path = os.getenv("BDAG_WALLET_FILE")
     if env_path:
-        candidates.append(Path(env_path).expanduser())
-    candidates.extend(
-        [
-            Path.home() / "blockdag-scripts" / "wallet.txt",
-            Path("/home/node/blockdag/blockdag-scripts/wallet.txt"),
-            Path("/home/node/wallet.txt"),
-            Path(__file__).resolve().parent.parent / "wallet.txt",
-        ]
-    )
-    seen = set()
-    unique: List[Path] = []
-    for path in candidates:
-        if not path:
+        _append_candidate(candidates, seen, env_path)
+    for script_dir in _discover_blockdag_script_dirs():
+        _append_candidate(candidates, seen, script_dir / _WALLET_FILE_NAME)
+    return candidates
+
+
+_WALLET_ENV_KEYS = (
+    "PUB_ETH_ADDR",
+    "BDAG_WALLET_ADDRESS",
+    "ETH_ADDRESS",
+)
+
+
+def _wallet_env_candidate_paths() -> List[Path]:
+    candidates: List[Path] = []
+    seen: Set[str] = set()
+    env_path = os.getenv("BDAG_ENV_FILE")
+    if env_path:
+        _append_candidate(candidates, seen, env_path)
+    for script_dir in _discover_blockdag_script_dirs():
+        _append_candidate(candidates, seen, script_dir / ".env")
+        for pattern in _ENV_FILE_PATTERNS:
+            try:
+                for match in script_dir.glob(pattern):
+                    name_lower = match.name.lower()
+                    if any(name_lower.endswith(suffix) for suffix in _ENV_SKIP_SUFFIXES):
+                        continue
+                    _append_candidate(candidates, seen, match)
+            except Exception:
+                continue
+    return candidates
+
+
+def _wallet_from_env_file(path: Path) -> Optional[str]:
+    try:
+        with path.open("r", encoding="utf-8") as fh:
+            lines = fh.readlines()
+    except Exception:
+        return None
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#"):
             continue
-        key = str(path)
-        if key in seen:
+        if line.lower().startswith("export "):
+            line = line[7:].strip()
+        if "=" not in line:
             continue
-        seen.add(key)
-        unique.append(path)
-    return unique
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if not key:
+            continue
+        if key.upper() not in _WALLET_ENV_KEYS:
+            continue
+        value = value.strip().strip('"').strip("'")
+        if value:
+            return value
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -645,11 +785,38 @@ def _normalize_path(value) -> Optional[Path]:
         return path
 
 
-SNAPSHOT_DATA_DIR = _expanded_path(
-    os.getenv("BDAG_SNAPSHOT_DATA_DIR"),
+def _preferred_path(candidates: Iterable[str], fallback: str) -> str:
+    for candidate in candidates:
+        try:
+            path = Path(candidate).expanduser()
+        except Exception:
+            continue
+        parent = path.parent if path.parent != path else path
+        if path.exists() or parent.exists():
+            return str(path)
+    return fallback
+
+
+_SNAPSHOT_DATA_FALLBACK = _preferred_path(
+    [
+        "/media/node/nvme1/blockdag-data",
+        "/media/node/nvme1/blockdag",
+        "/media/nvme1/blockdag-data",
+        "/media/nvme1/blockdag",
+        "/home/node/blockdag",
+        "/home/node/blockdag/blockdag-scripts/bin/bdag/data",
+    ],
     "/home/node/blockdag/blockdag-scripts/bin/bdag/data",
 )
-SNAPSHOT_DIR = _expanded_path(os.getenv("BDAG_SNAPSHOT_DIR"), os.path.expanduser("~/backups"))
+SNAPSHOT_DATA_DIR = _expanded_path(os.getenv("BDAG_SNAPSHOT_DATA_DIR"), _SNAPSHOT_DATA_FALLBACK)
+_SNAPSHOT_DIR_FALLBACK = _preferred_path(
+    [
+        str(Path.home() / "blockdag-scripts" / "backups"),
+        "/home/node/blockdag-scripts/backups",
+    ],
+    str(Path.home() / "blockdag-scripts" / "backups"),
+)
+SNAPSHOT_DIR = _expanded_path(os.getenv("BDAG_SNAPSHOT_DIR"), _SNAPSHOT_DIR_FALLBACK)
 SNAPSHOT_PREFIX = (os.getenv("BDAG_SNAPSHOT_PREFIX", "bdag.chaindata") or "bdag.chaindata").strip() or "bdag.chaindata"
 SNAPSHOT_SUFFIX = (os.getenv("BDAG_SNAPSHOT_SUFFIX", ".tar") or ".tar").strip()
 LEGACY_SNAPSHOT_PATTERNS = [
@@ -878,14 +1045,15 @@ def _extract_snapshot_contents(
             if now - last_emit >= 0.4:
                 elapsed = max(now - started, 0.0)
                 pct = None
-                speed = 0.0
                 eta = None
                 if total > 0:
                     pct = max(0.0, min(100.0, (processed / total) * 100.0))
                 if elapsed > 0 and total > 0 and processed > 0:
                     remaining = max(total - processed, 0)
                     if remaining > 0:
-                        eta = remaining / max(elapsed, 1e-6)
+                        speed = processed / max(elapsed, 1e-6)
+                        if speed > 0:
+                            eta = remaining / speed
                 _snapshot_progress_update(
                     {
                         "bytes_written": processed,
@@ -1179,6 +1347,14 @@ def _collect_home_dirs(primary_home: Optional[Path] = None) -> List[Path]:
         if homes_root.exists():
             for entry in homes_root.iterdir():
                 if entry.is_dir():
+                    candidates.append(entry)
+    except Exception:
+        pass
+    try:
+        node_home = Path("/home/node")
+        if node_home.exists():
+            for entry in node_home.iterdir():
+                if entry.is_dir() and re.search(r"blockdag[-_]?node", entry.name, re.IGNORECASE):
                     candidates.append(entry)
     except Exception:
         pass
@@ -2082,6 +2258,31 @@ def _get_wallet_address() -> Tuple[Optional[str], Optional[str]]:
         address = lines[-1]
         _wallet_address_cache.update({"path": str(path), "mtime": stat.st_mtime, "address": address})
         return address, str(path)
+    for path in _wallet_env_candidate_paths():
+        try:
+            stat = path.stat()
+        except FileNotFoundError:
+            continue
+        except Exception:
+            continue
+        if stat.st_size <= 0:
+            continue
+        cached_path = _wallet_address_cache.get("path")
+        cached_mtime = _wallet_address_cache.get("mtime") or 0.0
+        if cached_path == str(path) and cached_mtime == stat.st_mtime:
+            return _wallet_address_cache.get("address"), str(path)
+        address = _wallet_from_env_file(path)
+        if not address:
+            continue
+        _wallet_address_cache.update({"path": str(path), "mtime": stat.st_mtime, "address": address})
+        return address, str(path)
+    env_address = str(os.getenv("BDAG_WALLET_ADDRESS", "")).strip()
+    if env_address:
+        cached_address = _wallet_address_cache.get("address")
+        cached_path = _wallet_address_cache.get("path")
+        if cached_path != "env" or cached_address != env_address:
+            _wallet_address_cache.update({"path": "env", "mtime": 0.0, "address": env_address})
+        return env_address, "env"
     _wallet_address_cache.update({"path": None, "mtime": 0.0, "address": None})
     return None, None
 
