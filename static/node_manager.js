@@ -2105,11 +2105,11 @@ async function saveSettings() {
     }
     const clean = text.replace(/[^0-9a-z]/gi, '').toLowerCase();
     if (clean.length >= 14) {
-      el.textContent = `${clean.slice(0, 6)}…${clean.slice(-7)}`;
+      el.textContent = `${clean.slice(0, 6)}…${clean.slice(-6)}`;
       el.title = clean;
       return;
     }
-    const short = text.length > 14 ? `${text.slice(0, 6)}…${text.slice(-7)}` : text;
+    const short = text.length > 14 ? `${text.slice(0, 6)}…${text.slice(-6)}` : text;
     el.textContent = short;
     el.title = text;
   }
