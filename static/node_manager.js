@@ -2103,7 +2103,7 @@ async function saveSettings() {
       el.removeAttribute('title');
       return;
     }
-    const short = text.length > 16 ? `${text.slice(0, 8)}…${text.slice(-6)}` : text;
+    const short = text.length > 14 ? `${text.slice(0, 8)}…${text.slice(-5)}` : text;
     el.textContent = short;
     el.title = text;
   }
