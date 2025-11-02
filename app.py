@@ -719,10 +719,12 @@ def _extract_snapshot_contents(
                 eta = None
                 if total > 0:
                     pct = max(0.0, min(100.0, (processed / total) * 100.0))
-                if elapsed > 0 and total > 0 and processed > 0:
+                if elapsed > 0 and processed > 0:
+                    speed = processed / elapsed
+                if speed > 0.0 and total > 0 and processed > 0:
                     remaining = max(total - processed, 0)
                     if remaining > 0:
-                        eta = remaining / max(elapsed, 1e-6)
+                        eta = remaining / max(speed, 1e-6)
                 _snapshot_progress_update(
                     {
                         "bytes_written": processed,

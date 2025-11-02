@@ -174,7 +174,7 @@
   .icon-btn.restore{border-color:rgba(255,255,255,.35);background:rgba(255,255,255,.1)}
   .icon-btn.restore:hover:not(:disabled){background:rgba(255,255,255,.18)}
   .icon-btn.restore[disabled]{opacity:.5;cursor:default}
-  .icon-btn.restore .icon-image{display:block;width:18px;height:18px;object-fit:contain;filter:invert(100%);}
+  .icon-btn.restore .icon-image{display:block;width:19px;height:19px;object-fit:contain;filter:invert(100%);}
   .icon-btn.snapshot.is-busy,
   .icon-btn.restore.is-busy{position:relative}
   .icon-btn.snapshot.is-busy .icon-image,
@@ -322,7 +322,7 @@
             </label>
             <label class="setting-row">
               <div class="setting-text">
-                <span class="setting-title">Auto restart</span>
+                <span class="setting-title">Auto-Restart</span>
                 <span class="setting-desc">Set the minimum hours between automated restart attempts, or disable the automation entirely.</span>
               </div>
               <div class="setting-control" data-tooltip-target="auto-restart-hours">
@@ -335,8 +335,8 @@
             </label>
             <label class="setting-row">
               <div class="setting-text">
-                <span class="setting-title">Auto snapshot</span>
-                <span class="setting-desc">Create node snapshots automatically on a fixed cadence.</span>
+                <span class="setting-title">Auto-Snapshot</span>
+                <span class="setting-desc">Create node snapshots automatically on a fixed interval.</span>
               </div>
               <div class="setting-control" data-tooltip-target="auto-snapshot-hours">
                 <input type="number" min="0" step="1" id="settingAutoSnapshotHours" name="auto_snapshot_hours" data-setting-key="auto_snapshot_hours" data-setting-type="number" title="Adjust the interval between automatic snapshots.">
