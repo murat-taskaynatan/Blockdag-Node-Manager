@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from decimal import Decimal, ROUND_UP, getcontext
 from collections import OrderedDict, deque
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Set, Tuple
+from typing import Dict, Iterable, List, Optional, Set, Tuple, Pattern
 from urllib.parse import urlparse
 
 import requests
@@ -819,6 +819,37 @@ _SNAPSHOT_DIR_FALLBACK = _preferred_path(
 SNAPSHOT_DIR = _expanded_path(os.getenv("BDAG_SNAPSHOT_DIR"), _SNAPSHOT_DIR_FALLBACK)
 SNAPSHOT_PREFIX = (os.getenv("BDAG_SNAPSHOT_PREFIX", "bdag.chaindata") or "bdag.chaindata").strip() or "bdag.chaindata"
 SNAPSHOT_SUFFIX = (os.getenv("BDAG_SNAPSHOT_SUFFIX", ".tar") or ".tar").strip()
+SNAPSHOT_HEALTH_ENABLED = _coerce_bool(os.getenv("BDAG_SNAPSHOT_HEALTH_ENABLED", "1"), True)
+SNAPSHOT_HEALTH_MAX_HEIGHT_DELTA = max(
+    0, int(os.getenv("BDAG_SNAPSHOT_MAX_HEIGHT_DELTA", os.getenv("BDAG_SNAPSHOT_MAX_DELTA", "3")) or "3")
+)
+SNAPSHOT_HEALTH_MIN_SYNC_PROGRESS = max(
+    0.0, min(100.0, float(os.getenv("BDAG_SNAPSHOT_MIN_SYNC_PROGRESS", "99.0") or "99.0"))
+)
+SNAPSHOT_HEALTH_MIN_UPTIME_SEC = max(0, int(os.getenv("BDAG_SNAPSHOT_MIN_UPTIME_SEC", "120") or "120"))
+SNAPSHOT_HEALTH_MIN_PEERS = max(0, int(os.getenv("BDAG_SNAPSHOT_MIN_PEERS", "1") or "1"))
+SNAPSHOT_HEALTH_LOG_TAIL = max(50, min(int(os.getenv("BDAG_SNAPSHOT_LOG_TAIL", "200") or "200"), 1000))
+_snapshot_guard_patterns_env = [
+    part.strip()
+    for part in str(os.getenv("BDAG_SNAPSHOT_LOG_GUARD_PATTERNS") or "").split(",")
+    if part.strip()
+]
+if _snapshot_guard_patterns_env:
+    _snapshot_guard_patterns = _snapshot_guard_patterns_env
+else:
+    _snapshot_guard_patterns = [
+        "unclean shutdown",
+        "head state missing",
+        "snapshot journal",
+        "zero state root",
+        "truncating freezer table",
+        "repairing freezer",
+        "panic:",
+        "fatal error",
+    ]
+SNAPSHOT_HEALTH_LOG_GUARD_PATTERNS: Tuple[Pattern[str], ...] = tuple(
+    re.compile(pattern, re.IGNORECASE) for pattern in _snapshot_guard_patterns
+)
 LEGACY_SNAPSHOT_PATTERNS = [
     "blockdag-chaindata-*.tar.gz",
     f"{SNAPSHOT_PREFIX}-*.tar.gz",
@@ -1577,6 +1608,122 @@ def _snapshot_job_snapshot() -> Dict[str, object]:
         }
 
 
+def _snapshot_health_check(
+    ctx: Optional["NodeContext"], *, mode: str = "snapshot"
+) -> Tuple[bool, str, Dict[str, object]]:
+    """Ensure the node is in a safe state before snapshotting/restoring."""
+    mode_name = mode or "snapshot"
+    info: Dict[str, object] = {
+        "enabled": SNAPSHOT_HEALTH_ENABLED,
+        "mode": mode_name,
+        "checked_at": datetime.utcnow().replace(tzinfo=timezone.utc).isoformat(),
+        "thresholds": {
+            "max_height_delta": SNAPSHOT_HEALTH_MAX_HEIGHT_DELTA,
+            "min_sync_progress": SNAPSHOT_HEALTH_MIN_SYNC_PROGRESS,
+            "min_uptime_sec": SNAPSHOT_HEALTH_MIN_UPTIME_SEC,
+            "min_peers": SNAPSHOT_HEALTH_MIN_PEERS,
+            "log_tail": SNAPSHOT_HEALTH_LOG_TAIL,
+        },
+    }
+    if not SNAPSHOT_HEALTH_ENABLED:
+        info["skipped"] = "disabled"
+        return True, "Snapshot health guard disabled", info
+    if ctx is None:
+        info["skipped"] = "no-context"
+        return True, "No node context available", info
+    try:
+        metrics = ctx.sample(force=True)
+    except Exception as exc:
+        info["error"] = str(exc)
+        return False, f"Failed to collect node metrics: {exc}", info
+    info["metrics"] = metrics
+    enforce_running = mode_name != "restore"
+    if enforce_running and not metrics.get("container_running"):
+        reason = f"Container {ctx.container or ctx.id} is not running"
+        info["failure"] = "container-stopped"
+        info["result"] = reason
+        return False, reason, info
+    if enforce_running and not metrics.get("running"):
+        reason = f"Node {ctx.id} does not report a running state"
+        info["failure"] = "node-not-running"
+        info["result"] = reason
+        return False, reason, info
+    uptime = metrics.get("uptime_seconds")
+    if enforce_running and isinstance(uptime, (int, float)) and uptime < SNAPSHOT_HEALTH_MIN_UPTIME_SEC:
+        reason = (
+            f"Node uptime {int(uptime)}s is below required "
+            f"{SNAPSHOT_HEALTH_MIN_UPTIME_SEC}s for a clean snapshot window"
+        )
+        info["failure"] = "uptime-too-low"
+        info["result"] = reason
+        return False, reason, info
+    enforce_sync = mode_name != "restore"
+    delta = metrics.get("height_delta")
+    try:
+        delta_val = float(delta)
+    except (TypeError, ValueError):
+        delta_val = 0.0
+    if enforce_sync and delta_val > SNAPSHOT_HEALTH_MAX_HEIGHT_DELTA:
+        reason = (
+            f"Node is still catching up (height delta {delta_val:.0f} > "
+            f"{SNAPSHOT_HEALTH_MAX_HEIGHT_DELTA}); defer snapshot"
+        )
+        info["failure"] = "sync-delta"
+        info["result"] = reason
+        return False, reason, info
+    progress = metrics.get("sync_progress")
+    try:
+        progress_val = float(progress) if progress is not None else None
+    except (TypeError, ValueError):
+        progress_val = None
+    if enforce_sync and progress_val is not None and progress_val < SNAPSHOT_HEALTH_MIN_SYNC_PROGRESS:
+        reason = (
+            f"Node sync progress {progress_val:.2f}% is below the "
+            f"{SNAPSHOT_HEALTH_MIN_SYNC_PROGRESS}% guardrail"
+        )
+        info["failure"] = "sync-progress"
+        info["result"] = reason
+        return False, reason, info
+    peers = metrics.get("peers")
+    try:
+        peers_val = int(peers)
+    except (TypeError, ValueError):
+        peers_val = 0
+    if enforce_running and SNAPSHOT_HEALTH_MIN_PEERS > 0 and peers_val < SNAPSHOT_HEALTH_MIN_PEERS:
+        reason = (
+            f"Node peer count {peers_val} below minimum {SNAPSHOT_HEALTH_MIN_PEERS}; "
+            "snapshot cancelled to avoid partial state"
+        )
+        info["failure"] = "low-peers"
+        info["result"] = reason
+        return False, reason, info
+    suspicious: List[str] = []
+    if ctx.container:
+        try:
+            tail = _get_recent_logs(SNAPSHOT_HEALTH_LOG_TAIL, ctx.container)
+        except Exception as exc:
+            tail = []
+            info["log_error"] = str(exc)
+        info["log_lines_checked"] = len(tail or [])
+        if tail:
+            for raw in tail:
+                text = str(raw)
+                lowered = text.lower()
+                if any(pattern.search(lowered) for pattern in SNAPSHOT_HEALTH_LOG_GUARD_PATTERNS):
+                    suspicious.append(text.strip())
+            if suspicious and enforce_running:
+                info["log_hits"] = suspicious[:10]
+                info["failure"] = "recent-log-warning"
+                message = "Recent logs show repair/corruption activity; snapshot aborted"
+                info["result"] = message
+                return False, message, info
+            if suspicious and not enforce_running:
+                info["log_hits"] = suspicious[:10]
+    success_message = "Node passed snapshot health checks"
+    info["result"] = success_message
+    return True, success_message, info
+
+
 def _configure_auto_snapshot(settings: Dict[str, object]) -> None:
     enabled = bool(settings.get("auto_snapshot_enabled"))
     raw_hours = settings.get("auto_snapshot_hours")
@@ -1750,6 +1897,11 @@ def _run_snapshot_job(details: Dict[str, object]) -> None:
                 restart_required = _stop_container(container)
             except Exception as exc:
                 raise RuntimeError(f"Failed to stop container {container}: {exc}")
+            if restart_required:
+                try:
+                    subprocess.run(["sync"], check=False)
+                except Exception:
+                    pass
         overlay_targets: Set[str] = set()
         flushed_overlays: List[str] = []
         try:
@@ -1909,6 +2061,70 @@ def _run_snapshot_job(details: Dict[str, object]) -> None:
             _auto_snapshot_mark_result(status)
 
 
+def _snapshot_post_restore_sanity(data_dir: Optional[Path]) -> List[str]:
+    warnings: List[str] = []
+    normalized = _normalize_path(data_dir)
+    if not normalized:
+        warnings.append("Restore sanity check missing data directory reference.")
+        return warnings
+    if not normalized.exists():
+        warnings.append(f"Restore target {normalized} does not exist after extraction.")
+        return warnings
+    seen: Set[str] = set()
+
+    def _check_dir(label: str, path: Path) -> None:
+        key = f"dir::{path}"
+        if key in seen:
+            return
+        seen.add(key)
+        if not path.exists():
+            warnings.append(f"{label} missing after restore: {path}")
+            return
+        if path.is_dir():
+            try:
+                next(path.iterdir())
+            except StopIteration:
+                warnings.append(f"{label} directory empty after restore: {path}")
+        elif path.is_file():
+            try:
+                if path.stat().st_size <= 0:
+                    warnings.append(f"{label} file empty after restore: {path}")
+            except Exception as exc:
+                warnings.append(f"Unable to stat {label} at {path}: {exc}")
+
+    def _check_file(label: str, path: Path) -> None:
+        key = f"file::{path}"
+        if key in seen:
+            return
+        seen.add(key)
+        if not path.exists():
+            warnings.append(f"{label} missing after restore: {path}")
+            return
+        try:
+            size = path.stat().st_size
+        except Exception as exc:
+            warnings.append(f"Unable to stat {label} at {path}: {exc}")
+            return
+        if size <= 0:
+            warnings.append(f"{label} is zero bytes after restore: {path}")
+
+    candidate_roots = [normalized]
+    testnet_root = normalized / "testnet"
+    if testnet_root.exists():
+        candidate_roots.append(testnet_root)
+    for base in candidate_roots:
+        _check_dir("BdagChain", base / "BdagChain")
+        eth_dir = base / "bdageth" / "chaindata"
+        _check_dir("bdageth chaindata", eth_dir)
+        _check_dir("bdageth freezer", eth_dir / "ancient")
+        _check_file("bdageth freezer headers", eth_dir / "ancient" / "headers")
+    for base in candidate_roots:
+        current_file = base / "BdagChain" / "CURRENT"
+        if current_file.parent.exists():
+            _check_file("BdagChain CURRENT", current_file)
+    return warnings
+
+
 def _start_snapshot_job(
     node_id: Optional[str], *, mode: Optional[str] = None, trigger: Optional[str] = None, quiesce_overlay: Optional[bool] = None
 ) -> Tuple[bool, str, Dict[str, object]]:
@@ -1920,10 +2136,6 @@ def _start_snapshot_job(
         except Exception:
             target_ctx = None
     if target_ctx:
-        try:
-            target_ctx.sample(force=True)
-        except Exception:
-            pass
         details["node"] = target_ctx.id
         if target_ctx.container:
             details["container"] = target_ctx.container
@@ -1931,8 +2143,30 @@ def _start_snapshot_job(
             details["data_dir"] = str(target_ctx.chain_data_dir)
         if target_ctx.label:
             details["label"] = target_ctx.label
-        last_metrics = target_ctx.last_metrics or {}
-        height = last_metrics.get("local_height")
+        health_ok, guard_message, health_info = _snapshot_health_check(target_ctx, mode=mode or "snapshot")
+        if not health_ok:
+            job_snapshot = _snapshot_job_snapshot()
+            merged_details = dict(job_snapshot.get("details") or {})
+            merged_details.update(details)
+            merged_details["health"] = health_info
+            job_snapshot["details"] = merged_details
+            job_snapshot["status"] = "rejected"
+            job_snapshot["message"] = guard_message
+            return False, guard_message, job_snapshot
+        if health_info:
+            details["health"] = health_info
+        metrics_source = {}
+        health_metrics = health_info.get("metrics") if isinstance(health_info, dict) else None
+        if isinstance(health_metrics, dict):
+            metrics_source = health_metrics
+        elif target_ctx.last_metrics:
+            metrics_source = target_ctx.last_metrics
+        if not isinstance(metrics_source, dict) or not metrics_source:
+            try:
+                metrics_source = target_ctx.sample(force=True)
+            except Exception:
+                metrics_source = target_ctx.last_metrics or {}
+        height = (metrics_source or {}).get("local_height") if isinstance(metrics_source, dict) else None
         if isinstance(height, int) and height >= 0:
             details["height"] = height
     details["mode"] = mode or "snapshot"
@@ -1969,6 +2203,11 @@ def _run_restore_job(details: Dict[str, object]) -> None:
     snapshot_path: Optional[Path] = None
     data_dir = _normalize_path(details.get("data_dir")) if details else None
     backup_dir: Optional[Path] = None
+    job_warnings: List[str] = []
+    if isinstance(details, dict):
+        preflight = details.get("preflight_warnings")
+        if isinstance(preflight, (list, tuple)):
+            job_warnings.extend(str(item) for item in preflight if item)
     try:
         directory = _ensure_snapshot_dir()
         snapshot_name = (details or {}).get("snapshot") if details else None
@@ -2053,6 +2292,10 @@ def _run_restore_job(details: Dict[str, object]) -> None:
         label = details.get("label") or details.get("node")
         if label:
             message = f"Snapshot {snapshot_path.name} restored to {label}"
+        sanity_warnings = _snapshot_post_restore_sanity(data_dir)
+        if sanity_warnings:
+            details["post_restore_warnings"] = sanity_warnings
+            job_warnings.extend(sanity_warnings)
         status = "completed"
     except Exception as exc:
         status = "error"
@@ -2090,6 +2333,7 @@ def _run_restore_job(details: Dict[str, object]) -> None:
                     "message": message,
                     "details": {**(details or {}), "path": details.get("snapshot")},
                     "ended": time.time(),
+                    "warnings": job_warnings,
                 }
             )
 
@@ -2097,6 +2341,8 @@ def _run_restore_job(details: Dict[str, object]) -> None:
 def _start_restore_job(node_id: Optional[str]) -> Tuple[bool, str, Dict[str, object]]:
     details: Dict[str, object] = {}
     target_ctx: Optional["NodeContext"]
+    preflight_warnings: List[str] = []
+    health_info: Dict[str, object] = {}
     if node_id:
         target_ctx = _resolve_node(node_id)
     else:
@@ -2109,11 +2355,35 @@ def _start_restore_job(node_id: Optional[str]) -> Tuple[bool, str, Dict[str, obj
             details["data_dir"] = str(target_ctx.chain_data_dir)
         if target_ctx.label:
             details["label"] = target_ctx.label
+        health_ok, guard_message, health_payload = _snapshot_health_check(target_ctx, mode="restore")
+        if isinstance(health_payload, dict):
+            health_info = health_payload
+            details["health"] = health_payload
+        metrics_source = {}
+        health_metrics = health_payload.get("metrics") if isinstance(health_payload, dict) else None
+        if isinstance(health_metrics, dict):
+            metrics_source = health_metrics
+        elif target_ctx.last_metrics:
+            metrics_source = target_ctx.last_metrics
+        if not isinstance(metrics_source, dict) or not metrics_source:
+            try:
+                metrics_source = target_ctx.sample(force=True)
+            except Exception:
+                metrics_source = target_ctx.last_metrics or {}
+        height = (metrics_source or {}).get("local_height") if isinstance(metrics_source, dict) else None
+        if isinstance(height, int) and height >= 0:
+            details["height"] = height
+        if not health_ok and guard_message:
+            preflight_warnings.append(guard_message)
+    elif SNAPSHOT_HEALTH_ENABLED:
+        details["health"] = {"enabled": SNAPSHOT_HEALTH_ENABLED, "skipped": "no-context"}
     snapshot_path = _select_snapshot_for_restore()
     if not snapshot_path or not snapshot_path.exists():
         return False, "No snapshots available to restore.", _snapshot_job_snapshot()
     details["snapshot"] = snapshot_path.name
     details["mode"] = "restore"
+    if preflight_warnings:
+        details["preflight_warnings"] = preflight_warnings
     with _SNAPSHOT_JOB_LOCK:
         if _SNAPSHOT_JOB_STATE.get("active"):
             return False, "Snapshot already in progress", _snapshot_job_snapshot()
@@ -2126,7 +2396,7 @@ def _start_restore_job(node_id: Optional[str]) -> Tuple[bool, str, Dict[str, obj
                 "details": details,
                 "started": time.time(),
                 "ended": None,
-                "warnings": [],
+                "warnings": list(preflight_warnings),
             }
         )
     thread = threading.Thread(target=_run_restore_job, args=(details,), daemon=True)
