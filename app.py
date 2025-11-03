@@ -2905,6 +2905,7 @@ def _fetch_local_height(ctx: NodeContext) -> Optional[int]:
 
 def _fetch_peer_count(ctx: NodeContext) -> Optional[int]:
     auth = (ctx.rpc_user, ctx.rpc_pass) if (ctx.rpc_user or ctx.rpc_pass) else None
+
     def _try_peer_methods(methods: Iterable[str]) -> Optional[int]:
         for method in methods:
             try:
@@ -2922,37 +2923,32 @@ def _fetch_peer_count(ctx: NodeContext) -> Optional[int]:
             except Exception:
                 continue
         return None
+    def _peer_count_from_bdag(payload) -> Optional[int]:
+        if payload is None:
+            return None
 
-    base_count = _try_peer_methods(PEER_COUNT_METHODS)
-    if isinstance(base_count, int) and base_count > 0:
-        return base_count
-
-    try:
-        info = _rpc_call(
-            ctx.rpc_base,
-            "bdag_getPeerInfo",
-            [],
-            timeout=ctx.rpc_timeout,
-            auth=auth,
-            verify=ctx.rpc_verify,
-        )
-    except Exception:
-        info = None
-
-    if info is not None:
         peer_list: List[object] = []
         count_candidates: List[object] = []
-        if isinstance(info, list):
-            peer_list = info
-        elif isinstance(info, dict):
-            for key in ("active", "activeCount", "connected", "connections", "count", "numPeers", "total", "peersCount"):
-                if key in info:
-                    count_candidates.append(info.get(key))
-            peers_field = info.get("peers")
+        if isinstance(payload, list):
+            peer_list = payload
+        elif isinstance(payload, dict):
+            for key in (
+                "active",
+                "activeCount",
+                "connected",
+                "connections",
+                "count",
+                "numPeers",
+                "total",
+                "peersCount",
+            ):
+                if key in payload:
+                    count_candidates.append(payload.get(key))
+            peers_field = payload.get("peers")
             if isinstance(peers_field, list):
                 peer_list = peers_field
             else:
-                peer_list = [info]
+                peer_list = [payload]
 
         for candidate in count_candidates:
             cand_val = _parse_height_value(candidate)
@@ -2997,6 +2993,28 @@ def _fetch_peer_count(ctx: NodeContext) -> Optional[int]:
                 active = len(peer_list)
             if active >= 0:
                 return int(active)
+        return None
+
+    # Rely on BDAG's richer peer info first; generic Ethereum RPC reports 0 on BDAG nodes.
+    try:
+        info = _rpc_call(
+            ctx.rpc_base,
+            "bdag_getPeerInfo",
+            [],
+            timeout=ctx.rpc_timeout,
+            auth=auth,
+            verify=ctx.rpc_verify,
+        )
+    except Exception:
+        info = None
+
+    bdag_count = _peer_count_from_bdag(info)
+    if bdag_count is not None:
+        return bdag_count
+
+    base_count = _try_peer_methods(PEER_COUNT_METHODS)
+    if isinstance(base_count, int) and base_count > 0:
+        return base_count
 
     try:
         result = _rpc_call(
