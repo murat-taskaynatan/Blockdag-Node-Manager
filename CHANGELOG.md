@@ -1,6 +1,9 @@
 # Changelog
 
-# Changelog
+## Unreleased
+
+### Enhancements
+- Auto-restart now reacts immediately to critical DAG corruption log lines when error monitoring is enabled.
 
 ## v1.4.1 - 2025-11-02
 
