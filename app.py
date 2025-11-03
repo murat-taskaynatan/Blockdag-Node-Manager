@@ -109,6 +109,19 @@ else:
         "forcing shutdown url=http://127.0.0.1:6061/healthz",
     )
 
+_critical_error_patterns_raw = [
+    part.strip().lower()
+    for part in str(os.getenv("BDAG_LOG_CRITICAL_PATTERNS", "") or "").split(",")
+    if part.strip()
+]
+if _critical_error_patterns_raw:
+    LOG_CRITICAL_ERROR_PATTERNS = tuple(dict.fromkeys(_critical_error_patterns_raw))
+else:
+    LOG_CRITICAL_ERROR_PATTERNS = (
+        "the dag data was damaged",
+        "can't find tip",
+    )
+
 LOG_CACHE_SEC = max(1.0, float(os.getenv("BDAG_LOG_CACHE_SEC", "2") or "2"))
 ANSI_ESCAPE_RE = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
 _LOG_POLICY_LOCK = threading.Lock()
@@ -3029,6 +3042,26 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
                 return
     if not enable_error_restart:
         return
+    critical_pattern: Optional[str] = None
+    if LOG_CRITICAL_ERROR_PATTERNS:
+        for raw_line in reversed(lines):
+            lowered = str(raw_line).strip().lower()
+            for pattern in LOG_CRITICAL_ERROR_PATTERNS:
+                if pattern and pattern in lowered:
+                    critical_pattern = pattern
+                    break
+            if critical_pattern:
+                break
+    if critical_pattern:
+        with _LOG_POLICY_LOCK:
+            last_restart = float(state.get("last_restart", 0.0))
+        if now - last_restart >= AUTO_RESTART_INTERVAL_SEC:
+            reason = f"critical error detected in logs: {critical_pattern}"
+            if _restart_container_for_policy(ctx, reason):
+                with _LOG_POLICY_LOCK:
+                    state["last_restart"] = time.time()
+                    state["error_streak"] = 0
+                return
     streak = 0
     for raw_line in reversed(lines):
         text = str(raw_line)
@@ -3537,7 +3570,7 @@ def _resolve_node(node_id: Optional[str]) -> NodeContext:
 # ---------------------------------------------------------------------------
 # API endpoints
 # ---------------------------------------------------------------------------
-APP_VERSION = os.getenv("BDAG_MANAGER_VERSION", "v1.4.0").strip() or "v1.4.0"
+APP_VERSION = os.getenv("BDAG_MANAGER_VERSION", "v1.4.1").strip() or "v1.4.1"
 
 
 @app.route("/healthz")
