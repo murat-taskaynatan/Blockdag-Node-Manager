@@ -2707,6 +2707,7 @@ async function saveSettings() {
   function applyMetrics(metricsByNode) {
     const now = Date.now();
     let forcedCount = 0;
+    let onlineCount = 0;
     Object.entries(metricsByNode).forEach(([nodeId, metrics]) => {
       const entry = state.nodes.get(nodeId);
       if (!entry) return;
@@ -2734,6 +2735,9 @@ async function saveSettings() {
       const displayHealth = health.display;
       const healthDetail = health.detail;
       const code = health.code;
+      if (code === 'online') {
+        onlineCount += 1;
+      }
       const nodeStatusEl = card.querySelector('.node-status');
       if (nodeStatusEl) {
         nodeStatusEl.classList.toggle('is-ok', code === 'online');
@@ -2817,19 +2821,26 @@ async function saveSettings() {
         refreshNodeChart(nodeId);
       }
     });
-    updateStalledSummary(forcedCount);
+    updateSummaryCounters({
+      forcedCount,
+      onlineCount,
+      totalCount: state.nodes.size,
+    });
   }
 
-  function updateStalledSummary(forcedCount) {
-    if (!Number.isFinite(forcedCount)) return;
-    const stalled = Math.max(0, forcedCount);
-    const stalledEl = document.getElementById('statStalled');
-    if (stalledEl) {
-      stalledEl.textContent = fmt.format(stalled);
+  function updateSummaryCounters({ forcedCount = 0, onlineCount = 0, totalCount = state.nodes.size }) {
+    const stalled = Number.isFinite(forcedCount) ? Math.max(0, forcedCount) : 0;
+    const count = Number.isFinite(totalCount) ? Math.max(0, totalCount) : state.nodes.size;
+    const online = Number.isFinite(onlineCount) ? Math.min(count, Math.max(0, onlineCount)) : 0;
+    const summary = state.summary ? { ...state.summary } : {};
+    summary.count = count;
+    summary.running = online;
+    summary.offline = Math.max(0, count - online);
+    summary.stalled = stalled;
+    if (!('timestamp' in summary) || summary.timestamp == null) {
+      summary.timestamp = Date.now() / 1000;
     }
-    if (state.summary) {
-      state.summary.stalled = stalled;
-    }
+    renderSummary(summary);
   }
 
   function attachEventHandlers() {
