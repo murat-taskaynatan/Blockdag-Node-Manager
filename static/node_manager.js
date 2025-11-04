@@ -1314,29 +1314,44 @@
   }
 
   function shouldForceOffline(stats, running, previousProgress) {
+    const outcome = { forced: false, reason: '' };
     if (!running) {
-      return false;
+      return outcome;
     }
     const localSeries = Array.isArray(stats.local) ? stats.local.map(numberOrZero) : [];
     const remoteSeries = Array.isArray(stats.remote) ? stats.remote.map(numberOrZero) : [];
-    const hadSeriesProgress = localSeries.some((value) => value > 0);
-    const prevProgressValue = numberOrZero(previousProgress);
-    const hadProgress = hadSeriesProgress || prevProgressValue > 0;
     const recentLocal = recentWindow(localSeries, stats.local_height);
+    const recentRemote = recentWindow(remoteSeries, stats.remote_height);
     const zeroedRecentLocal = recentLocal.every((value) => value <= 0);
     const localHeight = numberOrZero(stats.local_height);
-    const zeroLocal = localHeight <= 0 && zeroedRecentLocal;
-    const recentRemote = recentWindow(remoteSeries, stats.remote_height);
-    const remotePositive = recentRemote.some((value) => value > 0) || numberOrZero(stats.remote_height) > 0;
+    const remoteHeight = numberOrZero(stats.remote_height);
+    const remotePositive = recentRemote.some((value) => value > 0) || remoteHeight > 0;
     const peers = numberOrZero(stats.peers);
     const uptime = numberOrZero(stats.uptime_seconds);
-    if (hadProgress && zeroLocal && remotePositive && peers <= 0) {
-      return true;
+    const blockRate = numberOrZero(stats.block_rate_per_sec);
+    const prevProgressValue = numberOrZero(previousProgress);
+    const syncProgressValue = numberOrZero(stats.sync_progress);
+    const hadSeriesProgress = localSeries.some((value) => value > 0);
+    const hadProgress = hadSeriesProgress || prevProgressValue > 0 || syncProgressValue > 0;
+    const zeroLocalNow = localHeight <= 0;
+    const zeroTrend = zeroedRecentLocal || zeroLocalNow;
+
+    const stallByReset = hadProgress && zeroLocalNow && remotePositive && peers <= 0;
+    if (stallByReset) {
+      return { forced: true, reason: 'Container running but height reset and no peers detected.' };
     }
-    if (zeroLocal && remotePositive && peers <= 0 && uptime > 180) {
-      return true;
+
+    const STALL_UPTIME = 180;
+    if (zeroLocalNow && remotePositive && peers <= 0 && uptime >= STALL_UPTIME) {
+      return { forced: true, reason: 'No peers and zero height for several minutes.' };
     }
-    return false;
+
+    const QUICK_STALL = 90;
+    const stallByRate = remotePositive && peers <= 0 && zeroTrend && blockRate <= 0 && uptime >= QUICK_STALL;
+    if (stallByRate) {
+      return { forced: true, reason: 'No block production while remote height is advancing.' };
+    }
+    return outcome;
   }
 
   function renderSyncChips(chips, options = {}) {
@@ -1401,14 +1416,17 @@
   }
 
 function resolveHealth(stats, running, options = {}) {
-  const { forceOffline = false } = options;
-  const detail = (stats.health_detail || stats.health_text || '').toString().trim();
+  const { forceOffline = false, reason = '' } = options;
+  let detail = (stats.health_detail || stats.health_text || '').toString().trim();
   let display = 'Offline';
   let code = 'offline';
   if (running) {
     if (forceOffline) {
       display = 'Stalled';
       code = 'warn';
+      if (!detail && reason) {
+        detail = reason;
+      }
     } else {
       display = 'Online';
       code = 'online';
@@ -1614,7 +1632,7 @@ async function saveSettings() {
         const stats = node.status || {};
         const rawRunning = isRunningFlag(stats.running);
         const forced = shouldForceOffline(stats, rawRunning, state.lastProgress.get(node.id));
-        return forced ? count + 1 : count;
+        return forced.forced ? count + 1 : count;
       }, 0);
       const summary = { ...(payload.summary || {}), stalled };
       renderSummary(summary);
@@ -2015,12 +2033,15 @@ async function saveSettings() {
       stats.container_running ?? stats.raw_running ?? stats.running
     );
     const effectiveRunning = isRunningFlag(stats.running);
-    const forceOfflineHeader = shouldForceOffline(
+    const forcedHeader = shouldForceOffline(
       stats,
       containerRunning,
       state.lastProgress.get(node.id)
     );
-    const health = resolveHealth(stats, containerRunning, { forceOffline: forceOfflineHeader });
+    const health = resolveHealth(stats, containerRunning, {
+      forceOffline: forcedHeader.forced,
+      reason: forcedHeader.reason,
+    });
     const displayHealth = health.display;
     const code = health.code;
     const healthDetail = health.detail;
@@ -2068,11 +2089,12 @@ async function saveSettings() {
     updateUptime(card, stats.uptime_seconds);
     updateStartStopButton(card.querySelector('[data-role="toggle"]'), containerRunning, {
       effectiveRunning,
-      forcedOffline: forceOfflineHeader,
+      forcedOffline: forcedHeader.forced,
     });
     if (entry.meta && entry.meta.status) {
       entry.meta.status.container_running = containerRunning;
-      entry.meta.status.forced_offline = forceOfflineHeader;
+      entry.meta.status.forced_offline = forcedHeader.forced;
+      entry.meta.status.stalled_reason = forcedHeader.reason || '';
       entry.meta.status.running = effectiveRunning;
       entry.meta.status.effective_running = effectiveRunning;
     }
@@ -2596,7 +2618,8 @@ async function saveSettings() {
     );
     const effectiveRunning = isRunningFlag(status.running);
     const previousProgress = state.lastProgress.get(nodeId);
-    const forcedOffline = shouldForceOffline(status, containerRunning, previousProgress);
+    const forcedState = shouldForceOffline(status, containerRunning, previousProgress);
+    const forcedOffline = forcedState.forced;
     let action = 'docker_start';
     if (containerRunning && !forcedOffline) {
       action = 'docker_stop';
@@ -2727,9 +2750,12 @@ async function saveSettings() {
       const effectiveRunning = isRunningFlag(metrics.running);
       const summaryHealthChip = card.querySelector('.summary-health-chip');
       const previousProgress = state.lastProgress.get(nodeId);
-      const forceOffline = shouldForceOffline(metrics, containerRunning, previousProgress);
-      const health = resolveHealth(metrics, containerRunning, { forceOffline });
-      if (forceOffline) {
+      const forcedState = shouldForceOffline(metrics, containerRunning, previousProgress);
+      const health = resolveHealth(metrics, containerRunning, {
+        forceOffline: forcedState.forced,
+        reason: forcedState.reason,
+      });
+      if (forcedState.forced) {
         forcedCount += 1;
       }
       const displayHealth = health.display;
@@ -2794,14 +2820,15 @@ async function saveSettings() {
 
       updateStartStopButton(card.querySelector('[data-role="toggle"]'), containerRunning, {
         effectiveRunning,
-        forcedOffline: forceOffline,
+        forcedOffline: forcedState.forced,
       });
       setPeerId(card, metrics.peer_id);
       entry.meta.status = {
         ...(entry.meta.status || {}),
         ...metrics,
         container_running: containerRunning,
-        forced_offline: forceOffline,
+        forced_offline: forcedState.forced,
+        stalled_reason: forcedState.reason || '',
         effective_running: effectiveRunning,
         running: effectiveRunning,
         eta_info: etaInfo || null,
