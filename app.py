@@ -3033,6 +3033,30 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
         if now - last_check < LOG_ERROR_CHECK_SEC:
             return
         state["last_check"] = now
+    if enable_liveness:
+        metrics = getattr(ctx, "last_metrics", None) or {}
+        stalled_flag = bool(metrics.get("stalled"))
+        if stalled_flag:
+            stalled_reason = (
+                metrics.get("stalled_reason")
+                or metrics.get("health_detail")
+                or metrics.get("health_text")
+                or "stalled detection triggered"
+            )
+            with _LOG_POLICY_LOCK:
+                last_liveness = float(state.get("last_liveness", 0.0))
+                last_restart = float(state.get("last_restart", 0.0))
+                cooldown_elapsed = now - last_liveness >= LIVENESS_RECOVER_COOLDOWN_SEC
+            if cooldown_elapsed:
+                with _LOG_POLICY_LOCK:
+                    state["last_liveness"] = now
+                if _restart_container_for_policy(ctx, stalled_reason):
+                    with _LOG_POLICY_LOCK:
+                        state["last_restart"] = now
+                        state["error_streak"] = 0
+                    return
+            else:
+                return
     lines = _get_recent_logs(LOG_ERROR_TAIL, ctx.container)
     if not lines:
         with _LOG_POLICY_LOCK:
