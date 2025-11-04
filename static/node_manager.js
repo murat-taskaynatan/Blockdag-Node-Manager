@@ -20,6 +20,7 @@
     },
     snapshotsLoaded: false,
     snapshotStatus: { text: '', level: '', manual: false },
+    snapshotCountdown: null,
     overlayStatus: { items: [], byNode: new Map() },
   };
 
@@ -711,6 +712,69 @@
     }
   }
 
+  function getSnapshotCountdown() {
+    const countdown = state.snapshotCountdown;
+    return countdown && countdown.active ? countdown : null;
+  }
+
+  function clearSnapshotCountdown(options = {}) {
+    const countdown = state.snapshotCountdown;
+    if (!countdown) return;
+    if (countdown.timer) {
+      window.clearTimeout(countdown.timer);
+    }
+    state.snapshotCountdown = null;
+    if (!options.preserveButton && countdown.btn) {
+      setBusy(countdown.btn, false);
+      countdown.btn.classList.remove('is-busy');
+    }
+    updateSnapshotButtons();
+  }
+
+  function startSnapshotCountdown({ nodeId, label, waitSeconds, reason, btn }) {
+    const duration = Math.max(1, Math.ceil(Number(waitSeconds) || 1));
+    clearSnapshotCountdown({ preserveButton: true });
+    const entry = {
+      nodeId,
+      label,
+      remaining: duration,
+      total: duration,
+      reason: reason || '',
+      btn,
+      timer: null,
+      active: true,
+    };
+    state.snapshotCountdown = entry;
+    if (btn) {
+      setBusy(btn, true, 'Waiting…');
+      btn.classList.add('is-busy');
+    }
+    updateSnapshotButtons();
+    const tick = () => {
+      const current = getSnapshotCountdown();
+      if (!current || current.nodeId !== entry.nodeId) {
+        return;
+      }
+      const remaining = current.remaining;
+      const explanation =
+        current.reason || 'Node uptime must reach the snapshot guardrail before capturing a clean snapshot.';
+      const waitMsg = `Waiting ${remaining}s before snapshot for ${label}. ${explanation}`;
+      setSnapshotStatus(waitMsg, { level: 'warn' });
+      if (remaining <= 0) {
+        clearSnapshotCountdown({ preserveButton: true });
+        if (current.btn) {
+          setBusy(current.btn, true, 'Starting…');
+        }
+        setSnapshotStatus(`Required uptime reached. Starting snapshot for ${label}…`, { level: 'warn' });
+        void createNodeSnapshot(nodeId, current.btn, { resumeFromCountdown: true });
+        return;
+      }
+      current.remaining -= 1;
+      current.timer = window.setTimeout(tick, 1000);
+    };
+    tick();
+  }
+
   function scheduleSnapshotPoll(active) {
     if (active) {
       if (snapshotPollTimer) return;
@@ -864,7 +928,9 @@
 
   function updateSnapshotButtons() {
     const job = (state.snapshots && state.snapshots.job) || null;
-    const jobActive = !!(job && job.active);
+    const countdown = getSnapshotCountdown();
+    const jobActive = !!(job && job.active) || Boolean(countdown);
+    const countdownNode = countdown ? countdown.nodeId : null;
     const jobDetails = (job && job.details) || {};
     const jobNode = jobDetails && jobDetails.node;
     state.nodes.forEach((entry) => {
@@ -910,10 +976,24 @@
       } else {
         btn.classList.remove('is-busy');
       }
+      if (countdown) {
+        disabled = true;
+        if (countdownNode && countdownNode === nodeId) {
+          const waitText = countdown.remaining > 0 ? `${countdown.remaining}s` : 'a moment';
+          const reason = countdown.reason || 'Waiting for node uptime guardrail';
+          title = `Snapshot pending (${waitText}) — ${reason}`;
+          btn.classList.add('is-busy');
+        } else if (!jobActive || (job && job.active && jobNode === nodeId)) {
+          title = 'Snapshot waiting for guardrail';
+        }
+      }
       btn.disabled = disabled;
       btn.title = title;
       btn.setAttribute('aria-label', title);
       if (restoreBtn) {
+        if (countdown) {
+          restoreBtn.disabled = true;
+        }
         const pendingTs = Number(restoreBtn.dataset.restorePending || 0);
         const pendingActive =
           Number.isFinite(pendingTs) && pendingTs > 0 && Date.now() - pendingTs < 8000;
@@ -1036,7 +1116,8 @@
     }
 
     const jobDetails = (job && job.details) || {};
-    const jobActive = job && job.active;
+    const countdown = getSnapshotCountdown();
+    const jobActive = (job && job.active) || Boolean(countdown);
     const manualOverride = Boolean(state.snapshotStatus && state.snapshotStatus.manual);
 
     if (jobActive) {
@@ -1134,17 +1215,23 @@
     }
   }
 
-  async function createNodeSnapshot(nodeId, btn) {
+  async function createNodeSnapshot(nodeId, btn, options = {}) {
     if (!nodeId) return;
+    const { resumeFromCountdown = false } = options;
+    if (!resumeFromCountdown) {
+      clearSnapshotCountdown();
+    }
     const activeJob = state.snapshots && state.snapshots.job && state.snapshots.job.active;
     if (activeJob) {
       setSnapshotStatus('A snapshot job is already in progress.', { level: 'warn' });
       updateSnapshotButtons();
       return;
     }
-    if (btn) {
-      setBusy(btn, true);
+    const alreadyBusy = btn && btn.dataset.busy === '1';
+    if (btn && !alreadyBusy) {
+      setBusy(btn, true, 'Starting…');
     }
+    let countdownStarted = false;
     try {
       const entry = state.nodes.get(nodeId);
       const label = entry && entry.meta ? (entry.meta.label || entry.meta.id || nodeId) : nodeId;
@@ -1177,18 +1264,42 @@
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok || payload.ok === false) {
-        throw new Error(payload && payload.error ? payload.error : `HTTP ${res.status}`);
+        const error = new Error(payload && payload.error ? payload.error : `HTTP ${res.status}`);
+        if (payload && payload.failure) {
+          error.responseFailure = payload.failure;
+        }
+        if (payload && Object.prototype.hasOwnProperty.call(payload, 'wait_seconds')) {
+          error.waitSeconds = payload.wait_seconds;
+        }
+        throw error;
       }
       if (payload.job) {
         state.snapshots.job = payload.job;
       }
+      clearSnapshotCountdown({ preserveButton: true });
       const message = payload.message || `Snapshot started for ${label}`;
       setSnapshotStatus(message, { level: 'warn' });
       await loadSnapshots({ silent: true });
     } catch (err) {
+      const failure = err && err.responseFailure ? err.responseFailure : null;
+      const waitCandidate = err && err.waitSeconds !== undefined ? Number(err.waitSeconds) : null;
+      const waitSeconds = Number.isFinite(waitCandidate) ? Math.max(0, waitCandidate) : null;
+      if (failure === 'uptime-too-low' && waitSeconds !== null) {
+        const entry = state.nodes.get(nodeId);
+        const label = entry && entry.meta ? (entry.meta.label || entry.meta.id || nodeId) : nodeId;
+        countdownStarted = true;
+        startSnapshotCountdown({
+          nodeId,
+          label,
+          waitSeconds,
+          reason: err && err.message ? err.message : 'Waiting for node uptime guardrail.',
+          btn,
+        });
+        return;
+      }
       setSnapshotStatus(err && err.message ? err.message : 'Failed to start snapshot', { level: 'error' });
     } finally {
-      if (btn) {
+      if (btn && !countdownStarted) {
         setBusy(btn, false);
       }
       updateSnapshotButtons();

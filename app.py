@@ -1669,6 +1669,9 @@ def _snapshot_health_check(
         )
         info["failure"] = "uptime-too-low"
         info["result"] = reason
+        wait_seconds = max(0, int(SNAPSHOT_HEALTH_MIN_UPTIME_SEC - uptime))
+        info["wait_seconds"] = wait_seconds
+        info["next_allowed_unix"] = time.time() + wait_seconds
         return False, reason, info
     enforce_sync = mode_name != "restore"
     delta = metrics.get("height_delta")
@@ -2165,6 +2168,10 @@ def _start_snapshot_job(
             job_snapshot["details"] = merged_details
             job_snapshot["status"] = "rejected"
             job_snapshot["message"] = guard_message
+            if isinstance(health_info, dict):
+                job_snapshot["failure"] = health_info.get("failure")
+                if "wait_seconds" in health_info:
+                    job_snapshot["wait_seconds"] = health_info.get("wait_seconds")
             return False, guard_message, job_snapshot
         if health_info:
             details["health"] = health_info
@@ -5214,7 +5221,19 @@ def api_snapshots_create():
         quiesce_overlay=quiesce_overlay,
     )
     if not ok:
-        return jsonify({"ok": False, "error": message, "job": job}), 409
+        failure = None
+        wait_seconds = None
+        if isinstance(job, dict):
+            failure = job.get("failure")
+            wait_seconds = job.get("wait_seconds")
+            if failure is None or wait_seconds is None:
+                details = job.get("details")
+                health_details = details.get("health") if isinstance(details, dict) else {}
+                if failure is None and isinstance(health_details, dict):
+                    failure = health_details.get("failure")
+                if wait_seconds is None and isinstance(health_details, dict):
+                    wait_seconds = health_details.get("wait_seconds")
+        return jsonify({"ok": False, "error": message, "job": job, "failure": failure, "wait_seconds": wait_seconds}), 409
     return jsonify({"ok": True, "message": message, "job": job})
 
 
