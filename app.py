@@ -2724,6 +2724,7 @@ class NodeContext:
         self.auto_discovered = auto_discovered
         self._peer_identity: Optional[str] = None
         self._peer_identity_ts: float = 0.0
+        self._ever_reached_height: bool = False
 
     def update_from_metadata(self, meta: dict) -> bool:
         changed = False
@@ -2828,14 +2829,27 @@ class NodeContext:
                 metrics["sync_progress"] = progress
             else:
                 metrics["sync_progress"] = None
-            self.last_metrics = dict(metrics)
+            local_height = int(metrics.get("local_height") or 0)
+            if local_height > 0:
+                self._ever_reached_height = True
             ts = metrics["last_updated"]
-            self.height_series.append((ts, metrics["local_height"]))
+            self.height_series.append((ts, local_height))
             self.remote_series.append((ts, remote_series_value))
             self.peers_series.append((ts, metrics["peers"]))
             self.rpc_latency_series.append((ts, metrics.get("rpc_latency_ms")))
             self.block_rate_series.append((ts, metrics.get("block_rate_per_sec")))
             self.sync_progress_series.append((ts, metrics.get("sync_progress")))
+            stalled_reason = _detect_stalled_reason(self, metrics, previous)
+            metrics["stalled"] = bool(stalled_reason)
+            if stalled_reason:
+                metrics["health_text"] = stalled_reason
+                metrics["health_detail"] = stalled_reason
+                metrics["stalled_reason"] = stalled_reason
+            else:
+                metrics.pop("health_text", None)
+                metrics.pop("health_detail", None)
+                metrics.pop("stalled_reason", None)
+            self.last_metrics = dict(metrics)
             metrics["peer_id"] = self.peer_identity()
             self.last_metrics["peer_id"] = metrics["peer_id"]
             return dict(self.last_metrics)
@@ -3470,6 +3484,70 @@ def _collect_node_metrics(ctx: NodeContext) -> Tuple[dict, Optional[int]]:
     return metrics, remote_val
 
 
+def _detect_stalled_reason(ctx: "NodeContext", metrics: dict, previous: Optional[dict]) -> Optional[str]:
+    try:
+        remote_height = int(metrics.get("remote_height") or 0)
+    except Exception:
+        remote_height = 0
+    try:
+        local_height = int(metrics.get("local_height") or 0)
+    except Exception:
+        local_height = 0
+    try:
+        peers = int(metrics.get("peers") or 0)
+    except Exception:
+        peers = 0
+    try:
+        uptime = int(metrics.get("uptime_seconds") or 0)
+    except Exception:
+        uptime = 0
+    try:
+        block_rate = float(metrics.get("block_rate_per_sec") or 0.0)
+    except Exception:
+        block_rate = 0.0
+    if remote_height <= 0:
+        return None
+
+    ever_progress = ctx._ever_reached_height
+    if previous and int(previous.get("local_height") or 0) > 0:
+        ever_progress = True
+
+    now_ms = int(metrics.get("last_updated") or 0)
+    horizon_ms = 300_000  # five minutes
+    recent_heights: List[int] = []
+    recent_ts: List[int] = []
+    if ctx.height_series:
+        for ts, value in ctx.height_series:
+            try:
+                ts_int = int(ts)
+            except Exception:
+                continue
+            if now_ms and ts_int and now_ms - ts_int > horizon_ms:
+                continue
+            try:
+                height_val = int(value or 0)
+            except Exception:
+                height_val = 0
+            recent_heights.append(height_val)
+            recent_ts.append(ts_int)
+    if not recent_heights:
+        recent_heights.append(local_height)
+    recent_progress = max(recent_heights) > min(recent_heights)
+
+    if ever_progress and local_height <= 0 and peers <= 0:
+        return "Container restarted but local chain data reset to zero."
+    stall_uptime = 180
+    if local_height <= 0 and peers <= 0 and uptime >= stall_uptime:
+        return "Container has been running with zero height and no peers for several minutes."
+    if not recent_progress and block_rate <= 0 and peers <= 0:
+        stagnant_ms = 120_000
+        if now_ms and recent_ts:
+            oldest_recent = min(recent_ts)
+            if now_ms - oldest_recent >= stagnant_ms:
+                return "No block progress detected recently while remote chain is advancing."
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Fleet management & discovery
 # ---------------------------------------------------------------------------
@@ -3527,6 +3605,7 @@ def _fleet_summary(nodes: List[dict]) -> dict:
     count = len(nodes)
     running = sum(1 for node in nodes if node.get("status", {}).get("running"))
     offline = max(count - running, 0)
+    stalled = sum(1 for node in nodes if node.get("status", {}).get("stalled"))
     local_heights = [
         node.get("status", {}).get("local_height") or 0 for node in nodes
     ]
@@ -3537,6 +3616,7 @@ def _fleet_summary(nodes: List[dict]) -> dict:
         "count": count,
         "running": running,
         "offline": offline,
+        "stalled": stalled,
         "max_local_height": max(local_heights) if local_heights else 0,
         "max_remote_height": max(remote_heights) if remote_heights else 0,
         "timestamp": time.time(),
