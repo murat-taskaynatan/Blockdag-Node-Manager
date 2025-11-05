@@ -1,5 +1,5 @@
 (() => {
-  const state = {
+const state = {
     nodes: new Map(), // id -> { card, meta }
     charts: new Map(), // id -> Chart instance
     chartViews: new Map(), // id -> active chart view
