@@ -693,19 +693,26 @@ const state = {
 
   function setBusy(btn, busy, text) {
     if (!btn) return;
+    const isIconButton = btn.classList && btn.classList.contains('icon-btn');
     if (busy) {
-      if (!btn.dataset.originalHtml) {
+      if (!isIconButton && btn.dataset.originalHtml === undefined) {
         btn.dataset.originalHtml = btn.innerHTML;
       }
-      if (text) {
+      if (!isIconButton && text) {
         btn.textContent = text;
+      }
+      if (isIconButton) {
+        btn.classList.add('is-busy');
       }
       btn.disabled = true;
       btn.dataset.busy = '1';
     } else {
-      if (btn.dataset.originalHtml !== undefined) {
+      if (!isIconButton && btn.dataset.originalHtml !== undefined) {
         btn.innerHTML = btn.dataset.originalHtml;
         delete btn.dataset.originalHtml;
+      }
+      if (isIconButton) {
+        btn.classList.remove('is-busy');
       }
       btn.disabled = false;
       delete btn.dataset.busy;
@@ -942,14 +949,20 @@ const state = {
       const label = entry.meta.label || nodeId || 'node';
       let title = `Create snapshot for ${label}`;
       let disabled = false;
-      if (btn.classList.contains('is-busy')) {
+      const manualBusy = btn.dataset.busy === '1';
+      if (manualBusy) {
+        btn.classList.add('is-busy');
+        disabled = true;
+      } else {
         btn.classList.remove('is-busy');
       }
-      if (restoreBtn && restoreBtn.classList.contains('is-busy')) {
-        restoreBtn.classList.remove('is-busy');
-      }
-      if (btn.dataset.busy === '1') {
-        disabled = true;
+      const manualRestoreBusy = restoreBtn && restoreBtn.dataset.busy === '1';
+      if (restoreBtn) {
+        if (manualRestoreBusy) {
+          restoreBtn.classList.add('is-busy');
+        } else {
+          restoreBtn.classList.remove('is-busy');
+        }
       }
       if (state.snapshots && state.snapshots.job && state.snapshots.job.active) {
         disabled = true;

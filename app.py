@@ -1687,19 +1687,6 @@ def _snapshot_health_check(
         info["failure"] = "sync-progress"
         info["result"] = reason
         return False, reason, info
-    peers = metrics.get("peers")
-    try:
-        peers_val = int(peers)
-    except (TypeError, ValueError):
-        peers_val = 0
-    if enforce_running and SNAPSHOT_HEALTH_MIN_PEERS > 0 and peers_val < SNAPSHOT_HEALTH_MIN_PEERS:
-        reason = (
-            f"Node peer count {peers_val} below minimum {SNAPSHOT_HEALTH_MIN_PEERS}; "
-            "snapshot cancelled to avoid partial state"
-        )
-        info["failure"] = "low-peers"
-        info["result"] = reason
-        return False, reason, info
     suspicious: List[str] = []
     if ctx.container:
         try:
