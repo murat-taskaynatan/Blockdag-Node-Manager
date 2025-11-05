@@ -2,8 +2,16 @@
 
 ## Unreleased
 
+- _No unreleased changes._
+
+## v1.4.2 - 2025-11-05
+
 ### Enhancements
 - Auto-restart now reacts immediately to critical DAG corruption log lines when error monitoring is enabled.
+- Default settings expose the new overclock toggles, wallet slot, and display wallet balance by default to reduce setup time.
+
+### Fixes
+- Snapshot creation no longer blocks while a node is still catching up; the height delta guardrail was removed to allow faster snapshot scheduling.
 
 ## v1.4.1 - 2025-11-02
 

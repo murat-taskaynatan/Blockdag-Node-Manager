@@ -18,7 +18,7 @@ BlockDAG Node Manager is a lightweight Flask application that discovers, monitor
 - Chart controls for sampling window and history length, with server-side buffering.
 - Dynamic Flask route /api/status and chart APIs powering the frontend.
 - Live log viewer with ANSI cleanup and auto-scroll to keep recent node activity visible.
-- Remote height awareness that surfaces local vs remote deltas and ETA to full sync.
+- Remote-height awareness that surfaces local vs remote deltas and ETA to full sync.
 - Mining state detection and health categorisation (steady, syncing, downloading, stalled, etc.).
 - Safe Docker controls for starting, stopping, and restarting containers directly from the UI.
 - REST API suitable for automation via `/api/node-manager/*`.
