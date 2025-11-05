@@ -1674,19 +1674,6 @@ def _snapshot_health_check(
         info["next_allowed_unix"] = time.time() + wait_seconds
         return False, reason, info
     enforce_sync = mode_name != "restore"
-    delta = metrics.get("height_delta")
-    try:
-        delta_val = float(delta)
-    except (TypeError, ValueError):
-        delta_val = 0.0
-    if enforce_sync and delta_val > SNAPSHOT_HEALTH_MAX_HEIGHT_DELTA:
-        reason = (
-            f"Node is still catching up (height delta {delta_val:.0f} > "
-            f"{SNAPSHOT_HEALTH_MAX_HEIGHT_DELTA}); defer snapshot"
-        )
-        info["failure"] = "sync-delta"
-        info["result"] = reason
-        return False, reason, info
     progress = metrics.get("sync_progress")
     try:
         progress_val = float(progress) if progress is not None else None
