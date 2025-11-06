@@ -4,6 +4,11 @@
 
 - _No unreleased changes._
 
+## v1.4.3 - 2025-11-05
+
+### Fixes
+- Height Δ charts now use the absolute difference between local and remote heights so the plotted delta always matches the on-card statistic.
+
 ## v1.4.2 - 2025-11-05
 
 ### Enhancements
