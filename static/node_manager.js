@@ -1867,9 +1867,14 @@ async function saveSettings() {
     updateWalletPane(wallet, { enabled: walletEnabled, timestamp: summary.timestamp });
     let badgeText = '';
     let badgeTitle = '';
+    let hideBadge = false;
     if (walletEnabled) {
       if (wallet.error) {
-        badgeText = wallet.error;
+        if (typeof wallet.error === 'string' && wallet.error.toLowerCase().includes('wallet not found')) {
+          hideBadge = true;
+        } else {
+          badgeText = wallet.error;
+        }
       } else if (wallet.balance_formatted) {
         badgeText = wallet.short || wallet.balance_formatted;
         badgeTitle = wallet.address || '';
@@ -1880,20 +1885,28 @@ async function saveSettings() {
     } else {
       badgeText = 'updated';
     }
-    if (!badgeText) {
+    if (!hideBadge && !badgeText) {
       badgeText = 'updated';
     }
-    if (ts) {
+    if (!hideBadge && ts) {
       const timeText = fmtTime.format(ts);
       badgeText = badgeText ? `${badgeText} · ${timeText}` : timeText;
     }
-    summaryBadge.textContent = badgeText;
-    if (badgeTitle) {
-      summaryBadge.title = badgeTitle;
-    } else if (wallet && wallet.address) {
-      summaryBadge.title = wallet.address;
-    } else {
-      summaryBadge.removeAttribute('title');
+    if (summaryBadge) {
+      summaryBadge.hidden = hideBadge;
+      if (hideBadge) {
+        summaryBadge.textContent = '';
+        summaryBadge.removeAttribute('title');
+      } else {
+        summaryBadge.textContent = badgeText;
+        if (badgeTitle) {
+          summaryBadge.title = badgeTitle;
+        } else if (wallet && wallet.address) {
+          summaryBadge.title = wallet.address;
+        } else {
+          summaryBadge.removeAttribute('title');
+        }
+      }
     }
   }
 
