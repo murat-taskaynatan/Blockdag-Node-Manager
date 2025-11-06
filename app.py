@@ -2900,7 +2900,10 @@ def _read_peer_identity(chain_data_dir: Optional[Path]) -> Optional[str]:
         if key in seen:
             continue
         seen.add(key)
-        if not candidate.exists() or not candidate.is_file():
+        try:
+            if not candidate.exists() or not candidate.is_file():
+                continue
+        except PermissionError:
             continue
         try:
             raw = candidate.read_bytes().strip()
