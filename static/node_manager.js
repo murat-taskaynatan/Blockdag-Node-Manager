@@ -545,7 +545,7 @@ const state = {
         output.push(null);
         continue;
       }
-      const delta = remoteVal - localVal;
+      const delta = Math.abs(remoteVal - localVal);
       output.push(Number.isFinite(delta) ? delta : null);
     }
     return output;
