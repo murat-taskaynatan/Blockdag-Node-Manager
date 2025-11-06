@@ -140,6 +140,10 @@ ANSI_ESCAPE_RE = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
 _LOG_POLICY_LOCK = threading.Lock()
 _LOG_POLICY_STATE: Dict[str, Dict[str, object]] = {}
 _RECENT_LOGS_CACHE: Dict[Tuple[str, int], Dict[str, object]] = {}
+POLICY_WORKER_INTERVAL_SEC = max(
+    5.0, float(os.getenv("BDAG_POLICY_WORKER_INTERVAL_SEC") or LOG_ERROR_CHECK_SEC)
+)
+_POLICY_EVENT = threading.Event()
 
 # Overclock logs buffer (UI tailing)
 _OVERCLOCK_LOGS: deque[str] = deque(maxlen=500)
@@ -525,6 +529,7 @@ def update_settings(updates: Dict[str, object]) -> Dict[str, object]:
                 json.dump(_SETTINGS_CACHE, handle, indent=2, sort_keys=True)
         except Exception as exc:
             app.logger.error("failed to persist settings file %s: %s", SETTINGS_PATH, exc)
+        _POLICY_EVENT.set()
         return dict(_SETTINGS_CACHE)
 
 
@@ -1865,6 +1870,31 @@ def _auto_snapshot_worker() -> None:
         triggered = _AUTO_SNAPSHOT_EVENT.wait(timeout=wait_time)
         if triggered:
             _AUTO_SNAPSHOT_EVENT.clear()
+
+
+def _policy_worker() -> None:
+    interval = POLICY_WORKER_INTERVAL_SEC
+    while True:
+        try:
+            nodes = list(NODES.values())
+            if nodes:
+                settings = get_settings()
+                for ctx in nodes:
+                    try:
+                        ctx.sample(force=False)
+                    except Exception:
+                        continue
+                    _apply_node_policies(ctx, settings)
+        except Exception as exc:
+            try:
+                app.logger.warning("policy worker encountered an error: %s", exc)
+            except Exception:
+                pass
+        triggered = _POLICY_EVENT.wait(timeout=interval)
+        if triggered:
+            _POLICY_EVENT.clear()
+
+
 def _update_snapshot_dir(new_dir: Path) -> bool:
     normalized = _normalize_path(new_dir)
     if not normalized:
@@ -3622,6 +3652,8 @@ def refresh_discovered_nodes() -> Tuple[List[str], List[str], List[str]]:
     for container in removed_containers:
         _purge_policy_state(container)
 
+    if added or removed or updated:
+        _POLICY_EVENT.set()
     return added, removed, updated
 
 
@@ -5392,3 +5424,7 @@ except Exception:
 _AUTO_SNAPSHOT_THREAD = threading.Thread(target=_auto_snapshot_worker, daemon=True)
 _AUTO_SNAPSHOT_THREAD.start()
 _AUTO_SNAPSHOT_EVENT.set()
+
+_POLICY_THREAD = threading.Thread(target=_policy_worker, daemon=True)
+_POLICY_THREAD.start()
+_POLICY_EVENT.set()
