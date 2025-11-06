@@ -1190,6 +1190,44 @@ const state = {
     updateSnapshotButtons();
   }
 
+  function ensureSnapshotState() {
+    if (!state.snapshots) {
+      state.snapshots = { items: [], locations: [], dir: '', job: null };
+    }
+    return state.snapshots;
+  }
+
+  function primeSnapshotJob(job, fallback = {}) {
+    const snapshotsState = ensureSnapshotState();
+    const fallbackNode = fallback.nodeId || fallback.node || null;
+    const mode = fallback.mode || 'snapshot';
+    const incoming = job && typeof job === 'object'
+      ? { ...job, details: { ...(job.details || {}) } }
+      : null;
+    if (incoming) {
+      snapshotsState.job = incoming;
+    }
+    const isActive = incoming ? incoming.active !== false : true;
+    if (!isActive) {
+      return incoming;
+    }
+    const prepared = incoming || {
+      active: true,
+      status: 'running',
+      message: mode === 'restore' ? 'Snapshot restore running…' : 'Snapshot running…',
+      details: {},
+    };
+    if (fallbackNode && !prepared.details.node) {
+      prepared.details.node = fallbackNode;
+    }
+    if (!prepared.details.mode) {
+      prepared.details.mode = mode;
+    }
+    snapshotsState.job = prepared;
+    updateSnapshotButtons();
+    return prepared;
+  }
+
   async function loadSnapshots(options = {}) {
     const { silent = false, preserveStatus = false } = options;
     if (!silent) {
@@ -1287,7 +1325,10 @@ const state = {
         throw error;
       }
       if (payload.job) {
-        state.snapshots.job = payload.job;
+        ensureSnapshotState().job = payload.job;
+      }
+      if (!payload.job || (payload.job && payload.job.active !== false)) {
+        primeSnapshotJob(payload.job, { nodeId, mode: 'snapshot' });
       }
       clearSnapshotCountdown({ preserveButton: true });
       const message = payload.message || `Snapshot started for ${label}`;
@@ -1376,10 +1417,15 @@ const state = {
         throw new Error(payload && payload.error ? payload.error : `HTTP ${res.status}`);
       }
       if (payload.job) {
-        state.snapshots.job = payload.job;
+        ensureSnapshotState().job = payload.job;
         if (payload.job.active !== false) {
           keepBusy = true;
         }
+      }
+      const shouldPrime = !payload.job || (payload.job && payload.job.active !== false);
+      if (shouldPrime) {
+        primeSnapshotJob(payload.job, { nodeId, mode: 'restore' });
+        keepBusy = true;
       }
       const message = payload.message || `Snapshot restore started for ${label}`;
       setSnapshotStatus(message, { level: 'warn' });

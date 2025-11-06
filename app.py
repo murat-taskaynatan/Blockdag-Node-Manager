@@ -63,7 +63,6 @@ if not DOCKER_BIN:
             DOCKER_BIN = candidate
             break
 
-LOG_ERROR_THRESHOLD = max(1, int(os.getenv("BDAG_LOG_ERROR_THRESHOLD", "10") or "10"))
 LOG_ERROR_CHECK_SEC = max(1.0, float(os.getenv("BDAG_LOG_ERROR_CHECK_SEC", "15") or "15"))
 LOG_ERROR_RESTART_COOLDOWN_SEC = max(
     30.0,
@@ -121,6 +120,7 @@ else:
         "the dag data was damaged",
         "can't find tip",
         "liveness probe exceeded timeout; forcing shutdown",
+        "illegal withdrawal at block",
     )
 
 LOG_CACHE_SEC = max(1.0, float(os.getenv("BDAG_LOG_CACHE_SEC", "2") or "2"))
@@ -3097,11 +3097,12 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
     with _LOG_POLICY_LOCK:
         state["error_streak"] = streak
         last_restart = float(state.get("last_restart", 0.0))
-    if streak < LOG_ERROR_THRESHOLD:
+    if streak <= 0:
         return
     if now - last_restart < AUTO_RESTART_INTERVAL_SEC:
         return
-    if _restart_container_for_policy(ctx, f"{streak} consecutive error log lines"):
+    reason = "error log line detected" if streak == 1 else f"{streak} consecutive error log lines"
+    if _restart_container_for_policy(ctx, reason):
         with _LOG_POLICY_LOCK:
             state["last_restart"] = time.time()
             state["error_streak"] = 0
