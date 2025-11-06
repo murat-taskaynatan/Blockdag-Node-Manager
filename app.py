@@ -108,20 +108,32 @@ else:
         "forcing shutdown url=http://127.0.0.1:6061/healthz",
     )
 
-_critical_error_patterns_raw = [
-    part.strip().lower()
-    for part in str(os.getenv("BDAG_LOG_CRITICAL_PATTERNS", "") or "").split(",")
-    if part.strip()
-]
-if _critical_error_patterns_raw:
-    LOG_CRITICAL_ERROR_PATTERNS = tuple(dict.fromkeys(_critical_error_patterns_raw))
+_DEFAULT_LOG_CRITICAL_ERROR_PATTERNS = (
+    "the dag data was damaged",
+    "can't find tip",
+    "liveness probe exceeded timeout; forcing shutdown",
+    "illegal withdrawal at block",
+    "cleanup your block data base by '--cleanup' to start liveness error recovery",
+)
+_dag_log_critical_patterns_raw: List[str] = []
+for _env_name in ("DAG_LOG_CRITICAL_PATTERNS", "BDAG_LOG_CRITICAL_PATTERNS"):
+    _env_value = os.getenv(_env_name)
+    if _env_value:
+        _dag_log_critical_patterns_raw.extend(
+            part.strip().lower()
+            for part in str(_env_value or "").split(",")
+            if part.strip()
+        )
+if _dag_log_critical_patterns_raw:
+    DAG_LOG_CRITICAL_PATTERNS = tuple(dict.fromkeys(_dag_log_critical_patterns_raw))
 else:
-    LOG_CRITICAL_ERROR_PATTERNS = (
-        "the dag data was damaged",
-        "can't find tip",
-        "liveness probe exceeded timeout; forcing shutdown",
-        "illegal withdrawal at block",
+    DAG_LOG_CRITICAL_PATTERNS = ()
+if DAG_LOG_CRITICAL_PATTERNS:
+    LOG_CRITICAL_ERROR_PATTERNS = tuple(
+        dict.fromkeys(_DEFAULT_LOG_CRITICAL_ERROR_PATTERNS + DAG_LOG_CRITICAL_PATTERNS)
     )
+else:
+    LOG_CRITICAL_ERROR_PATTERNS = _DEFAULT_LOG_CRITICAL_ERROR_PATTERNS
 
 LOG_CACHE_SEC = max(1.0, float(os.getenv("BDAG_LOG_CACHE_SEC", "2") or "2"))
 ANSI_ESCAPE_RE = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
