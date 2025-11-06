@@ -250,9 +250,8 @@
     .setting-control{width:100%;justify-content:flex-start}
     .chart-canvas canvas{height:200px}
   }
-  .version-badge{position:fixed;right:16px;bottom:16px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:6px 16px;font-size:12px;font-weight:600;color:var(--muted);backdrop-filter:blur(6px);display:inline-flex;align-items:center;gap:6px;letter-spacing:.04em}
-  .version-badge strong{color:var(--text);font-weight:600;letter-spacing:0}
-  .version-badge__label{text-transform:uppercase;font-size:10px;color:var(--muted);letter-spacing:.1em}
+  .version-badge{position:fixed;right:16px;bottom:16px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:6px 14px;font-size:12px;font-weight:600;color:var(--muted);backdrop-filter:blur(6px)}
+  .version-badge strong{color:var(--text);font-weight:600}
 </style>
 
 <div class="wrap">
@@ -706,4 +705,4 @@
 
 <script src="{{ url_for('static', filename='chart.umd.min.js') }}"></script>
 <script src="{{ url_for('static', filename='node_manager.js') }}?v={{ app_version }}-{{ cache_buster }}"></script>
-<div class="version-badge"><span class="version-badge__label">Version</span><strong>{{ app_version_display }}</strong></div>
+<div class="version-badge"><strong>{{ app_version_display }}</strong></div>
