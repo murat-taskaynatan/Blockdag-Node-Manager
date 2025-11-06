@@ -2917,13 +2917,13 @@ class NodeContext:
         now = time.time()
         if self._peer_identity is not None and (now - self._peer_identity_ts) < 60.0:
             return self._peer_identity
-        identity = _read_peer_identity(self.chain_data_dir)
+        identity = _read_peer_identity(self.chain_data_dir, self.container)
         self._peer_identity = identity
         self._peer_identity_ts = now
         return identity
 
 
-def _read_peer_identity(chain_data_dir: Optional[Path]) -> Optional[str]:
+def _read_peer_identity(chain_data_dir: Optional[Path], container: Optional[str] = None) -> Optional[str]:
     if not chain_data_dir:
         return None
     candidates: List[Path] = []
@@ -2942,16 +2942,14 @@ def _read_peer_identity(chain_data_dir: Optional[Path]) -> Optional[str]:
         if key in seen:
             continue
         seen.add(key)
-        try:
-            exists = candidate.exists()
-            is_file = candidate.is_file()
-        except Exception:
-            continue
-        if not exists or not is_file:
-            continue
+        raw: Optional[bytes]
         try:
             raw = candidate.read_bytes().strip()
         except Exception:
+            raw = None
+        if raw is None and container:
+            raw = _read_peer_identity_from_container(container)
+        if raw is None:
             continue
         if not raw:
             continue
@@ -2972,6 +2970,33 @@ def _read_peer_identity(chain_data_dir: Optional[Path]) -> Optional[str]:
         if len(text) > 256:
             text = text[:256]
         return text
+    return None
+
+
+def _read_peer_identity_from_container(container: str) -> Optional[bytes]:
+    if not container or not DOCKER_BIN:
+        return None
+    container_paths = (
+        "/bdag/data/testnet/network.key",
+        "/bdag/data/network.key",
+        "/opt/bdag/testnet/network.key",
+    )
+    for path in container_paths:
+        try:
+            output = subprocess.check_output(
+                [DOCKER_BIN, "exec", container, "cat", path],
+                stderr=subprocess.STDOUT,
+                timeout=3,
+            )
+            data = output.strip()
+            if data:
+                return data
+        except subprocess.CalledProcessError:
+            continue
+        except FileNotFoundError:
+            break
+        except Exception:
+            continue
     return None
 
 
@@ -3706,7 +3731,7 @@ def _resolve_node(node_id: Optional[str]) -> NodeContext:
 # ---------------------------------------------------------------------------
 # API endpoints
 # ---------------------------------------------------------------------------
-APP_VERSION = os.getenv("BDAG_MANAGER_VERSION", "v1.4.3").strip() or "v1.4.3"
+APP_VERSION = os.getenv("BDAG_MANAGER_VERSION", "v1.4.4").strip() or "v1.4.4"
 
 
 @app.route("/healthz")

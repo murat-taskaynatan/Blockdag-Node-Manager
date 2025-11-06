@@ -4,6 +4,12 @@
 
 - _No unreleased changes._
 
+## v1.4.4 - 2025-11-06
+
+### Fixes
+- Peer IDs now populate even when the host filesystem cannot read `network.key`; the manager falls back to `docker exec` to read the file directly from the container.
+- Installer docs and helper scripts reference the new v1.4.4 tag so `/opt` deployments pull the latest release by default.
+
 ## v1.4.3 - 2025-11-05
 
 ### Fixes
