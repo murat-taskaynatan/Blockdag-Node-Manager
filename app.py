@@ -120,6 +120,7 @@ else:
     LOG_CRITICAL_ERROR_PATTERNS = (
         "the dag data was damaged",
         "can't find tip",
+        "liveness probe exceeded timeout; forcing shutdown",
     )
 
 LOG_CACHE_SEC = max(1.0, float(os.getenv("BDAG_LOG_CACHE_SEC", "2") or "2"))
