@@ -4,6 +4,12 @@
 
 - _No unreleased changes._
 
+## v1.4.5 - 2025-11-06
+
+### Fixes
+- Snapshot restores now reapply the service user's ownership after BusyBox extraction so data directories remain accessible and restores no longer fail with permission errors.
+- Docs and installers point to the v1.4.5 tag so `/opt` deployments and remote installs fetch the patched build by default.
+
 ## v1.4.4 - 2025-11-06
 
 ### Fixes

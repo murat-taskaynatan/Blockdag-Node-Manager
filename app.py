@@ -1176,6 +1176,8 @@ def _restore_via_docker(
     started: float,
 ) -> None:
     parent_dir = data_dir.parent
+    service_uid = os.getuid()
+    service_gid = os.getgid()
     script = (
         "set -e\n"
         "cd /volume\n"
@@ -1208,6 +1210,7 @@ def _restore_via_docker(
         "  rmdir data 2>/dev/null || rm -rf data\n"
         "  cd /volume\n"
         "fi\n"
+        f"chown -R {service_uid}:{service_gid} '{data_dir.name}'\n"
     )
     command = [
         DOCKER_BIN,
@@ -3731,7 +3734,7 @@ def _resolve_node(node_id: Optional[str]) -> NodeContext:
 # ---------------------------------------------------------------------------
 # API endpoints
 # ---------------------------------------------------------------------------
-APP_VERSION = os.getenv("BDAG_MANAGER_VERSION", "v1.4.4").strip() or "v1.4.4"
+APP_VERSION = os.getenv("BDAG_MANAGER_VERSION", "v1.4.5").strip() or "v1.4.5"
 
 
 @app.route("/healthz")
