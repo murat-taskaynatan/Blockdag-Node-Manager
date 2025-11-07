@@ -9,6 +9,7 @@ import threading
 import time
 import pwd
 import string
+import shlex
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_UP, getcontext
 from collections import OrderedDict, deque
@@ -106,6 +107,9 @@ else:
         "liveness probe exceeded timeout",
         "liveness probe failed",
         "forcing shutdown url=http://127.0.0.1:6061/healthz",
+        "watchexecuted: dial ws failed",
+        "block chain is shutdown",
+        "illegal withdrawal at block",
     )
 
 _DEFAULT_LOG_CRITICAL_ERROR_PATTERNS = (
@@ -577,6 +581,30 @@ def _extract_rpc_credentials(env: Dict[str, str]) -> Tuple[str, str]:
         or env.get("RPC_PASSWORD")
         or ""
     )
+
+    def _parse_flag(tokens: List[str], flag: str) -> Optional[str]:
+        pref = f"{flag}="
+        for idx, token in enumerate(tokens):
+            if token.startswith(pref):
+                return token[len(pref) :]
+            if token == flag and idx + 1 < len(tokens):
+                return tokens[idx + 1]
+        return None
+
+    if (not user or not password) and env.get("NODE_ARGS"):
+        try:
+            tokens = shlex.split(env.get("NODE_ARGS", ""))
+        except ValueError:
+            tokens = env.get("NODE_ARGS", "").split()
+        if not user:
+            candidate = _parse_flag(tokens, "--rpcuser")
+            if candidate:
+                user = candidate
+        if not password:
+            candidate = _parse_flag(tokens, "--rpcpass")
+            if candidate:
+                password = candidate
+
     return user.strip(), password.strip()
 
 
@@ -609,11 +637,12 @@ def _resolve_container_rpc_base(info: dict, env: Dict[str, str]) -> Optional[str
     ports = info.get("NetworkSettings", {}).get("Ports") or {}
     if not ports:
         ports = info.get("HostConfig", {}).get("PortBindings") or {}
+    candidates: Dict[str, str] = {}
     for port_key, bindings in ports.items():
         if not isinstance(port_key, str) or "/tcp" not in port_key:
             continue
         container_port = port_key.split("/")[0]
-        if container_port not in {"18545", "8545", "4545"}:
+        if container_port not in {"38131", "18545", "8545", "4545"}:
             continue
         binding = bindings[0] if isinstance(bindings, list) and bindings else None
         if not isinstance(binding, dict):
@@ -624,8 +653,14 @@ def _resolve_container_rpc_base(info: dict, env: Dict[str, str]) -> Optional[str
             continue
         if host_ip in {"0.0.0.0", "::", ""}:
             host_ip = "127.0.0.1"
-        return f"http://{host_ip}:{host_port}"
-    return None
+        url = f"http://{host_ip}:{host_port}"
+        candidates.setdefault(container_port, url)
+        if container_port == "38131":
+            return url
+    for preferred in ("18545", "8545", "4545"):
+        if preferred in candidates:
+            return candidates[preferred]
+    return next(iter(candidates.values()), None)
 
 
 _BLOCKDAG_DIR_NAME = "blockdag-scripts"
@@ -3311,7 +3346,7 @@ NODES: "OrderedDict[str, NodeContext]" = _initialise_nodes()
 # ---------------------------------------------------------------------------
 # Sampling helpers
 # ---------------------------------------------------------------------------
-LOCAL_HEIGHT_METHODS = ["dag_blockNumber", "bdag_blockNumber", "eth_blockNumber", "getblockcount"]
+LOCAL_HEIGHT_METHODS = ["getBlockCount", "getblockcount", "dag_blockNumber", "bdag_blockNumber", "eth_blockNumber"]
 PEER_COUNT_METHODS = ["net_peerCount", "peer_count"]
 
 
@@ -3459,22 +3494,27 @@ def _fetch_peer_count(ctx: NodeContext) -> Optional[int]:
                 return int(active)
         return None
 
-    # Rely on BDAG's richer peer info first; generic Ethereum RPC reports 0 on BDAG nodes.
-    try:
-        info = _rpc_call(
-            ctx.rpc_base,
-            "bdag_getPeerInfo",
-            [],
-            timeout=ctx.rpc_timeout,
-            auth=auth,
-            verify=ctx.rpc_verify,
-        )
-    except Exception:
-        info = None
+    def _peer_info_count(methods: Iterable[str]) -> Optional[int]:
+        for method in methods:
+            try:
+                info = _rpc_call(
+                    ctx.rpc_base,
+                    method,
+                    [],
+                    timeout=ctx.rpc_timeout,
+                    auth=auth,
+                    verify=ctx.rpc_verify,
+                )
+            except Exception:
+                continue
+            count = _peer_count_from_bdag(info)
+            if count is not None:
+                return count
+        return None
 
-    bdag_count = _peer_count_from_bdag(info)
-    if bdag_count is not None:
-        return bdag_count
+    peer_info_count = _peer_info_count(("getPeerInfo", "bdag_getPeerInfo"))
+    if peer_info_count is not None:
+        return peer_info_count
 
     base_count = _try_peer_methods(PEER_COUNT_METHODS)
     if isinstance(base_count, int) and base_count > 0:
