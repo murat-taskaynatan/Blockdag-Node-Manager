@@ -43,13 +43,13 @@ curl -fsSL https://raw.githubusercontent.com/murat-taskaynatan/Blockdag-Node-Man
 
 Customize with the same environment variables (`REPO_REF`, `INSTALL_DIR`, etc.) as the local installer.
 
-### Updating `/opt` after tagging v1.4.5
+### Updating `/opt` after tagging v1.4.6
 
-Once the release is tagged and pushed (`git tag v1.4.5 && git push origin v1.4.5`), refresh the managed install:
+Once the release is tagged and pushed (`git tag v1.4.6 && git push origin v1.4.6`), refresh the managed install:
 
 ```bash
 git fetch --tags
-git checkout v1.4.5
+git checkout v1.4.6
 sudo ./install_node_manager.sh
 ```
 
@@ -57,7 +57,7 @@ Need to upgrade a host without cloning the repo first? Run:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/murat-taskaynatan/Blockdag-Node-Manager/main/install_nm_from_github.sh \
-  | sudo REPO_REF=v1.4.5 bash
+  | sudo REPO_REF=v1.4.6 bash
 ```
 
 ## 4. Customising the Install

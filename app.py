@@ -860,6 +860,12 @@ SNAPSHOT_HEALTH_MIN_SYNC_PROGRESS = max(
 SNAPSHOT_HEALTH_MIN_UPTIME_SEC = max(0, int(os.getenv("BDAG_SNAPSHOT_MIN_UPTIME_SEC", "120") or "120"))
 SNAPSHOT_HEALTH_MIN_PEERS = max(0, int(os.getenv("BDAG_SNAPSHOT_MIN_PEERS", "1") or "1"))
 SNAPSHOT_HEALTH_LOG_TAIL = max(50, min(int(os.getenv("BDAG_SNAPSHOT_LOG_TAIL", "200") or "200"), 1000))
+_SNAPSHOT_IDENTITY_RELATIVE_PATHS: Tuple[Path, ...] = (
+    Path("network.key"),
+    Path("testnet") / "network.key",
+    Path("data") / "network.key",
+    Path("data") / "testnet" / "network.key",
+)
 _snapshot_guard_patterns_env = [
     part.strip()
     for part in str(os.getenv("BDAG_SNAPSHOT_LOG_GUARD_PATTERNS") or "").split(",")
@@ -2161,6 +2167,62 @@ def _snapshot_post_restore_sanity(data_dir: Optional[Path]) -> List[str]:
     return warnings
 
 
+def _snapshot_identity_source(base: Optional[Path]) -> Optional[Tuple[Path, Path]]:
+    normalized = _normalize_path(base)
+    if not normalized or not normalized.exists():
+        return None
+    for relative in _SNAPSHOT_IDENTITY_RELATIVE_PATHS:
+        candidate = normalized / relative
+        if candidate.exists():
+            try:
+                rel = candidate.relative_to(normalized)
+            except Exception:
+                rel = relative
+            return candidate, rel
+    return None
+
+
+def _snapshot_identity_destination(base: Optional[Path], preferred: Optional[Path]) -> Optional[Path]:
+    normalized = _normalize_path(base)
+    if not normalized:
+        return None
+    for relative in _SNAPSHOT_IDENTITY_RELATIVE_PATHS:
+        candidate = normalized / relative
+        if candidate.exists():
+            return candidate
+    if preferred:
+        return normalized / preferred
+    testnet_dir = normalized / "testnet"
+    if testnet_dir.exists():
+        return testnet_dir / "network.key"
+    return normalized / "network.key"
+
+
+def _reapply_peer_identity_from_backup(
+    backup_dir: Optional[Path], data_dir: Optional[Path]
+) -> Optional[str]:
+    source_info = _snapshot_identity_source(backup_dir)
+    if not source_info:
+        return None
+    source_path, relative = source_info
+    destination = _snapshot_identity_destination(data_dir, relative)
+    if not destination:
+        return None
+    try:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_path, destination)
+    except Exception as exc:
+        app.logger.warning(
+            "Failed to preserve peer identity from %s to %s: %s",
+            source_path,
+            destination,
+            exc,
+        )
+        return None
+    app.logger.info("Restored local peer identity from %s to %s", source_path, destination)
+    return f"Preserved peer identity by restoring {destination}."
+
+
 def _start_snapshot_job(
     node_id: Optional[str], *, mode: Optional[str] = None, trigger: Optional[str] = None, quiesce_overlay: Optional[bool] = None
 ) -> Tuple[bool, str, Dict[str, object]]:
@@ -2328,6 +2390,10 @@ def _run_restore_job(details: Dict[str, object]) -> None:
             backup_dir = parent_dir / backup_name if (parent_dir / backup_name).exists() else backup_dir
         if backup_dir and backup_dir.exists():
             details["backup"] = str(backup_dir)
+        identity_note = _reapply_peer_identity_from_backup(backup_dir, data_dir)
+        if identity_note:
+            details["identity_preserved"] = True
+            details["identity_note"] = identity_note
         message = f"Snapshot {snapshot_path.name} restored"
         label = details.get("label") or details.get("node")
         if label:
@@ -3734,7 +3800,7 @@ def _resolve_node(node_id: Optional[str]) -> NodeContext:
 # ---------------------------------------------------------------------------
 # API endpoints
 # ---------------------------------------------------------------------------
-APP_VERSION = os.getenv("BDAG_MANAGER_VERSION", "v1.4.5").strip() or "v1.4.5"
+APP_VERSION = os.getenv("BDAG_MANAGER_VERSION", "v1.4.6").strip() or "v1.4.6"
 
 
 @app.route("/healthz")

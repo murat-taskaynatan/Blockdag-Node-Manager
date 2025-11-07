@@ -4,6 +4,12 @@
 
 - _No unreleased changes._
 
+## v1.4.6 - 2025-11-06
+
+### Fixes
+- Snapshot restores now reapply the node's existing `network.key` (and create it if missing) after data extraction so restoring someone else's snapshot can’t clone your peer identity.
+- Version badge, installers, and docs reference v1.4.6.
+
 ## v1.4.5 - 2025-11-06
 
 ### Fixes
