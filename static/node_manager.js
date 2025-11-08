@@ -41,8 +41,6 @@ const state = {
   const systemMemoryBar = document.getElementById('statMemoryBar');
   const systemDiskValue = document.getElementById('statDisk');
   const systemDiskBar = document.getElementById('statDiskBar');
-  const systemCpuTempValue = document.getElementById('statCpuTemp');
-  const systemCpuTempHint = document.getElementById('statCpuTempHint');
   const settingsForm = document.getElementById('settingsForm');
   const saveSettingsBtn = document.getElementById('btnSaveSettings');
   const settingsStatus = document.getElementById('settingsStatus');
@@ -219,14 +217,6 @@ const state = {
     const scaled = value / 1024 ** index;
     const precision = scaled >= 100 ? 0 : scaled >= 10 ? 1 : 2;
     return `${scaled.toFixed(precision)} ${units[index]}`;
-  }
-
-  function formatTemperature(value) {
-    const temp = Number(value);
-    if (!Number.isFinite(temp)) {
-      return '—';
-    }
-    return `${temp.toFixed(1)}°C`;
   }
 
   function formatPercent(value) {
@@ -1816,28 +1806,6 @@ async function loadSettings() {
     }
     if (systemDiskBar) {
       systemDiskBar.value = Math.min(100, Math.max(0, diskPercent));
-    }
-    const temp = payload?.temperature;
-    if (systemCpuTempValue) {
-      systemCpuTempValue.textContent = formatTemperature(temp?.current);
-    }
-    if (systemCpuTempHint) {
-      const labelParts = [];
-      if (temp?.label) {
-        labelParts.push(temp.label);
-      }
-      if (temp?.sensor) {
-        const sensorLabel = temp.sensor;
-        if (!labelParts.includes(sensorLabel)) {
-          labelParts.push(sensorLabel);
-        }
-      }
-      if (labelParts.length) {
-        systemCpuTempHint.textContent = labelParts.join(' · ');
-        systemCpuTempHint.hidden = false;
-      } else {
-        systemCpuTempHint.hidden = true;
-      }
     }
   }
 
