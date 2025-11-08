@@ -1824,23 +1824,6 @@ async function saveSettings() {
 
     state.summary = summary && Object.keys(summary).length ? { ...summary } : null;
 
-    if (!state.settingsDirty && summary && summary.settings) {
-      const incoming = summary.settings || {};
-      const differs = Object.keys(defaultSettings).some((key) => {
-        if (typeof defaultSettings[key] === 'number') {
-          const currentValue = Number(state.settings[key] ?? defaultSettings[key] ?? 0);
-          const incomingValue = Number(incoming[key] ?? defaultSettings[key] ?? 0);
-          return Number.isFinite(currentValue) && Number.isFinite(incomingValue)
-            ? currentValue !== incomingValue
-            : false;
-        }
-        return !!state.settings[key] !== !!incoming[key];
-      });
-      if (differs) {
-        applySettingsToForm(incoming);
-      }
-    }
-
     if (!summary || Object.keys(summary).length === 0) {
       summaryBadge.textContent = '—';
       summaryBadge.removeAttribute('title');
