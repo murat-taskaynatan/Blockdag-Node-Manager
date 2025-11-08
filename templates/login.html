@@ -8,7 +8,7 @@
   .header{display:flex;align-items:center;gap:10px;margin-bottom:12px;justify-content:flex-start;width:100%}
   .header img{height:40px;width:40px;border-radius:6px}
   .header h1{margin:0;font-size:18px;font-weight:600;letter-spacing:.08em;text-transform:none}
-  .login-card{background:#121a33;border-radius:16px;padding:24px;box-shadow:0 10px 40px rgba(0,0,0,.45);width:640px;display:flex;flex-direction:column;align-items:center}
+  .login-card{background:#121a33;border-radius:16px;padding:24px;box-shadow:0 10px 40px rgba(0,0,0,.45);width:400px;display:flex;flex-direction:column;align-items:flex-start}
   .login-card h1{margin:0 0 16px;font-size:20px;text-align:left}
   .login-form{max-width:320px;margin:0 auto;width:100%}
   .field{margin-bottom:14px}
@@ -18,7 +18,7 @@
   .btn{width:100%;padding:6px 12px;border:none;border-radius:10px;background:#44f2a8;color:#05080f;font-weight:700;cursor:pointer;margin-top:8px}
   .error{color:#ff5370;font-size:13px;text-align:center;margin-bottom:8px}
 </style>
-<div class="header">
+<div class="logo-banner">
   <img src="{{ url_for('static', filename='3d.gif') }}" alt="BlockDAG">
   <h1>{{ title }}</h1>
 </div>
