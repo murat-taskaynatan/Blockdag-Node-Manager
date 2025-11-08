@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.7 - 2025-11-07
+
+### Enhancements
+- Summary counters now distinguish healthy (running) nodes from forced/stalled ones so the “Offline” tally only includes truly offline containers.
+
 ## v1.4.6 - 2025-11-07
 
 ### Enhancements
