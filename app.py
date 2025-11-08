@@ -3172,6 +3172,40 @@ def _restart_container_for_policy(ctx: "NodeContext", reason: str) -> bool:
     return False
 
 
+def _trigger_restore_for_context(ctx: "NodeContext", reason: str) -> bool:
+    if not ctx or not ctx.id:
+        return False
+    try:
+        ok, message, _ = _start_restore_job(ctx.id)
+    except Exception as exc:
+        try:
+            app.logger.warning("Failed to trigger restore for %s: %s", ctx.id, exc)
+        except Exception:
+            pass
+        return False
+    if ok:
+        try:
+            app.logger.warning(
+                "Liveness auto-recover triggered restore for node %s (%s): %s",
+                ctx.id,
+                ctx.container or "unknown",
+                reason,
+            )
+        except Exception:
+            pass
+        return True
+    try:
+        app.logger.warning(
+            "Liveness auto-recover failed to start restore for node %s (%s): %s",
+            ctx.id,
+            ctx.container or "unknown",
+            message,
+        )
+    except Exception:
+        pass
+    return False
+
+
 def _derive_health_restart_reason(metrics: Dict[str, object]) -> Optional[str]:
     stalled_flag = bool(metrics.get("stalled"))
     if stalled_flag:
@@ -3249,15 +3283,18 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
             if cooldown_elapsed:
                 with _LOG_POLICY_LOCK:
                     state["last_liveness"] = now
-                if _restart_container_for_policy(ctx, stalled_reason):
+                restored = _trigger_restore_for_context(ctx, stalled_reason)
+                if not restored:
+                    restored = _restart_container_for_policy(ctx, stalled_reason)
+                if restored:
                     with _LOG_POLICY_LOCK:
                         state["last_restart"] = now
                         state["error_streak"] = 0
                     return
             else:
                 return
-    if _is_restore_job_active_for_container(ctx.container) or _is_snapshot_job_active_for_container(ctx.container):
-        return
+        if _is_restore_job_active_for_container(ctx.container) or _is_snapshot_job_active_for_container(ctx.container):
+            return
     if not enable_error_restart:
         return
     reason = _derive_health_restart_reason(metrics)
