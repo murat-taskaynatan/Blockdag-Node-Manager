@@ -3200,6 +3200,20 @@ def _is_restore_job_active_for_container(container: Optional[str]) -> bool:
         return bool(job_container and job_container == container)
 
 
+def _is_snapshot_job_active_for_container(container: Optional[str]) -> bool:
+    if not container:
+        return False
+    with _SNAPSHOT_JOB_LOCK:
+        if not _SNAPSHOT_JOB_STATE.get("active"):
+            return False
+        job_details = _SNAPSHOT_JOB_STATE.get("details") or {}
+        job_container = job_details.get("container")
+        if not job_container or str(job_container) != container:
+            return False
+        mode = str(job_details.get("mode") or "snapshot").lower()
+        return mode != "restore"
+
+
 def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
     if not ctx or not ctx.container or not DOCKER_BIN:
         return
@@ -3241,7 +3255,7 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
                     return
             else:
                 return
-    if _is_restore_job_active_for_container(ctx.container):
+    if _is_restore_job_active_for_container(ctx.container) or _is_snapshot_job_active_for_container(ctx.container):
         return
     if not enable_error_restart:
         return
