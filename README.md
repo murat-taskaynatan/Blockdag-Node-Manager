@@ -83,11 +83,11 @@ HOST=0.0.0.0 PORT=8080 INSTALL_DIR=/opt/bdag-manager ./install_node_manager.sh
 
 All runtime overrides are stored in `/etc/blockdag-node-manager/node-manager.env`.
 
-After each `git push origin main`, run `./sync_opt_install.sh` from this repo. It updates the local clone, reruns `install_node_manager.sh`, and restarts the service so `/opt/blockdag-node-manager` always mirrors the latest `main` build.
+After each `git push origin main`, run `./scripts/sync_opt_install.sh` from this repo. It updates the local clone, reruns `install_node_manager.sh`, and restarts the service so `/opt/blockdag-node-manager` always mirrors the latest `main` build.
 
 ### Restore offline nodes sequentially
 
-When multiple nodes are offline or stalled, use `./restore_offline_nodes.sh` to trigger a restore job for each node one by one with a cooldown between jobs (`RESTORE_COOLDOWN_SEC`, default 90 s). The script calls `/api/snapshots/restore` for every node that reports `running==false` or `stalled==true`. Export `BASE_URL` if the manager is bound to a non-default host/port.
+When multiple nodes are offline or stalled, use `./scripts/restore_offline_nodes.sh` to trigger a restore job for each node one by one with a cooldown between jobs (`RESTORE_COOLDOWN_SEC`, default 90 s). The script calls `/api/snapshots/restore` for every node that reports `running==false` or `stalled==true`. Export `BASE_URL` if the manager is bound to a non-default host/port.
 
 Need a zero-touch install on a fresh host? Use the remote installer:
 
