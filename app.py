@@ -94,6 +94,7 @@ _AUTO_SNAPSHOT_STATE: Dict[str, object] = {
 LIVENESS_RECOVER_COOLDOWN_SEC = max(
     60.0, float(os.getenv("BDAG_LIVENESS_RECOVER_COOLDOWN_SEC", "900") or "900")
 )
+LIVENESS_MAX_RESTARTS = max(1, int(os.getenv("BDAG_LIVENESS_MAX_RESTARTS", "2") or "2"))
 _liveness_patterns_raw = [
     part.strip().lower()
     for part in str(os.getenv("BDAG_LIVENESS_RECOVER_PATTERNS", "") or "").split(",")
@@ -3260,7 +3261,13 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
     with _LOG_POLICY_LOCK:
         state = _LOG_POLICY_STATE.setdefault(
             ctx.container,
-            {"last_check": 0.0, "error_streak": 0, "last_restart": 0.0, "last_liveness": 0.0},
+            {
+                "last_check": 0.0,
+                "error_streak": 0,
+                "last_restart": 0.0,
+                "last_liveness": 0.0,
+                "liveness_restarts": 0,
+            },
         )
         last_check = float(state.get("last_check", 0.0))
         if now - last_check < LOG_ERROR_CHECK_SEC:
@@ -3269,6 +3276,9 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
     metrics = getattr(ctx, "last_metrics", None) or {}
     if enable_liveness:
         stalled_flag = bool(metrics.get("stalled"))
+        if not stalled_flag:
+            with _LOG_POLICY_LOCK:
+                state["liveness_restarts"] = 0
         if stalled_flag:
             stalled_reason = (
                 metrics.get("stalled_reason")
@@ -3278,17 +3288,32 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
             )
             with _LOG_POLICY_LOCK:
                 last_liveness = float(state.get("last_liveness", 0.0))
-                last_restart = float(state.get("last_restart", 0.0))
+                liveness_restarts = int(state.get("liveness_restarts", 0))
                 cooldown_elapsed = now - last_liveness >= LIVENESS_RECOVER_COOLDOWN_SEC
             if cooldown_elapsed:
                 with _LOG_POLICY_LOCK:
                     state["last_liveness"] = now
-                restored = _trigger_restore_for_context(ctx, stalled_reason)
-                if restored:
+                if liveness_restarts < LIVENESS_MAX_RESTARTS:
+                    if _restart_container_for_policy(ctx, stalled_reason):
+                        with _LOG_POLICY_LOCK:
+                            state["last_restart"] = now
+                            state["error_streak"] = 0
+                            state["liveness_restarts"] = liveness_restarts + 1
+                        return
+                    with _LOG_POLICY_LOCK:
+                        state["liveness_restarts"] = liveness_restarts + 1
+                    return
+                if _trigger_restore_for_context(ctx, stalled_reason):
                     with _LOG_POLICY_LOCK:
                         state["last_restart"] = now
                         state["error_streak"] = 0
+                        state["liveness_restarts"] = 0
                     return
+                with _LOG_POLICY_LOCK:
+                    state["liveness_restarts"] = 0
+                    state["last_restart"] = now
+                    state["error_streak"] = 0
+                return
             else:
                 return
         if _is_restore_job_active_for_container(ctx.container) or _is_snapshot_job_active_for_container(ctx.container):
