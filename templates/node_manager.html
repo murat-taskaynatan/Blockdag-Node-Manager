@@ -30,6 +30,13 @@
   .summary-body{margin-top:16px}
   .summary-pane{display:block}
   .summary-pane[hidden]{display:none}
+  .system-grid{display:grid;gap:12px;margin-top:12px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+  .system-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:6px;min-height:120px}
+  .system-card .label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+  .system-card .value{font-size:18px;font-weight:600}
+  .system-card progress{width:100%;height:8px;border:none;border-radius:999px;background:rgba(255,255,255,.1)}
+  .system-card progress::-webkit-progress-bar{background:transparent}
+  .system-card progress::-webkit-progress-value{border-radius:999px}
   .settings-form{display:flex;flex-direction:column;gap:14px}
   .setting-row{display:flex;align-items:center;justify-content:space-between;gap:16px;background:rgba(255,255,255,.06);border-radius:12px;padding:14px 16px;border:1px solid rgba(255,255,255,.08)}
   .setting-group{display:grid;gap:14px}
@@ -279,6 +286,7 @@
           <div class="summary-controls">
             <div class="summary-tabs" role="tablist" aria-label="Dashboard view">
               <button class="summary-tab is-active" type="button" data-summary-tab="stats" aria-selected="true">Stats</button>
+              <button class="summary-tab" type="button" data-summary-tab="system" aria-selected="false">System</button>
               <button class="summary-tab" type="button" data-summary-tab="settings" aria-selected="false">Settings</button>
               <button class="summary-tab" type="button" data-summary-tab="overclock" aria-selected="false">Overclock</button>
               <button class="summary-tab" type="button" data-summary-tab="snapshots" aria-selected="false">Snapshots</button>
@@ -312,6 +320,26 @@
             <div class="kv">
               <div class="k">Highest Remote Height</div>
               <div class="v" id="statMaxRemote">—</div>
+            </div>
+          </div>
+        </div>
+        <div class="summary-pane" data-summary-pane="system" hidden>
+          <div class="system-grid">
+            <div class="system-card">
+              <div class="label">CPU Usage</div>
+              <div class="value" id="statCpu">—</div>
+              <progress id="statCpuBar" max="100" value="0"></progress>
+            </div>
+            <div class="system-card">
+              <div class="label">Memory</div>
+              <div class="value" id="statMemory">—</div>
+              <progress id="statMemoryBar" max="100" value="0"></progress>
+            </div>
+            <div class="system-card">
+              <div class="label">Disk</div>
+              <div class="value" id="statDisk">—</div>
+              <div class="label" style="margin-top:auto;font-size:11px;" id="statDiskPath">—</div>
+              <progress id="statDiskBar" max="100" value="0"></progress>
             </div>
           </div>
         </div>
