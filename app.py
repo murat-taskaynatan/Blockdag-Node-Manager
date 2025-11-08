@@ -886,6 +886,7 @@ _SNAPSHOT_DIR_FALLBACK = _preferred_path(
     str(Path.home() / "blockdag-scripts" / "backups"),
 )
 SNAPSHOT_DIR = _expanded_path(os.getenv("BDAG_SNAPSHOT_DIR"), _SNAPSHOT_DIR_FALLBACK)
+_CUSTOM_TEMP_PATH = _normalize_path(os.getenv("BDAG_CPU_TEMP_PATH") or "")
 SNAPSHOT_PREFIX = (os.getenv("BDAG_SNAPSHOT_PREFIX", "bdag.chaindata") or "bdag.chaindata").strip() or "bdag.chaindata"
 SNAPSHOT_SUFFIX = (os.getenv("BDAG_SNAPSHOT_SUFFIX", ".tar") or ".tar").strip()
 SNAPSHOT_HEALTH_ENABLED = _coerce_bool(os.getenv("BDAG_SNAPSHOT_HEALTH_ENABLED", "1"), True)
@@ -3954,6 +3955,67 @@ def api_node_manager_metrics():
         _apply_node_policies(ctx, settings)
         response[ctx.id] = ctx.snapshot(include_series=True)
     return jsonify({"nodes": response, "timestamp": time.time()})
+
+
+def _collect_shared_temperature() -> Optional[Dict[str, object]]:
+    if not _CUSTOM_TEMP_PATH or not _CUSTOM_TEMP_PATH.exists():
+        return None
+    try:
+        text = _CUSTOM_TEMP_PATH.read_text(encoding="utf-8").strip()
+    except Exception:
+        return None
+    if not text:
+        return None
+    parts = text.split()
+    try:
+        value = float(parts[0])
+    except Exception:
+        return None
+    return {
+        "sensor": str(_CUSTOM_TEMP_PATH),
+        "label": "shared temperature",
+        "current": round(value, 1),
+    }
+
+
+def _collect_psutil_temperature() -> Optional[Dict[str, object]]:
+    try:
+        sensors = psutil.sensors_temperatures()
+    except Exception:
+        sensors = {}
+    best: Optional[Tuple[float, str, str, Optional[float], Optional[float]]] = None
+    for sensor_name, entries in (sensors or {}).items():
+        if not entries:
+            continue
+        for entry in entries:
+            current = getattr(entry, "current", None)
+            if current is None:
+                continue
+            label = (entry.label or sensor_name or "CPU").strip()
+            high = getattr(entry, "high", None)
+            critical = getattr(entry, "critical", None)
+            if best is None or current > best[0]:
+                best = (float(current), sensor_name or label, label, high, critical)
+    if not best:
+        return None
+    current, sensor_key, label, high, critical = best
+    temp_info: Dict[str, object] = {
+        "sensor": sensor_key,
+        "label": label,
+        "current": round(current, 1),
+    }
+    if isinstance(high, (int, float)):
+        temp_info["high"] = round(float(high), 1)
+    if isinstance(critical, (int, float)):
+        temp_info["critical"] = round(float(critical), 1)
+    return temp_info
+
+
+def _collect_cpu_temperature() -> Optional[Dict[str, object]]:
+    shared = _collect_shared_temperature()
+    if shared:
+        return shared
+    return _collect_psutil_temperature()
 
 
 @app.route("/api/system")
