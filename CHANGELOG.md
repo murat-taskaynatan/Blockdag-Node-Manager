@@ -4,6 +4,7 @@
 
 ### Enhancements
 - Summary counters now distinguish healthy (running) nodes from forced/stalled ones so the “Offline” tally only includes truly offline containers.
+- Version badge now updates to reflect the currently deployed release string (`APP_VERSION`).
 
 ## v1.4.6 - 2025-11-07
 
