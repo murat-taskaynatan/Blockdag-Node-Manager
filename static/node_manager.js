@@ -188,6 +188,7 @@ const state = {
     auto_snapshot_hours: 0,
     display_wallet_balance: false,
     snapshot_max: 0,
+    cpu_temp_path: '',
   };
 
   state.settings = { ...defaultSettings };
@@ -1822,18 +1823,8 @@ async function loadSettings() {
       systemCpuTempValue.textContent = formatTemperature(temp?.current);
     }
     if (systemCpuTempHint) {
-      const labelParts = [];
-      if (temp?.label) {
-        labelParts.push(temp.label);
-      }
-      if (temp?.sensor) {
-        const sensorLabel = temp.sensor;
-        if (!labelParts.includes(sensorLabel)) {
-          labelParts.push(sensorLabel);
-        }
-      }
-      if (labelParts.length) {
-        systemCpuTempHint.textContent = labelParts.join(' · ');
+      if (typeof temp?.label === 'string' && temp.label.trim()) {
+        systemCpuTempHint.textContent = temp.label.trim();
         systemCpuTempHint.hidden = false;
       } else {
         systemCpuTempHint.hidden = true;
