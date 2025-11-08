@@ -5,6 +5,8 @@
 ### Enhancements
 - Summary counters now distinguish healthy (running) nodes from forced/stalled ones so the “Offline” tally only includes truly offline containers.
 - Liveness auto-recovery now also reacts to “Illegal withdrawal at block:difflayer…” messages so the health guard triggers on this corruption warning.
+- Liveness auto-recovery now attempts a restore from the latest snapshot before falling back to a container restart when health checks fail.
+- Liveness auto-recovery now triggers restores only; container restarts stay under the “Auto restart on error” toggle.
 - Version badge now updates to reflect the currently deployed release string (`APP_VERSION`).
 
 ## v1.4.6 - 2025-11-07
