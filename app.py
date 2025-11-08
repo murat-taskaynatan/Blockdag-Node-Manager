@@ -2313,7 +2313,7 @@ def _ensure_peer_identity(
     try:
         destination.parent.mkdir(parents=True, exist_ok=True)
         identity = secrets.token_hex(32)
-        destination.write_text(identity + "\n")
+        destination.write_text(identity)
         try:
             os.chmod(destination, 0o600)
         except Exception:
