@@ -37,12 +37,18 @@
   .system-card progress{width:100%;height:8px;border:none;border-radius:999px;background:rgba(255,255,255,.1)}
   .system-card progress::-webkit-progress-bar{background:transparent}
   .system-card progress::-webkit-progress-value{border-radius:999px}
-  .system-card progress.temp-progress--green::-webkit-progress-value{background:#44f2a8!important}
-  .system-card progress.temp-progress--orange::-webkit-progress-value{background:#d98217!important}
-  .system-card progress.temp-progress--red::-webkit-progress-value{background:#ff5370!important}
-  .system-card progress.temp-progress--green::-moz-progress-bar{background:#44f2a8!important}
-  .system-card progress.temp-progress--orange::-moz-progress-bar{background:#d98217!important}
-  .system-card progress.temp-progress--red::-moz-progress-bar{background:#ff5370!important}
+  .system-card progress.temp-progress--green::-webkit-progress-value,
+  .system-card progress.usage-progress--green::-webkit-progress-value{background:#44f2a8!important}
+  .system-card progress.temp-progress--orange::-webkit-progress-value,
+  .system-card progress.usage-progress--orange::-webkit-progress-value{background:#d98217!important}
+  .system-card progress.temp-progress--red::-webkit-progress-value,
+  .system-card progress.usage-progress--red::-webkit-progress-value{background:#ff5370!important}
+  .system-card progress.temp-progress--green::-moz-progress-bar,
+  .system-card progress.usage-progress--green::-moz-progress-bar{background:#44f2a8!important}
+  .system-card progress.temp-progress--orange::-moz-progress-bar,
+  .system-card progress.usage-progress--orange::-moz-progress-bar{background:#d98217!important}
+  .system-card progress.temp-progress--red::-moz-progress-bar,
+  .system-card progress.usage-progress--red::-moz-progress-bar{background:#ff5370!important}
   .system-card .hint{font-size:11px;color:rgba(255,255,255,.65);margin-top:2px}
   .settings-form{display:flex;flex-direction:column;gap:14px}
   .setting-row{display:flex;align-items:center;justify-content:space-between;gap:16px;background:rgba(255,255,255,.06);border-radius:12px;padding:14px 16px;border:1px solid rgba(255,255,255,.08)}
