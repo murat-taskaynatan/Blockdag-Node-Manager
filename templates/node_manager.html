@@ -37,6 +37,12 @@
   .system-card progress{width:100%;height:8px;border:none;border-radius:999px;background:rgba(255,255,255,.1)}
   .system-card progress::-webkit-progress-bar{background:transparent}
   .system-card progress::-webkit-progress-value{border-radius:999px}
+  .system-card progress.temp-progress--green::-webkit-progress-value{background:#44f2a8!important}
+  .system-card progress.temp-progress--orange::-webkit-progress-value{background:#d98217!important}
+  .system-card progress.temp-progress--red::-webkit-progress-value{background:#ff5370!important}
+  .system-card progress.temp-progress--green::-moz-progress-bar{background:#44f2a8!important}
+  .system-card progress.temp-progress--orange::-moz-progress-bar{background:#d98217!important}
+  .system-card progress.temp-progress--red::-moz-progress-bar{background:#ff5370!important}
   .system-card .hint{font-size:11px;color:rgba(255,255,255,.65);margin-top:2px}
   .settings-form{display:flex;flex-direction:column;gap:14px}
   .setting-row{display:flex;align-items:center;justify-content:space-between;gap:16px;background:rgba(255,255,255,.06);border-radius:12px;padding:14px 16px;border:1px solid rgba(255,255,255,.08)}
@@ -334,7 +340,7 @@
             <div class="system-card">
               <div class="label">CPU Temp</div>
               <div class="value" id="statCpuTemp">—</div>
-              <div class="hint" id="statCpuTempHint" hidden></div>
+              <progress id="statCpuTempBar" max="100" value="0"></progress>
             </div>
             <div class="system-card">
               <div class="label">Memory</div>
@@ -364,6 +370,18 @@
             </label>
             <label class="setting-row">
               <div class="setting-text">
+                <span class="setting-title">Auto-restart on error</span>
+                <span class="setting-desc">Restart the container automatically when the node health becomes stalled or offline.</span>
+              </div>
+              <div class="setting-control">
+                <label class="toggle" title="Toggle auto restart on error">
+                  <input type="checkbox" class="toggle-input" id="settingAutoRestart" name="auto_restart_on_error" data-setting-key="auto_restart_on_error">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </label>
+            <label class="setting-row">
+              <div class="setting-text">
                 <span class="setting-title">CPU temperature file</span>
                 <span class="setting-desc">Override the shared file path used for reading CPU temperatures.</span>
               </div>
@@ -376,18 +394,6 @@
                   data-setting-key="cpu_temp_path"
                   data-setting-type="text"
                 >
-              </div>
-            </label>
-            <label class="setting-row">
-              <div class="setting-text">
-                <span class="setting-title">Auto-restart on error</span>
-                <span class="setting-desc">Restart the container automatically when the node health becomes stalled or offline.</span>
-              </div>
-              <div class="setting-control">
-                <label class="toggle" title="Toggle auto restart on error">
-                  <input type="checkbox" class="toggle-input" id="settingAutoRestart" name="auto_restart_on_error" data-setting-key="auto_restart_on_error">
-                  <span class="toggle-slider"></span>
-                </label>
               </div>
             </label>
             <label class="setting-row">
@@ -754,4 +760,4 @@
 
 <script src="{{ url_for('static', filename='chart.umd.min.js') }}"></script>
 <script src="{{ url_for('static', filename='node_manager.js') }}?v={{ app_version }}-{{ cache_buster }}"></script>
-        <div class="version-badge"><strong>{{ app_version_display or 'v1.4.7' }}</strong></div>
+        <div class="version-badge"><strong>{{ app_version_display or 'v1.4.8' }}</strong></div>
