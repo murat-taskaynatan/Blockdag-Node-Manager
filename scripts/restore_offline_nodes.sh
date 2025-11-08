@@ -5,7 +5,7 @@ set -euo pipefail
 # Usage: RESTORE_COOLDOWN_SEC=600 ./restore_offline_nodes.sh
 
 BASE_URL="${BASE_URL:-http://localhost:8081}"
-COOLDOWN_SEC="${RESTORE_COOLDOWN_SEC:-90}"
+COOLDOWN_SEC="${RESTORE_COOLDOWN_SEC:-30}"
 
 request() {
   local method="$1"
@@ -27,7 +27,8 @@ for node in $offline_ids; do
   echo "- Starting restore for node ${node}"
   payload="{\"node\":\"${node}\"}"
   response=$(request POST /api/snapshots/restore "$payload")
-  echo "  -> $response"
+  brief=$(echo "$response" | jq -r '.message // .error // "restore submitted"' 2>/dev/null || echo "restore submitted")
+  echo "  -> ${brief}"
   if echo "$response" | jq -e '.ok' >/dev/null 2>&1; then
     echo "  Waiting for restore job to complete..."
     while true; do
