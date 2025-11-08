@@ -42,7 +42,7 @@ const state = {
   const systemDiskValue = document.getElementById('statDisk');
   const systemDiskBar = document.getElementById('statDiskBar');
   const systemCpuTempValue = document.getElementById('statCpuTemp');
-  const systemCpuTempHint = document.getElementById('statCpuTempHint');
+  const systemCpuTempBar = document.getElementById('statCpuTempBar');
   const settingsForm = document.getElementById('settingsForm');
   const saveSettingsBtn = document.getElementById('btnSaveSettings');
   const settingsStatus = document.getElementById('settingsStatus');
@@ -230,12 +230,31 @@ const state = {
     return `${value.toFixed(2)}%`;
   }
 
+  const USAGE_HIGH = 80;
+  const USAGE_MED = 60;
   function formatTemperature(value) {
     const temp = Number(value);
     if (!Number.isFinite(temp)) {
       return '—';
     }
     return `${temp.toFixed(1)}°C`;
+  }
+
+  function applyUsageColor(bar, value) {
+    if (!bar) return;
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+      bar.classList.remove('usage-progress--green', 'usage-progress--orange', 'usage-progress--red');
+      return;
+    }
+    bar.classList.remove('usage-progress--green', 'usage-progress--orange', 'usage-progress--red');
+    if (numeric >= USAGE_HIGH) {
+      bar.classList.add('usage-progress--red');
+    } else if (numeric >= USAGE_MED) {
+      bar.classList.add('usage-progress--orange');
+    } else {
+      bar.classList.add('usage-progress--green');
+    }
   }
 
   function formatDurationShort(seconds) {
@@ -1797,6 +1816,7 @@ async function loadSettings() {
     }
     if (systemCpuBar) {
       systemCpuBar.value = Math.min(100, Math.max(0, cpu));
+      applyUsageColor(systemCpuBar, cpu);
     }
     const mem = payload?.memory || {};
     const memPercent = Number(mem.percent) || 0;
@@ -1807,6 +1827,7 @@ async function loadSettings() {
     }
     if (systemMemoryBar) {
       systemMemoryBar.value = Math.min(100, Math.max(0, memPercent));
+      applyUsageColor(systemMemoryBar, memPercent);
     }
     const disk = payload?.disk || {};
     const diskPercent = Number(disk.percent) || 0;
@@ -1817,17 +1838,28 @@ async function loadSettings() {
     }
     if (systemDiskBar) {
       systemDiskBar.value = Math.min(100, Math.max(0, diskPercent));
+      applyUsageColor(systemDiskBar, diskPercent);
     }
     const temp = payload?.temperature;
     if (systemCpuTempValue) {
       systemCpuTempValue.textContent = formatTemperature(temp?.current);
     }
-    if (systemCpuTempHint) {
-      if (typeof temp?.label === 'string' && temp.label.trim()) {
-        systemCpuTempHint.textContent = temp.label.trim();
-        systemCpuTempHint.hidden = false;
+    if (systemCpuTempBar) {
+      const tempValue = Number(temp?.current);
+      if (Number.isFinite(tempValue)) {
+        const clamped = Math.min(100, Math.max(0, tempValue));
+        systemCpuTempBar.value = clamped;
+        systemCpuTempBar.classList.remove('temp-progress--green', 'temp-progress--orange', 'temp-progress--red');
+        if (tempValue >= 80) {
+          systemCpuTempBar.classList.add('temp-progress--red');
+        } else if (tempValue >= 60) {
+          systemCpuTempBar.classList.add('temp-progress--orange');
+        } else {
+          systemCpuTempBar.classList.add('temp-progress--green');
+        }
       } else {
-        systemCpuTempHint.hidden = true;
+        systemCpuTempBar.value = 0;
+        systemCpuTempBar.classList.remove('temp-progress--green', 'temp-progress--orange', 'temp-progress--red');
       }
     }
   }
