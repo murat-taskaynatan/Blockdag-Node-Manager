@@ -1801,9 +1801,10 @@ async function loadSettings() {
       const total = typeof disk.total === 'number' ? formatBytes(disk.total) : '—';
       systemDiskValue.textContent = `${used} / ${total} (${diskPercent.toFixed(1)}%)`;
     }
-    if (systemDiskPath) {
-      systemDiskPath.textContent = disk.path || '—';
-    }
+  if (systemDiskPath) {
+    const normalizedPath = disk.path === '/' ? 'root' : disk.path || '—';
+    systemDiskPath.textContent = normalizedPath;
+  }
     if (systemDiskBar) {
       systemDiskBar.value = Math.min(100, Math.max(0, diskPercent));
     }
