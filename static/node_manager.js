@@ -2914,6 +2914,7 @@ async function saveSettings() {
     const now = Date.now();
     let forcedCount = 0;
     let onlineCount = 0;
+    let runningCount = 0;
     Object.entries(metricsByNode).forEach(([nodeId, metrics]) => {
       const entry = state.nodes.get(nodeId);
       if (!entry) return;
@@ -2930,6 +2931,9 @@ async function saveSettings() {
       const containerRunning = isRunningFlag(
         metrics.container_running ?? metrics.raw_running ?? metrics.running
       );
+      if (containerRunning) {
+        runningCount += 1;
+      }
       const effectiveRunning = isRunningFlag(metrics.running);
       const summaryHealthChip = card.querySelector('.summary-health-chip');
       const previousProgress = state.lastProgress.get(nodeId);
@@ -3034,18 +3038,26 @@ async function saveSettings() {
     updateSummaryCounters({
       forcedCount,
       onlineCount,
+      runningCount,
       totalCount: state.nodes.size,
     });
   }
 
-  function updateSummaryCounters({ forcedCount = 0, onlineCount = 0, totalCount = state.nodes.size }) {
+  function updateSummaryCounters({
+    forcedCount = 0,
+    onlineCount = 0,
+    runningCount = Number.isFinite(onlineCount) ? onlineCount : 0,
+    totalCount = state.nodes.size,
+  }) {
     const stalled = Number.isFinite(forcedCount) ? Math.max(0, forcedCount) : 0;
     const count = Number.isFinite(totalCount) ? Math.max(0, totalCount) : state.nodes.size;
     const online = Number.isFinite(onlineCount) ? Math.min(count, Math.max(0, onlineCount)) : 0;
+    const running = Number.isFinite(runningCount) ? Math.min(count, Math.max(0, runningCount)) : 0;
     const summary = state.summary ? { ...state.summary } : {};
     summary.count = count;
     summary.running = online;
-    summary.offline = Math.max(0, count - online);
+    summary.running_count = running;
+    summary.offline = Math.max(0, count - running);
     summary.stalled = stalled;
     if (!('timestamp' in summary) || summary.timestamp == null) {
       summary.timestamp = Date.now() / 1000;
