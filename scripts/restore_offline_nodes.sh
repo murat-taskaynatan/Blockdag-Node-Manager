@@ -37,7 +37,8 @@ for node in $offline_ids; do
       details_node=$(echo "$job" | jq -r '.details.node // empty')
       progress_text="unknown"
       if [[ "$progress" != "null" && "$progress" != "" ]]; then
-        progress_text="${progress}%"
+        progress_int=$(printf "%.0f" "$progress")
+        progress_text="${progress_int}%"
       fi
       echo "    Node ${details_node:-$node} restore progress: ${progress_text}"
       if [[ "$active" != "true" ]]; then
