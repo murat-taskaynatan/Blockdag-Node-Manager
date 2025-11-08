@@ -31,8 +31,15 @@ for node in $offline_ids; do
   if echo "$response" | jq -e '.ok' >/dev/null 2>&1; then
     echo "  Waiting for restore job to complete..."
     while true; do
-      job=$(curl -sS "$BASE_URL/api/snapshots" | jq -r '.job')
+      job=$(curl -sS "$BASE_URL/api/snapshots" | jq '.job')
       active=$(echo "$job" | jq -r '.active' 2>/dev/null || echo "false")
+      progress=$(echo "$job" | jq -r '.progress.pct' 2>/dev/null)
+      details_node=$(echo "$job" | jq -r '.details.node // empty')
+      progress_text="unknown"
+      if [[ "$progress" != "null" && "$progress" != "" ]]; then
+        progress_text="${progress}%"
+      fi
+      echo "    Node ${details_node:-$node} restore progress: ${progress_text}"
       if [[ "$active" != "true" ]]; then
         break
       fi

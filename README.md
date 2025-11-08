@@ -87,7 +87,7 @@ After each `git push origin main`, run `./scripts/sync_opt_install.sh` from this
 
 ### Restore offline nodes sequentially
 
-When multiple nodes are offline or stalled, use `./scripts/restore_offline_nodes.sh` to trigger a restore job for each node one by one with a cooldown between jobs (`RESTORE_COOLDOWN_SEC`, default 90 s). The script calls `/api/snapshots/restore` for every node that reports `running==false` or `stalled==true`. Export `BASE_URL` if the manager is bound to a non-default host/port.
+When multiple nodes are offline or stalled, use `./scripts/restore_offline_nodes.sh` to trigger a restore job for each node one by one with a cooldown between jobs (`RESTORE_COOLDOWN_SEC`, default 90 s). The script calls `/api/snapshots/restore` for every node that reports `running==false` or `stalled==true`, then polls `/api/snapshots` until each job completes—showing the active node name and progress percentage before moving on. Export `BASE_URL` if the manager is bound to a non-default host/port.
 
 Need a zero-touch install on a fresh host? Use the remote installer:
 
