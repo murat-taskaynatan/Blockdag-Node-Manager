@@ -3187,6 +3187,19 @@ def _derive_health_restart_reason(metrics: Dict[str, object]) -> Optional[str]:
     return None
 
 
+def _is_restore_job_active_for_container(container: Optional[str]) -> bool:
+    if not container:
+        return False
+    with _SNAPSHOT_JOB_LOCK:
+        if not _SNAPSHOT_JOB_STATE.get("active"):
+            return False
+        job_details = _SNAPSHOT_JOB_STATE.get("details") or {}
+        if str(job_details.get("mode") or "").lower() != "restore":
+            return False
+        job_container = job_details.get("container")
+        return bool(job_container and job_container == container)
+
+
 def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
     if not ctx or not ctx.container or not DOCKER_BIN:
         return
@@ -3228,6 +3241,8 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
                     return
             else:
                 return
+    if _is_restore_job_active_for_container(ctx.container):
+        return
     if not enable_error_restart:
         return
     reason = _derive_health_restart_reason(metrics)
