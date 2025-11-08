@@ -1771,7 +1771,7 @@ async function saveSettings() {
     const payload = await res.json();
     applySettingsToForm(payload.settings || state.settings);
     updateSettingsStatus('Settings saved', { success: true });
-    await loadNodes();
+    void loadNodes();
   } catch (err) {
     console.error('[settings] failed to save', err);
     updateSettingsStatus(err.message || 'Failed to save settings', { error: true });
