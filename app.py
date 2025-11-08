@@ -3927,7 +3927,7 @@ def _resolve_node(node_id: Optional[str]) -> NodeContext:
 # ---------------------------------------------------------------------------
 # API endpoints
 # ---------------------------------------------------------------------------
-APP_VERSION = os.getenv("BDAG_MANAGER_VERSION", "v1.4.7").strip() or "v1.4.7"
+APP_VERSION = os.getenv("BDAG_MANAGER_VERSION", "v1.4.8").strip() or "v1.4.8"
 
 
 @app.route("/healthz")
