@@ -109,6 +109,7 @@ else:
         "watchexecuted: dial ws failed",
         "block chain is shutdown",
         "illegal withdrawal at block",
+        "illegal withdrawal at block:difflayer, you can cleanup your block data base by '--cleanup'",
     )
 
 _DEFAULT_LOG_CRITICAL_ERROR_PATTERNS = (
