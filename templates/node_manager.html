@@ -364,6 +364,22 @@
             </label>
             <label class="setting-row">
               <div class="setting-text">
+                <span class="setting-title">CPU temperature file</span>
+                <span class="setting-desc">Override the shared file path used for reading CPU temperatures.</span>
+              </div>
+              <div class="setting-control">
+                <input
+                  type="text"
+                  class="setting-input"
+                  id="settingCpuTempPath"
+                  placeholder="/mnt/hgfs/vmshared/cpu_temp.txt"
+                  data-setting-key="cpu_temp_path"
+                  data-setting-type="text"
+                >
+              </div>
+            </label>
+            <label class="setting-row">
+              <div class="setting-text">
                 <span class="setting-title">Auto-restart on error</span>
                 <span class="setting-desc">Restart the container automatically when the node health becomes stalled or offline.</span>
               </div>

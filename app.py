@@ -425,6 +425,7 @@ DEFAULT_SETTINGS: Dict[str, object] = {
     "auto_snapshot_hours": 0,
     "display_wallet_balance": _coerce_bool(os.getenv("BDAG_WALLET_DISPLAY", "0"), False),
     "snapshot_max": SNAPSHOT_MAX_DEFAULT,
+    "cpu_temp_path": "",
     "wallet_address": "",
     # Overclock preferences (persist UI selections)
     "overclock_data_path": "/home/node/blockdag",
@@ -458,6 +459,7 @@ def _coerce_setting(key: str, value):
 def _apply_runtime_settings(settings: Dict[str, object]) -> None:
     global SNAPSHOT_MAX
     global AUTO_RESTART_INTERVAL_SEC
+    global _CUSTOM_TEMP_PATH
     snapshot_limit = settings.get("snapshot_max")
     if isinstance(snapshot_limit, int) and snapshot_limit >= 0:
         SNAPSHOT_MAX = snapshot_limit
@@ -475,6 +477,10 @@ def _apply_runtime_settings(settings: Dict[str, object]) -> None:
     else:
         AUTO_RESTART_INTERVAL_SEC = LOG_ERROR_RESTART_COOLDOWN_SEC
     _configure_auto_snapshot(settings)
+    path_value = str(settings.get("cpu_temp_path") or "").strip()
+    if not path_value:
+        path_value = os.getenv("BDAG_CPU_TEMP_PATH", "").strip()
+    _CUSTOM_TEMP_PATH = _normalize_path(path_value)
 
 
 def _load_settings_file() -> Dict[str, bool]:
@@ -886,6 +892,8 @@ _SNAPSHOT_DIR_FALLBACK = _preferred_path(
     str(Path.home() / "blockdag-scripts" / "backups"),
 )
 SNAPSHOT_DIR = _expanded_path(os.getenv("BDAG_SNAPSHOT_DIR"), _SNAPSHOT_DIR_FALLBACK)
+_CUSTOM_TEMP_PATH = _normalize_path(os.getenv("BDAG_CPU_TEMP_PATH") or "")
+_SENSOR_PACKAGES = ("lm-sensors",)
 _CUSTOM_TEMP_PATH = _normalize_path(os.getenv("BDAG_CPU_TEMP_PATH") or "")
 SNAPSHOT_PREFIX = (os.getenv("BDAG_SNAPSHOT_PREFIX", "bdag.chaindata") or "bdag.chaindata").strip() or "bdag.chaindata"
 SNAPSHOT_SUFFIX = (os.getenv("BDAG_SNAPSHOT_SUFFIX", ".tar") or ".tar").strip()
@@ -1561,6 +1569,28 @@ def _ensure_snapshot_dir() -> Path:
         directory = SNAPSHOT_DIR
         directory.mkdir(parents=True, exist_ok=True)
         return directory
+
+
+def _ensure_sensor_packages() -> None:
+    if shutil.which("sensors"):
+        return
+    apt = shutil.which("apt-get")
+    if not apt:
+        return
+    try:
+        subprocess.run([apt, "update"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
+    except Exception:
+        pass
+    try:
+        subprocess.run(
+            [apt, "install", "-y"] + list(_SENSOR_PACKAGES),
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=60,
+        )
+    except Exception:
+        pass
 
 
 def list_snapshots() -> List[dict]:
@@ -2722,6 +2752,7 @@ def _format_balance_decimal(value: Decimal) -> str:
 def _fetch_wallet_balance(address: str) -> dict:
     if not BALANCE_RPC_BASE:
         raise RuntimeError("RPC endpoint not configured")
+    temp = _collect_cpu_temperature()
     payload = {
         "jsonrpc": "2.0",
         "method": "eth_getBalance",
@@ -4011,15 +4042,54 @@ def _collect_psutil_temperature() -> Optional[Dict[str, object]]:
     return temp_info
 
 
+def _collect_hwmon_temperature() -> Optional[Dict[str, object]]:
+    base = Path("/sys/class/hwmon")
+    if not base.exists():
+        return None
+    best: Optional[Tuple[float, str, str]] = None
+    for hw in sorted(base.glob("hwmon*")):
+        for temp_input in hw.glob("temp*_input"):
+            try:
+                raw = int(temp_input.read_text().strip())
+            except Exception:
+                continue
+            value = raw / 1000.0
+            label_path = temp_input.with_name(temp_input.name.replace("_input", "_label"))
+            if not label_path.exists():
+                label = temp_input.name
+            else:
+                label = label_path.read_text().strip() or temp_input.name
+            score = 0
+            lbl_lower = label.lower()
+            if "package" in lbl_lower:
+                score += 4
+            if "cpu" in lbl_lower:
+                score += 3
+            if "core" in lbl_lower:
+                score += 2
+            if "die" in lbl_lower:
+                score += 1
+            if best is None or score > best[0] or (score == best[0] and value > best[1]):
+                best = (score, value, label)
+    if not best:
+        return None
+    _, value, label = best
+    return {"sensor": label, "label": label, "current": round(value, 1)}
+
+
 def _collect_cpu_temperature() -> Optional[Dict[str, object]]:
-    shared = _collect_shared_temperature()
-    if shared:
-        return shared
-    return _collect_psutil_temperature()
+    local = _collect_psutil_temperature()
+    if local:
+        return local
+    hwmon = _collect_hwmon_temperature()
+    if hwmon:
+        return hwmon
+    return _collect_shared_temperature()
 
 
 @app.route("/api/system")
 def api_system():
+    temp = _collect_cpu_temperature()
     try:
         cpu_percent = round(psutil.cpu_percent(interval=0.1), 1)
     except Exception:
@@ -4048,6 +4118,8 @@ def api_system():
             "path": disk_path,
         },
     }
+    if temp:
+        payload["temperature"] = temp
     return jsonify(payload)
 
 
@@ -5702,6 +5774,11 @@ except Exception:
 
 try:
     get_settings()
+except Exception:
+    pass
+
+try:
+    _ensure_sensor_packages()
 except Exception:
     pass
 
