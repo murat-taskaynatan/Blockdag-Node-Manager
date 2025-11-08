@@ -34,6 +34,14 @@ const state = {
   const summaryTabButtons = Array.from(document.querySelectorAll('[data-summary-tab]'));
   const summaryPanes = Array.from(document.querySelectorAll('[data-summary-pane]'));
   const summaryActions = document.querySelector('[data-summary-view="stats"]');
+  const systemPane = document.querySelector('[data-summary-pane="system"]');
+  const systemCpuValue = document.getElementById('statCpu');
+  const systemCpuBar = document.getElementById('statCpuBar');
+  const systemMemoryValue = document.getElementById('statMemory');
+  const systemMemoryBar = document.getElementById('statMemoryBar');
+  const systemDiskValue = document.getElementById('statDisk');
+  const systemDiskBar = document.getElementById('statDiskBar');
+  const systemDiskPath = document.getElementById('statDiskPath');
   const settingsForm = document.getElementById('settingsForm');
   const saveSettingsBtn = document.getElementById('btnSaveSettings');
   const settingsStatus = document.getElementById('settingsStatus');
@@ -68,6 +76,8 @@ const state = {
   const ocLogsPanel = document.getElementById('ocLogsPanel');
   const ocLogsOutput = document.getElementById('ocLogsOutput');
   let ocLogPollTimer = null;
+  const SYSTEM_POLL_INTERVAL_MS = 10000;
+  let systemPollTimer = null;
   const ocChartPane = document.getElementById('overclockChartPane');
   const ocManualPane = document.getElementById('overclockManualPane');
   const ocManualContent = document.getElementById('overclockManualContent');
@@ -1752,6 +1762,66 @@ async function loadSettings() {
     updateSettingsStatus('Failed to load settings', { error: true });
   }
 }
+
+  async function loadSystem() {
+    if (!systemPane) return;
+    try {
+      const res = await fetch('/api/system', { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const payload = await res.json();
+      renderSystemStats(payload || {});
+    } catch (err) {
+      console.error('[system] failed to load', err);
+    }
+  }
+
+  function renderSystemStats(payload) {
+    if (!systemPane) return;
+    const cpu = Number(payload?.cpu_percent) || 0;
+    if (systemCpuValue) {
+      systemCpuValue.textContent = `${cpu.toFixed(1)}%`;
+    }
+    if (systemCpuBar) {
+      systemCpuBar.value = Math.min(100, Math.max(0, cpu));
+    }
+    const mem = payload?.memory || {};
+    const memPercent = Number(mem.percent) || 0;
+    if (systemMemoryValue) {
+      const used = typeof mem.used === 'number' ? formatBytes(mem.used) : '—';
+      const total = typeof mem.total === 'number' ? formatBytes(mem.total) : '—';
+      systemMemoryValue.textContent = `${used} / ${total} (${memPercent.toFixed(1)}%)`;
+    }
+    if (systemMemoryBar) {
+      systemMemoryBar.value = Math.min(100, Math.max(0, memPercent));
+    }
+    const disk = payload?.disk || {};
+    const diskPercent = Number(disk.percent) || 0;
+    if (systemDiskValue) {
+      const used = typeof disk.used === 'number' ? formatBytes(disk.used) : '—';
+      const total = typeof disk.total === 'number' ? formatBytes(disk.total) : '—';
+      systemDiskValue.textContent = `${used} / ${total} (${diskPercent.toFixed(1)}%)`;
+    }
+    if (systemDiskPath) {
+      systemDiskPath.textContent = disk.path || '—';
+    }
+    if (systemDiskBar) {
+      systemDiskBar.value = Math.min(100, Math.max(0, diskPercent));
+    }
+  }
+
+  function startSystemPolling() {
+    stopSystemPolling();
+    systemPollTimer = window.setInterval(() => {
+      void loadSystem();
+    }, SYSTEM_POLL_INTERVAL_MS);
+  }
+
+  function stopSystemPolling() {
+    if (systemPollTimer) {
+      clearInterval(systemPollTimer);
+      systemPollTimer = null;
+    }
+  }
 
 async function saveSettings() {
   if (!settingsForm || !state.settingsDirty) {
@@ -3816,6 +3886,8 @@ async function saveSettings() {
     // No manual data dir field; backend auto-detects on actions
     await loadNodes();
     await refreshMetrics();
+    await loadSystem();
+    startSystemPolling();
     await loadSnapshots({ silent: true });
     await discoverNodes({ auto: true });
     await refreshMetrics();
@@ -3858,6 +3930,7 @@ async function saveSettings() {
       if (state.snapshotsLoaded) {
         void loadSnapshots({ silent: true });
       }
+      void loadSystem();
     }
   });
 

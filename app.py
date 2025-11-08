@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Set, Tuple, Pattern
 from urllib.parse import urlparse
 
+import psutil
 import requests
 from flask import Flask, abort, jsonify, render_template, request
 from flask import Response, send_from_directory
@@ -3952,6 +3953,39 @@ def api_node_manager_metrics():
         _apply_node_policies(ctx, settings)
         response[ctx.id] = ctx.snapshot(include_series=True)
     return jsonify({"nodes": response, "timestamp": time.time()})
+
+
+@app.route("/api/system")
+def api_system():
+    try:
+        cpu_percent = round(psutil.cpu_percent(interval=0.1), 1)
+    except Exception:
+        cpu_percent = 0.0
+    mem = psutil.virtual_memory()
+    path = str(SNAPSHOT_DATA_DIR) if SNAPSHOT_DATA_DIR else "/"
+    try:
+        disk = psutil.disk_usage(path)
+        disk_path = path
+    except Exception:
+        disk = psutil.disk_usage("/")
+        disk_path = "/"
+    payload = {
+        "cpu_percent": cpu_percent,
+        "memory": {
+            "total": mem.total,
+            "available": mem.available,
+            "used": mem.used,
+            "percent": round(mem.percent, 1),
+        },
+        "disk": {
+            "total": disk.total,
+            "used": disk.used,
+            "free": disk.free,
+            "percent": round(disk.percent, 1),
+            "path": disk_path,
+        },
+    }
+    return jsonify(payload)
 
 
 @app.route("/api/node-manager/logs")
