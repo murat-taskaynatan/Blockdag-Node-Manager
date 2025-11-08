@@ -15,7 +15,7 @@ request() {
 }
 
 nodes_json=$(curl -sS "$BASE_URL/api/node-manager/nodes")
-offline_ids=$(printf '%s\n' "$nodes_json" | jq -r '.nodes[] | select(.status.running==false or .status.stalled==true) | .id')
+offline_ids=$(printf '%s\n' "$nodes_json" | jq -r '.nodes[] | select(.status.running==false or .status.stalled==true or .status.forced_offline==true) | .id')
 
 if [[ -z "$offline_ids" ]]; then
   echo "No offline/on-stall nodes detected."
