@@ -1639,6 +1639,10 @@ function switchSummaryTab(target) {
         title: 'Global Stats',
         desc: 'Real-time snapshot of every node discovered on the local network.',
       },
+      system: {
+        title: 'System Resources',
+        desc: 'CPU, RAM, and disk usage on the local host running the manager.',
+      },
       settings: {
         title: 'Settings',
         desc: 'Configure automatic recovery and display preferences for the fleet.',
