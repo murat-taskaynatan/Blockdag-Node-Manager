@@ -5,12 +5,14 @@
 {% set title = "BlockDAG | Node Manager" %}
 <style>
   body{margin:0;background:#05080f;color:#e7eaf6;font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;padding:0 24px}
-  .logo-banner-outside{display:flex;align-items:center;gap:10px;margin-bottom:6px;width:100%;justify-content:flex-start}
-  .logo-banner-outside img{height:40px;width:40px;border-radius:6px}
-  .logo-banner-outside h1{margin:0;font-size:18px;font-weight:600;letter-spacing:.08em;text-transform:none}
-  .login-card{background:#121a33;border-radius:16px;padding:24px;box-shadow:0 10px 40px rgba(0,0,0,.45);width:400px;display:flex;flex-direction:column;align-items:flex-start}
-  .login-wrapper{display:flex;flex-direction:column;align-items:flex-start;gap:12px}
-  .login-card h1{margin:0 0 16px;font-size:20px;text-align:left}
+  .login-card{background:#121a33;border-radius:16px;padding:24px;box-shadow:0 10px 40px rgba(0,0,0,.45);width:400px;display:flex;gap:24px;align-items:flex-start}
+  .card-header{flex:0 0 140px;display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+  .logo-stack{display:flex;flex-direction:column;gap:4px}
+  .logo-stack img{height:48px;width:48px;border-radius:8px}
+  .logo-text strong{font-size:18px;letter-spacing:.04em}
+  .logo-text span{font-size:14px;color:#9aa4c7}
+  .login-content{flex:1;display:flex;flex-direction:column;gap:12px}
+  .login-card h1{margin:0;font-size:20px;text-align:left}
   .login-form{max-width:320px;margin:0 auto;width:100%;display:flex;flex-direction:column;gap:6px}
   .field{margin-bottom:14px}
   .field label{display:block;font-size:12px;color:#9aa4c7;margin-bottom:4px;text-transform:uppercase;letter-spacing:.08em}
@@ -20,26 +22,33 @@
   .error{color:#ff5370;font-size:13px;text-align:center;margin-bottom:8px}
 </style>
 <div class="login-wrapper">
-  <div class="logo-banner-outside">
-    <img src="{{ url_for('static', filename='3d.gif') }}" alt="BlockDAG">
-    <h1>{{ title }}</h1>
-  </div>
   <div class="login-card">
-    <h1>Login</h1>
-    {% if error %}
-    <div class="error">{{ error }}</div>
-    {% endif %}
-  <div class="login-form">
-    <form method="post">
-      <div class="field">
-        <label for="username">Username</label>
-        <input id="username" name="username" type="text" autocomplete="username">
+    <div class="card-header">
+      <div class="logo-stack">
+        <img src="{{ url_for('static', filename='3d.gif') }}" alt="BlockDAG">
+        <div class="logo-text">
+          <strong>BlockDAG</strong>
+          <span>Node Manager</span>
+        </div>
       </div>
-      <div class="field">
-        <label for="password">Password</label>
-        <input id="password" name="password" type="password" autocomplete="current-password">
+    </div>
+    <div class="login-content">
+      <h1>Login</h1>
+      {% if error %}
+      <div class="error">{{ error }}</div>
+      {% endif %}
+      <div class="login-form">
+        <form method="post">
+          <div class="field">
+            <label for="username">Username</label>
+            <input id="username" name="username" type="text" autocomplete="username">
+          </div>
+          <div class="field">
+            <label for="password">Password</label>
+            <input id="password" name="password" type="password" autocomplete="current-password">
+          </div>
+          <button class="btn" type="submit">Sign in</button>
+        </form>
       </div>
-      <button class="btn" type="submit">Sign in</button>
-    </form>
+    </div>
   </div>
-</div>
