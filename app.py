@@ -881,6 +881,7 @@ _SNAPSHOT_DIR_FALLBACK = _preferred_path(
     [
         str(Path.home() / "blockdag-scripts" / "backups"),
         "/home/node/blockdag-scripts/backups",
+        "/home/node/backups",
     ],
     str(Path.home() / "blockdag-scripts" / "backups"),
 )
