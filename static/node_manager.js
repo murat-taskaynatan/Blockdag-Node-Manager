@@ -41,7 +41,6 @@ const state = {
   const systemMemoryBar = document.getElementById('statMemoryBar');
   const systemDiskValue = document.getElementById('statDisk');
   const systemDiskBar = document.getElementById('statDiskBar');
-  const systemDiskPath = document.getElementById('statDiskPath');
   const settingsForm = document.getElementById('settingsForm');
   const saveSettingsBtn = document.getElementById('btnSaveSettings');
   const settingsStatus = document.getElementById('settingsStatus');
@@ -1805,9 +1804,6 @@ async function loadSettings() {
       const total = typeof disk.total === 'number' ? formatBytes(disk.total) : '—';
       systemDiskValue.textContent = `${used} / ${total} (${diskPercent.toFixed(1)}%)`;
     }
-  if (systemDiskPath) {
-    systemDiskPath.textContent = disk.path || '—';
-  }
     if (systemDiskBar) {
       systemDiskBar.value = Math.min(100, Math.max(0, diskPercent));
     }
