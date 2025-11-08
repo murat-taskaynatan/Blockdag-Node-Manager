@@ -45,6 +45,11 @@ if not SESSION_SECRET:
     SESSION_SECRET = os.urandom(32).hex()
 app.secret_key = SESSION_SECRET
 
+
+@app.context_processor
+def inject_login_state():
+    return {"is_authenticated": bool(session.get("authenticated"))}
+
 try:
     requests.packages.urllib3.disable_warnings()  # type: ignore[attr-defined]
 except Exception:
@@ -3975,6 +3980,10 @@ def _require_login():
     if not LOGIN_ENABLED:
         return None
     if request.endpoint in {"healthz", "login", "logout", "static"}:
+        return None
+    if request.path.startswith("/.well-known/acme-challenge/"):
+        return None
+    if request.path.startswith("/api/"):
         return None
     if session.get("authenticated"):
         return None

@@ -97,6 +97,7 @@ const state = {
   const ocOverlayChartCanvas = document.getElementById('ocOverlayChart');
   const ocOverlayChartEmpty = document.getElementById('ocOverlayChartEmpty');
   let ocOverlayChart = null;
+  const logoutBtn = document.getElementById('btnLogout');
   // Allow init() to push a metric once auto-verify returns
   let ocAppendMetric = null;
   function drawFallbackChart(labels, iopsData, p50Data) {
@@ -255,6 +256,19 @@ const state = {
     } else {
       bar.classList.add('usage-progress--green');
     }
+  }
+
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', () => {
+      logoutBtn.disabled = true;
+      fetch('/logout', {method: 'GET'})
+        .then(() => {
+          location.reload();
+        })
+        .catch(() => {
+          logoutBtn.disabled = false;
+        });
+    });
   }
 
   function formatDurationShort(seconds) {
