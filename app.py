@@ -10,6 +10,7 @@ import time
 import pwd
 import string
 import shlex
+import hmac
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_UP, getcontext
 from collections import OrderedDict, deque
@@ -20,7 +21,7 @@ from urllib.parse import urlparse
 import psutil
 import requests
 from flask import Flask, abort, jsonify, render_template, request
-from flask import Response, send_from_directory
+from flask import Response, send_from_directory, session, redirect, url_for
 
 
 # ---------------------------------------------------------------------------
@@ -34,6 +35,14 @@ app.jinja_env.auto_reload = True
 _log_level_name = (os.getenv("BDAG_LOG_LEVEL", "INFO") or "INFO").strip().upper()
 _log_level = getattr(logging, _log_level_name, logging.INFO)
 app.logger.setLevel(_log_level)
+
+LOGIN_USER = os.getenv("BDAG_LOGIN_USER", "").strip()
+LOGIN_PASS = os.getenv("BDAG_LOGIN_PASS", "").strip()
+LOGIN_ENABLED = bool(LOGIN_USER and LOGIN_PASS)
+SESSION_SECRET = os.getenv("BDAG_SESSION_SECRET")
+if not SESSION_SECRET:
+    SESSION_SECRET = os.urandom(32).hex()
+app.secret_key = SESSION_SECRET
 
 try:
     requests.packages.urllib3.disable_warnings()  # type: ignore[attr-defined]
@@ -3933,6 +3942,38 @@ APP_VERSION = os.getenv("BDAG_MANAGER_VERSION", "v1.4.8").strip() or "v1.4.8"
 @app.route("/healthz")
 def healthz():
     return "ok\n", 200, {"content-type": "text/plain; charset=utf-8"}
+
+
+@app.before_request
+def _require_login():
+    if not LOGIN_ENABLED:
+        return None
+    if request.endpoint in {"healthz", "login", "logout", "static"}:
+        return None
+    if session.get("authenticated"):
+        return None
+    return redirect(url_for("login", next=request.path))
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if not LOGIN_ENABLED:
+        return redirect(url_for("node_manager_view"))
+    error = ""
+    if request.method == "POST":
+        username = (request.form.get("username") or "").strip()
+        password = (request.form.get("password") or "").strip()
+        if hmac.compare_digest(username, LOGIN_USER) and hmac.compare_digest(password, LOGIN_PASS):
+            session["authenticated"] = True
+            return redirect(request.args.get("next") or url_for("node_manager_view"))
+        error = "Invalid username or password."
+    return render_template("login.html", error=error)
+
+
+@app.route("/logout")
+def logout():
+    session.pop("authenticated", None)
+    return redirect(url_for("login"))
 
 
 @app.route("/")
