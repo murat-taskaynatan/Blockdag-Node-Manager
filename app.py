@@ -74,7 +74,6 @@ LOG_ERROR_RESTART_COOLDOWN_SEC = max(
 )
 AUTO_RESTART_INTERVAL_SEC = LOG_ERROR_RESTART_COOLDOWN_SEC
 LOG_ERROR_TAIL = max(10, min(int(os.getenv("BDAG_LOG_ERROR_TAIL", "80") or "80"), 200))
-LOG_ERROR_PATTERN = re.compile(r"\berror\b", re.IGNORECASE)
 
 AUTO_SNAPSHOT_MIN_INTERVAL_SEC = max(
     900.0, float(os.getenv("BDAG_AUTO_SNAPSHOT_MIN_SEC", "3600") or 3600.0)
@@ -3172,10 +3171,24 @@ def _restart_container_for_policy(ctx: "NodeContext", reason: str) -> bool:
     return False
 
 
+def _derive_health_restart_reason(metrics: Dict[str, object]) -> Optional[str]:
+    stalled_flag = bool(metrics.get("stalled"))
+    if stalled_flag:
+        detail = (
+            metrics.get("stalled_reason")
+            or metrics.get("health_detail")
+            or metrics.get("health_text")
+        )
+        return detail or "node health status stalled"
+    running = bool(metrics.get("running"))
+    if not running:
+        detail = metrics.get("health_detail") or metrics.get("health_text")
+        return detail or "node health status offline"
+    return None
+
+
 def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
     if not ctx or not ctx.container or not DOCKER_BIN:
-        return
-    if not ctx.running:
         return
     enable_error_restart = bool(settings.get("auto_restart_on_error"))
     enable_liveness = bool(settings.get("liveness_auto_recover"))
@@ -3191,8 +3204,8 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
         if now - last_check < LOG_ERROR_CHECK_SEC:
             return
         state["last_check"] = now
+    metrics = getattr(ctx, "last_metrics", None) or {}
     if enable_liveness:
-        metrics = getattr(ctx, "last_metrics", None) or {}
         stalled_flag = bool(metrics.get("stalled"))
         if stalled_flag:
             stalled_reason = (
@@ -3215,67 +3228,18 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
                     return
             else:
                 return
-    lines = _get_recent_logs(LOG_ERROR_TAIL, ctx.container)
-    if not lines:
-        with _LOG_POLICY_LOCK:
-            state["error_streak"] = 0
-        return
-    if enable_liveness:
-        for raw_line in reversed(lines):
-            text_lower = str(raw_line).strip().lower()
-            if any(pattern in text_lower for pattern in LIVENESS_FAILSAFE_PATTERNS):
-                with _LOG_POLICY_LOCK:
-                    last_liveness = float(state.get("last_liveness", 0.0))
-                    last_restart = float(state.get("last_restart", 0.0))
-                    if now - last_liveness < LIVENESS_RECOVER_COOLDOWN_SEC:
-                        state["error_streak"] = 0
-                        return
-                    state["last_liveness"] = now
-                if _restart_container_for_policy(ctx, "liveness probe failure detected in logs"):
-                    with _LOG_POLICY_LOCK:
-                        state["last_restart"] = now
-                        state["error_streak"] = 0
-                return
     if not enable_error_restart:
         return
-    critical_pattern: Optional[str] = None
-    if LOG_CRITICAL_ERROR_PATTERNS:
-        for raw_line in reversed(lines):
-            lowered = str(raw_line).strip().lower()
-            for pattern in LOG_CRITICAL_ERROR_PATTERNS:
-                if pattern and pattern in lowered:
-                    critical_pattern = pattern
-                    break
-            if critical_pattern:
-                break
-    if critical_pattern:
-        with _LOG_POLICY_LOCK:
-            last_restart = float(state.get("last_restart", 0.0))
-        if now - last_restart >= AUTO_RESTART_INTERVAL_SEC:
-            reason = f"critical error detected in logs: {critical_pattern}"
-            if _restart_container_for_policy(ctx, reason):
-                with _LOG_POLICY_LOCK:
-                    state["last_restart"] = time.time()
-                    state["error_streak"] = 0
-                return
-    streak = 0
-    for raw_line in reversed(lines):
-        text = str(raw_line)
-        if LOG_ERROR_PATTERN.search(text):
-            streak += 1
-        else:
-            break
-    with _LOG_POLICY_LOCK:
-        state["error_streak"] = streak
-        last_restart = float(state.get("last_restart", 0.0))
-    if streak <= 0:
+    reason = _derive_health_restart_reason(metrics)
+    if not reason:
         return
+    with _LOG_POLICY_LOCK:
+        last_restart = float(state.get("last_restart", 0.0))
     if now - last_restart < AUTO_RESTART_INTERVAL_SEC:
         return
-    reason = "error log line detected" if streak == 1 else f"{streak} consecutive error log lines"
     if _restart_container_for_policy(ctx, reason):
         with _LOG_POLICY_LOCK:
-            state["last_restart"] = time.time()
+            state["last_restart"] = now
             state["error_streak"] = 0
 
 

@@ -1,8 +1,14 @@
 # Changelog
 
-## Unreleased
+## v1.4.6 - 2025-11-07
 
-- _No unreleased changes._
+### Enhancements
+- Auto-restart on error now reacts to stalled or offline health states instead of relying on log pattern detection.
+
+## v1.4.4 - 2025-11-06
+
+### Fixes
+- Version badge and installer defaults now target v1.4.4 so `/opt` deployments report the correct release.
 
 ## v1.4.6 - 2025-11-06
 
