@@ -388,22 +388,6 @@
             </label>
             <label class="setting-row">
               <div class="setting-text">
-                <span class="setting-title">CPU temperature file</span>
-                <span class="setting-desc">Override the shared file path used for reading CPU temperatures.</span>
-              </div>
-              <div class="setting-control">
-                <input
-                  type="text"
-                  class="setting-input"
-                  id="settingCpuTempPath"
-                  placeholder="/mnt/hgfs/vmshared/cpu_temp.txt"
-                  data-setting-key="cpu_temp_path"
-                  data-setting-type="text"
-                >
-              </div>
-            </label>
-            <label class="setting-row">
-              <div class="setting-text">
                 <span class="setting-title">Auto-Restart</span>
                 <span class="setting-desc">Set the minimum hours between automated restart attempts, or disable the automation entirely.</span>
               </div>
@@ -456,6 +440,22 @@
               </div>
               <div class="setting-control">
                 <input type="number" min="0" step="1" id="settingSnapshotMax" name="snapshot_max" data-setting-key="snapshot_max" data-setting-type="number">
+              </div>
+            </label>
+            <label class="setting-row">
+              <div class="setting-text">
+                <span class="setting-title">CPU temperature file</span>
+                <span class="setting-desc">Override the shared file path used for reading CPU temperatures. (Used for VM compatibility when native sensor data is not accessible.)</span>
+              </div>
+              <div class="setting-control">
+                <input
+                  type="text"
+                  class="setting-input"
+                  id="settingCpuTempPath"
+                  placeholder="/mnt/hgfs/vmshared/cpu_temp.txt"
+                  data-setting-key="cpu_temp_path"
+                  data-setting-type="text"
+                >
               </div>
             </label>
             <div class="settings-actions">
