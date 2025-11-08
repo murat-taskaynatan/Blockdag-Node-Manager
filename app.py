@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import tarfile
@@ -2301,6 +2302,29 @@ def _reapply_peer_identity_from_backup(
     return f"Preserved peer identity by restoring {destination}."
 
 
+def _ensure_peer_identity(
+    data_dir: Optional[Path], *, preferred: Optional[Path] = None
+) -> Optional[str]:
+    destination = _snapshot_identity_destination(data_dir, preferred)
+    if not destination:
+        return None
+    if destination.exists():
+        return None
+    try:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        identity = secrets.token_hex(32)
+        destination.write_text(identity + "\n")
+        try:
+            os.chmod(destination, 0o600)
+        except Exception:
+            pass
+    except Exception as exc:
+        app.logger.warning("Failed to create new peer identity at %s: %s", destination, exc)
+        return None
+    app.logger.info("Generated new peer identity at %s", destination)
+    return f"Generated new peer identity at {destination}."
+
+
 def _start_snapshot_job(
     node_id: Optional[str], *, mode: Optional[str] = None, trigger: Optional[str] = None, quiesce_overlay: Optional[bool] = None
 ) -> Tuple[bool, str, Dict[str, object]]:
@@ -2469,6 +2493,8 @@ def _run_restore_job(details: Dict[str, object]) -> None:
         if backup_dir and backup_dir.exists():
             details["backup"] = str(backup_dir)
         identity_note = _reapply_peer_identity_from_backup(backup_dir, data_dir)
+        if not identity_note:
+            identity_note = _ensure_peer_identity(data_dir)
         if identity_note:
             details["identity_preserved"] = True
             details["identity_note"] = identity_note
