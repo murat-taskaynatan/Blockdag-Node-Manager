@@ -3284,8 +3284,6 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
                 with _LOG_POLICY_LOCK:
                     state["last_liveness"] = now
                 restored = _trigger_restore_for_context(ctx, stalled_reason)
-                if not restored:
-                    restored = _restart_container_for_policy(ctx, stalled_reason)
                 if restored:
                     with _LOG_POLICY_LOCK:
                         state["last_restart"] = now
