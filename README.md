@@ -83,6 +83,8 @@ HOST=0.0.0.0 PORT=8080 INSTALL_DIR=/opt/bdag-manager ./install_node_manager.sh
 
 All runtime overrides are stored in `/etc/blockdag-node-manager/node-manager.env`.
 
+After each `git push origin main`, run `./sync_opt_install.sh` from this repo. It updates the local clone, reruns `install_node_manager.sh`, and restarts the service so `/opt/blockdag-node-manager` always mirrors the latest `main` build.
+
 Need a zero-touch install on a fresh host? Use the remote installer:
 
 ```bash
