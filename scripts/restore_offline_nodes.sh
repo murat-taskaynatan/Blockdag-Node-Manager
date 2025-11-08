@@ -25,8 +25,22 @@ fi
 echo "Restoring offline nodes:"
 for node in $offline_ids; do
   echo "- Starting restore for node ${node}"
-  response=$(request POST /api/snapshots/restore "{\"node\":\"${node}\"}")
+  payload="{\"node\":\"${node}\"}"
+  response=$(request POST /api/snapshots/restore "$payload")
   echo "  -> $response"
+  if echo "$response" | jq -e '.ok' >/dev/null 2>&1; then
+    echo "  Waiting for restore job to complete..."
+    while true; do
+      job=$(curl -sS "$BASE_URL/api/snapshots" | jq -r '.job')
+      active=$(echo "$job" | jq -r '.active' 2>/dev/null || echo "false")
+      if [[ "$active" != "true" ]]; then
+        break
+      fi
+      sleep 5
+    done
+  else
+    echo "  Restore request failed; skipping wait."
+  fi
   echo "  Cooling down for ${COOLDOWN_SEC}s before next restore..."
   sleep "$COOLDOWN_SEC"
 done
