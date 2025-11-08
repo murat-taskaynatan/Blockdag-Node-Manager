@@ -3779,7 +3779,6 @@ def _fleet_summary(nodes: List[dict]) -> dict:
     settings = get_settings()
     wallet_enabled = bool(settings.get("display_wallet_balance"))
     summary["wallet_enabled"] = wallet_enabled
-    summary["settings"] = settings
     if wallet_enabled:
         try:
             summary["wallet"] = _get_wallet_overview()
