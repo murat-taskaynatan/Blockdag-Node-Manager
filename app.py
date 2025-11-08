@@ -3956,6 +3956,191 @@ def api_node_manager_metrics():
     return jsonify({"nodes": response, "timestamp": time.time()})
 
 
+
+def _score_temperature_label(label: str, key: str) -> int:
+    text = f"{label or ''} {key or ''}".lower()
+    score = 0
+    if "package" in text:
+        score += 4
+    if "cpu" in text:
+        score += 3
+    if "core" in text:
+        score += 2
+    if "die" in text:
+        score += 1
+    if "thermal" in text:
+        score += 1
+    return score
+
+
+def _select_best_temperature_candidate(
+    candidates: List[Tuple[int, float, str, str, Optional[float], Optional[float]]]
+) -> Optional[Dict[str, object]]:
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    _, current, sensor_key, label, high, critical = candidates[0]
+    temp_info: Dict[str, object] = {
+        "sensor": sensor_key,
+        "label": label or sensor_key or "CPU",
+        "current": round(current, 1),
+    }
+    if isinstance(high, (int, float)):
+        temp_info["high"] = round(float(high), 1)
+    if isinstance(critical, (int, float)):
+        temp_info["critical"] = round(float(critical), 1)
+    return temp_info
+
+
+def _collect_sensors_json(sensors_bin: str) -> Optional[Dict[str, object]]:
+    try:
+        output = subprocess.check_output(
+            [sensors_bin, "-j"],
+            text=True,
+            timeout=3,
+            stderr=subprocess.DEVNULL,
+        )
+        payload = json.loads(output)
+    except Exception:
+        return None
+    candidates: List[Tuple[int, float, str, str, Optional[float], Optional[float]]] = []
+    for chip, features in (payload or {}).items():
+        if not isinstance(features, dict):
+            continue
+        for feature_name, readings in features.items():
+            if not isinstance(readings, dict):
+                continue
+            base_label = feature_name or chip
+            for key, value in readings.items():
+                if not key.endswith("_input"):
+                    continue
+                try:
+                    current = float(value)
+                except Exception:
+                    continue
+                base = key.rsplit("_", 1)[0]
+                label = readings.get(f"{base}_label") or base_label
+                high = readings.get(f"{base}_max") or readings.get(f"{base}_high")
+                critical = readings.get(f"{base}_crit") or readings.get(f"{base}_critical")
+                score = _score_temperature_label(label, chip)
+                candidates.append(
+                    (
+                        score,
+                        current,
+                        chip or base_label,
+                        label or chip or base_label,
+                        high,
+                        critical,
+                    )
+                )
+    return _select_best_temperature_candidate(candidates)
+
+
+def _collect_sensors_text() -> Optional[Dict[str, object]]:
+    sensors_bin = shutil.which("sensors")
+    if not sensors_bin:
+        return None
+    try:
+        output = subprocess.check_output(
+            [sensors_bin],
+            text=True,
+            timeout=3,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        return None
+    pattern = re.compile(r"^\s*([^:]+?):\s*([+-]?\d+(?:\.\d+)?)°C", re.IGNORECASE)
+    high_pattern = re.compile(r"high[ =]+([+-]?\d+(?:\.\d+)?)°C", re.IGNORECASE)
+    crit_pattern = re.compile(r"crit[ =]+([+-]?\d+(?:\.\d+)?)°C", re.IGNORECASE)
+    candidates: List[Tuple[int, float, str, str, Optional[float], Optional[float]]] = []
+    for line in output.splitlines():
+        match = pattern.match(line)
+        if not match:
+            continue
+        label = match.group(1).strip()
+        try:
+            current = float(match.group(2))
+        except ValueError:
+            continue
+        high_match = high_pattern.search(line)
+        crit_match = crit_pattern.search(line)
+        high = float(high_match.group(1)) if high_match else None
+        critical = float(crit_match.group(1)) if crit_match else None
+        score = _score_temperature_label(label, label)
+        candidates.append((score, current, label, label, high, critical))
+    return _select_best_temperature_candidate(candidates)
+
+
+def _collect_sensors_temperature() -> Optional[Dict[str, object]]:
+    sensors_bin = shutil.which("sensors")
+    if not sensors_bin:
+        return None
+    candidate = _collect_sensors_json(sensors_bin)
+    if candidate:
+        return candidate
+    return _collect_sensors_text()
+
+
+def _collect_psutil_temperature() -> Optional[Dict[str, object]]:
+    try:
+        sensors = psutil.sensors_temperatures()
+    except Exception:
+        sensors = {}
+    candidates: List[Tuple[int, float, str, str, Optional[float], Optional[float]]] = []
+    for sensor_name, entries in (sensors or {}).items():
+        if not entries:
+            continue
+        for entry in entries:
+            current = getattr(entry, "current", None)
+            if current is None:
+                continue
+            label = (entry.label or sensor_name or "").strip() or sensor_name or "CPU"
+            high = getattr(entry, "high", None)
+            critical = getattr(entry, "critical", None)
+            score = _score_temperature_label(label, sensor_name or "")
+            candidates.append((score, float(current), sensor_name or "", label, high, critical))
+    return _select_best_temperature_candidate(candidates)
+
+
+def _collect_thermal_zones_temperature() -> Optional[Dict[str, object]]:
+    base = Path("/sys/class/thermal")
+    if not base.exists():
+        return None
+    candidates: List[Tuple[int, float, str, str, Optional[float], Optional[float]]] = []
+    for zone in sorted(base.glob("thermal_zone*")):
+        temp_file = zone / "temp"
+        type_file = zone / "type"
+        try:
+            temp_text = temp_file.read_text().strip()
+        except Exception:
+            continue
+        try:
+            temp_value = int(temp_text)
+        except Exception:
+            continue
+        temperature = temp_value / 1000.0
+        try:
+            sensor_type = type_file.read_text().strip()
+        except Exception:
+            sensor_type = zone.name
+        label = sensor_type or zone.name
+        score = _score_temperature_label(label, zone.name)
+        candidates.append((score, temperature, zone.name, label, None, None))
+    return _select_best_temperature_candidate(candidates)
+
+
+def _collect_cpu_temperature() -> Optional[Dict[str, object]]:
+    for collector in (
+        _collect_sensors_temperature,
+        _collect_psutil_temperature,
+        _collect_thermal_zones_temperature,
+    ):
+        candidate = collector()
+        if candidate:
+            return candidate
+    return None
+
+
 @app.route("/api/system")
 def api_system():
     try:
@@ -3986,6 +4171,9 @@ def api_system():
             "path": disk_path,
         },
     }
+    temp = _collect_cpu_temperature()
+    if temp:
+        payload["temperature"] = temp
     return jsonify(payload)
 
 
