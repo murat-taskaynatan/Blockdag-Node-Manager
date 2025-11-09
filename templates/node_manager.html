@@ -32,13 +32,13 @@
   .summary-pane[hidden]{display:none}
   .node-discovery-message{margin-bottom:16px;padding:14px 16px;border-radius:12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);font-size:13px;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;text-align:center}
   .node-discovery-message strong{font-size:14px}
-  .node-discovery-text{position:relative;padding:0 4px;font-weight:600;color:var(--text);overflow:hidden}
-  .node-discovery-text::before{content:attr(data-text);position:absolute;inset:0;color:transparent;background:linear-gradient(120deg,rgba(68,242,168,.15),rgba(255,255,255,.95),rgba(68,242,168,.15));background-size:200% auto;-webkit-background-clip:text;animation:nodeTextShimmer 1.4s linear infinite}
+  .node-discovery-text{position:relative;padding:0 4px;font-family:ui-monospace,Menlo,Consolas,"Liberation Mono",monospace;font-size:13px;font-weight:600;letter-spacing:.05em;color:var(--muted);overflow:hidden;text-transform:uppercase}
+  .node-discovery-text::before{content:attr(data-text);position:absolute;inset:0;color:transparent;background:linear-gradient(90deg,rgba(63,173,255,.15),rgba(255,255,255,.9),rgba(63,173,255,.15));background-size:300% 100%;-webkit-background-clip:text;animation:nodeTextShimmer 1s linear infinite}
   .node-discovery-text span{visibility:hidden}
   .node-discovery-spinner{width:18px;height:18px;border:2px solid rgba(255,255,255,.3);border-top-color:var(--muted);border-radius:50%;animation:nodeSpinner 1s linear infinite}
   .node-discovery-subtext{width:100%;display:block;font-size:13px;color:var(--muted)}
   @keyframes nodeSpinner{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
-  @keyframes nodeTextShimmer{0%{transform:translateX(-120%)}100%{transform:translateX(120%)}}
+  @keyframes nodeTextShimmer{0%{background-position:-200% 50%}100%{background-position:200% 50%}}
   .system-grid{display:grid;gap:12px;margin-top:12px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
   .system-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:6px;min-height:120px}
   .system-card .label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
