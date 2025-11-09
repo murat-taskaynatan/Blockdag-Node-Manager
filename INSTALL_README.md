@@ -105,6 +105,15 @@ The settings UI includes a memory-pressure auto-restart toggle/threshold that re
 
 Tweak Waitress concurrency with `WAITRESS_THREADS`, `WAITRESS_BACKLOG`, and `WAITRESS_CONNECTION_LIMIT` in the same env file (defaults are 12 threads, 256 backlog slots, and no connection cap).
 
+The installer also seeds the liveness watchdog to act faster by default:
+
+```
+BDAG_LIVENESS_RECOVER_COOLDOWN_SEC=240
+BDAG_LIVENESS_MAX_RESTARTS=3
+```
+
+Change those values if your nodes need a longer (or shorter) window between restart attempts before the manager escalates to a snapshot restore.
+
 ### Remote login toggle
 
 The installer now seeds `BDAG_LOGIN_ENABLED=0` so the login gate is off by default (matching the remote bootstrap experience). To require authentication, flip the flag and supply credentials:

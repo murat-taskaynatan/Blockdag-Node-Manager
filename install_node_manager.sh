@@ -164,6 +164,17 @@ WAITRESS_BACKLOG=256
 WAITRESS_CONNECTION_LIMIT=0
 EOF
 fi
+if ! sudo grep -q "^BDAG_LIVENESS_RECOVER_COOLDOWN_SEC=" "$ENV_FILE" 2>/dev/null; then
+  sudo tee -a "$ENV_FILE" >/dev/null <<'EOF'
+# Liveness auto-recover tuning
+BDAG_LIVENESS_RECOVER_COOLDOWN_SEC=240
+EOF
+fi
+if ! sudo grep -q "^BDAG_LIVENESS_MAX_RESTARTS=" "$ENV_FILE" 2>/dev/null; then
+  sudo tee -a "$ENV_FILE" >/dev/null <<'EOF'
+BDAG_LIVENESS_MAX_RESTARTS=3
+EOF
+fi
 sudo chown "$SERVICE_USER":"$SERVICE_GROUP" "$ENV_FILE"
 sudo chmod 640 "$ENV_FILE"
 
