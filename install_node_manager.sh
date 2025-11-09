@@ -156,6 +156,12 @@ if ! sudo grep -q "^BDAG_CPU_TEMP_PATH=" "$ENV_FILE" 2>/dev/null; then
 BDAG_CPU_TEMP_PATH=/mnt/hgfs/vmshared/cpu_temp.txt
 EOF
 fi
+if ! sudo grep -q "^BDAG_SAMPLE_SEC=" "$ENV_FILE" 2>/dev/null; then
+  sudo tee -a "$ENV_FILE" >/dev/null <<'EOF'
+# Cache duration for node metrics (seconds)
+BDAG_SAMPLE_SEC=30
+EOF
+fi
 if ! sudo grep -q "^WAITRESS_THREADS=" "$ENV_FILE" 2>/dev/null; then
   sudo tee -a "$ENV_FILE" >/dev/null <<'EOF'
 # Waitress tuning
