@@ -74,6 +74,8 @@ const state = {
   const walletChartEmpty = document.getElementById('walletChartEmpty');
   const autoRestartHoursInput = document.getElementById('settingAutoRestartHours');
   const autoSnapshotHoursInput = document.getElementById('settingAutoSnapshotHours');
+  const memoryRestartToggle = document.getElementById('settingMemRestartEnabled');
+  const memoryRestartThresholdInput = document.getElementById('settingMemThreshold');
   const ocLogsPanel = document.getElementById('ocLogsPanel');
   const ocLogsOutput = document.getElementById('ocLogsOutput');
   let ocLogPollTimer = null;
@@ -185,6 +187,8 @@ const state = {
     auto_restart_on_error: false,
     auto_restart_enabled: false,
     auto_restart_hours: 0,
+    auto_restart_mem_enabled: false,
+    auto_restart_mem_threshold: 0,
     auto_snapshot_enabled: false,
     auto_snapshot_hours: 0,
     display_wallet_balance: false,
@@ -308,6 +312,12 @@ const state = {
     const enabled = Boolean(settings?.auto_snapshot_enabled);
     autoSnapshotHoursInput.disabled = enabled;
     alignSnapshotSpinnerStyle();
+  }
+
+  function updateMemoryRestartState(settings = state.settings) {
+    if (!memoryRestartToggle || !memoryRestartThresholdInput) return;
+    const enabled = Boolean(settings?.auto_restart_mem_enabled);
+    memoryRestartThresholdInput.disabled = !enabled;
   }
 
   function alignSnapshotSpinnerStyle() {
@@ -1767,6 +1777,7 @@ function updateSettingsStatus(message, options = {}) {
     });
     updateAutoRestartCooldownState(merged);
     updateAutoSnapshotState(merged);
+    updateMemoryRestartState(merged);
   }
   if (saveSettingsBtn) {
     saveSettingsBtn.disabled = true;
@@ -3222,6 +3233,7 @@ async function saveSettings() {
           markSettingsDirty();
           updateAutoRestartCooldownState(state.settings);
           updateAutoSnapshotState(state.settings);
+          updateMemoryRestartState(state.settings);
         }
       });
     }

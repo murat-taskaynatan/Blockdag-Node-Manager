@@ -414,6 +414,35 @@
             </label>
             <label class="setting-row">
               <div class="setting-text">
+                <span class="setting-title">Memory pressure restart</span>
+                <span class="setting-desc">Restart every node sequentially with 60s spacing whenever host memory usage exceeds the configured percent.</span>
+              </div>
+              <div class="setting-control" data-tooltip-target="mem-restart-threshold">
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  id="settingMemThreshold"
+                  name="auto_restart_mem_threshold"
+                  data-setting-key="auto_restart_mem_threshold"
+                  data-setting-type="number"
+                  title="Percent of total memory that triggers a restart sweep"
+                >
+                <label class="toggle" title="Toggle memory restart">
+                  <input
+                    type="checkbox"
+                    class="toggle-input"
+                    id="settingMemRestartEnabled"
+                    name="auto_restart_mem_enabled"
+                    data-setting-key="auto_restart_mem_enabled"
+                  >
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </label>
+            <label class="setting-row">
+              <div class="setting-text">
                 <span class="setting-title">Auto-Snapshot</span>
                 <span class="setting-desc">Create node snapshots automatically on a fixed interval.</span>
               </div>
