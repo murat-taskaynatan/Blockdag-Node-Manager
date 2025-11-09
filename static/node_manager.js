@@ -2280,7 +2280,7 @@ async function saveSettings() {
     }
   }
 
-  function syncCards(nodes) {
+function syncCards(nodes) {
     const seen = new Set();
     sortNodes(nodes).forEach((node) => {
       if (!node || !node.id) return;
@@ -2315,6 +2315,10 @@ async function saveSettings() {
       }
     });
     updateSnapshotButtons();
+    if (state.nodes.size > 0) {
+      state.nodesDiscovering = false;
+      updateDiscoveryMessage();
+    }
   }
 
   function toggleEmptyState() {
