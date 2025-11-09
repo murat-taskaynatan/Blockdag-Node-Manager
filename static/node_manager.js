@@ -317,7 +317,7 @@ const state = {
   function updateMemoryRestartState(settings = state.settings) {
     if (!memoryRestartToggle || !memoryRestartThresholdInput) return;
     const enabled = Boolean(settings?.auto_restart_mem_enabled);
-    memoryRestartThresholdInput.disabled = !enabled;
+    memoryRestartThresholdInput.disabled = enabled;
   }
 
   function alignSnapshotSpinnerStyle() {
