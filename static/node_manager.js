@@ -2180,6 +2180,10 @@ async function saveSettings() {
         // ignore
       }
       const nodes = Array.isArray(payload.nodes) ? payload.nodes : [];
+      if (nodes.length > 0) {
+        state.nodesDiscovering = false;
+        updateDiscoveryMessage();
+      }
       const stalled = nodes.reduce((count, node) => {
         if (!node || !node.id) return count;
         const stats = node.status || {};
