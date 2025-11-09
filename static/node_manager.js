@@ -28,6 +28,7 @@ const state = {
       loading: false,
       error: null,
       lastFetched: 0,
+      filter: 'all',
     },
   };
 
@@ -77,6 +78,7 @@ const state = {
   const automationLogStatus = document.getElementById('automationLogStatus');
   const automationLogRefreshBtn = document.getElementById('automationLogRefresh');
   const automationLogCount = document.getElementById('automationLogCount');
+  const automationLogFilter = document.getElementById('automationLogFilter');
   const walletAddressValue = document.getElementById('walletAddressValue');
   const walletBalanceValue = document.getElementById('walletBalanceValue');
   const walletTotalValue = document.getElementById('walletTotalValue');
@@ -360,6 +362,24 @@ const state = {
     return mapping[status] || status;
   }
 
+  function automationLogMatchesFilter(entry) {
+    if (!entry) return true;
+    const filter = (state.automationLogs.filter || 'all').toLowerCase();
+    if (!filter || filter === 'all') return true;
+    const kind = String(entry.kind || '').toLowerCase();
+    return kind === filter;
+  }
+
+  function getFilteredAutomationLogs(items) {
+    if (!Array.isArray(items)) {
+      return [];
+    }
+    if (!state.automationLogs || !state.automationLogs.filter) {
+      return items;
+    }
+    return items.filter((entry) => automationLogMatchesFilter(entry));
+  }
+
   function formatAutomationTimestamp(entry) {
     if (!entry) return '';
     const ts = Number(entry.ts);
@@ -384,13 +404,17 @@ const state = {
   function renderAutomationLogs() {
     if (!automationLogList || !automationLogEmpty) return;
     const items = Array.isArray(state.automationLogs.items) ? state.automationLogs.items : [];
+    const filteredItems = getFilteredAutomationLogs(items);
     automationLogList.innerHTML = '';
-    if (!items.length) {
+    if (!filteredItems.length) {
       automationLogEmpty.hidden = false;
+      automationLogEmpty.textContent = items.length
+        ? 'No automation events match the selected filter.'
+        : 'No automation activity yet.';
     } else {
       automationLogEmpty.hidden = true;
       const fragment = document.createDocumentFragment();
-      items.forEach((entry) => {
+      filteredItems.forEach((entry) => {
         const kind = String(entry?.kind || 'automation');
         const li = document.createElement('li');
         li.className = 'automation-log-entry';
@@ -435,7 +459,11 @@ const state = {
       automationLogList.append(fragment);
     }
     if (automationLogCount) {
-      automationLogCount.textContent = String(items.length);
+      if (filteredItems.length === items.length) {
+        automationLogCount.textContent = String(filteredItems.length);
+      } else {
+        automationLogCount.textContent = `${filteredItems.length}/${items.length}`;
+      }
     }
   }
 
@@ -4182,6 +4210,15 @@ async function saveSettings() {
     if (automationLogRefreshBtn) {
       automationLogRefreshBtn.addEventListener('click', () => {
         void loadAutomationLogs({ force: true });
+      });
+    }
+    if (automationLogFilter) {
+      state.automationLogs.filter = automationLogFilter.value || 'all';
+      automationLogFilter.addEventListener('change', (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLSelectElement)) return;
+        state.automationLogs.filter = target.value || 'all';
+        renderAutomationLogs();
       });
     }
   }
