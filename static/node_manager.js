@@ -2180,10 +2180,6 @@ async function saveSettings() {
         // ignore
       }
       const nodes = Array.isArray(payload.nodes) ? payload.nodes : [];
-      if (nodes.length > 0) {
-        state.nodesDiscovering = false;
-        updateDiscoveryMessage();
-      }
       const stalled = nodes.reduce((count, node) => {
         if (!node || !node.id) return count;
         const stats = node.status || {};
@@ -2315,9 +2311,13 @@ function syncCards(nodes) {
       }
     });
     updateSnapshotButtons();
-    if (state.nodes.size > 0) {
+    const cardCount = cardsContainer ? cardsContainer.querySelectorAll('.fleet-card').length : 0;
+    if (cardCount > 0) {
       state.nodesDiscovering = false;
-      updateDiscoveryMessage();
+      if (nodeDiscoveryMessage && !nodeDiscoveryMessage.dataset.removed) {
+        nodeDiscoveryMessage.dataset.removed = '1';
+        nodeDiscoveryMessage.remove();
+      }
     }
   }
 
@@ -2330,8 +2330,8 @@ function syncCards(nodes) {
   }
 
   function updateDiscoveryMessage() {
-    if (!nodeDiscoveryMessage) return;
-    const cardCount = cardsContainer ? cardsContainer.children.length : 0;
+    if (!nodeDiscoveryMessage || nodeDiscoveryMessage.dataset.removed === '1') return;
+    const cardCount = cardsContainer ? cardsContainer.querySelectorAll('.fleet-card').length : 0;
     const show = state.nodesDiscovering && cardCount === 0;
     nodeDiscoveryMessage.hidden = !show;
   }
