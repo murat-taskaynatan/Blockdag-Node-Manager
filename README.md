@@ -78,6 +78,8 @@ BDAG_LOGIN_PASS=changeme
 
 Waitress concurrency is tunable through `/etc/blockdag-node-manager/node-manager.env` via `WAITRESS_THREADS`, `WAITRESS_BACKLOG`, and `WAITRESS_CONNECTION_LIMIT`, which default to `12`, `256`, and `0` (unlimited) so the proxy can hold more simultaneous connections without overflowing the queue.
 
+Liveness auto-recovery now seeds two env overrides on fresh installs: `BDAG_LIVENESS_RECOVER_COOLDOWN_SEC=240` to cap the waiting period between liveness interventions at four minutes, and `BDAG_LIVENESS_MAX_RESTARTS=3` so the guard escalates to a snapshot restore sooner when repeated restarts fail. Adjust those values in `node-manager.env` if your fleet needs a different cadence.
+
 The settings form also exposes a memory-pressure auto-restart: enable the toggle and enter a percent value (e.g., `90`) so the manager will restart every discovered node sequentially (60 s between restarts) when host memory usage climbs above that threshold. Use it as a safety valve when the OS starts to swap.
 
 The CPU temperature path also defaults to the shared-VM file (`/mnt/hgfs/vmshared/cpu_temp.txt`) via `BDAG_CPU_TEMP_PATH` and is only changed when you update the field inside the Settings tab—those edits are persisted in `config/settings.json`, so leave the dropdown blank if you want to keep the shared file in play.
