@@ -124,6 +124,14 @@ if ! sudo grep -q "^BDAG_CPU_TEMP_PATH=" "$ENV_FILE" 2>/dev/null; then
 BDAG_CPU_TEMP_PATH=/mnt/hgfs/vmshared/cpu_temp.txt
 EOF
 fi
+if ! sudo grep -q "^WAITRESS_THREADS=" "$ENV_FILE" 2>/dev/null; then
+  sudo tee -a "$ENV_FILE" >/dev/null <<'EOF'
+# Waitress tuning
+WAITRESS_THREADS=12
+WAITRESS_BACKLOG=256
+WAITRESS_CONNECTION_LIMIT=0
+EOF
+fi
 sudo chown "$SERVICE_USER":"$SERVICE_GROUP" "$ENV_FILE"
 sudo chmod 640 "$ENV_FILE"
 
@@ -164,8 +172,15 @@ fi
 
 HOST="${HOST:-0.0.0.0}"
 PORT="${PORT:-8081}"
+WAITRESS_THREADS="${WAITRESS_THREADS:-12}"
+WAITRESS_BACKLOG="${WAITRESS_BACKLOG:-256}"
+WAITRESS_CONNECTION_LIMIT="${WAITRESS_CONNECTION_LIMIT:-0}"
 cd "$INSTALL_DIR"
-exec "$VENV_BIN/waitress-serve" --listen="${HOST}:${PORT}" app:app
+ARGS=("--listen=${HOST}:${PORT}" "--threads=${WAITRESS_THREADS}" "--backlog=${WAITRESS_BACKLOG}")
+if [[ -n "$WAITRESS_CONNECTION_LIMIT" && "$WAITRESS_CONNECTION_LIMIT" != "0" ]]; then
+  ARGS+=("--connection-limit=${WAITRESS_CONNECTION_LIMIT}")
+fi
+exec "$VENV_BIN/waitress-serve" "${ARGS[@]}" app:app
 EOF
 sudo sed -i \
   -e "s|__ENV_FILE__|$ENV_FILE|g" \
