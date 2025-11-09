@@ -2352,7 +2352,7 @@ async function saveSettings() {
     const code = health.code;
     const healthDetail = health.detail;
     if (statusEl) {
-      statusEl.textContent = displayHealth;
+      statusEl.textContent = '';
       statusEl.parentElement.classList.remove('is-ok', 'is-warn');
       if (code === 'online') {
         statusEl.parentElement.classList.add('is-ok');
@@ -3078,10 +3078,6 @@ async function saveSettings() {
       if (nodeStatusEl) {
         nodeStatusEl.classList.toggle('is-ok', code === 'online');
         nodeStatusEl.classList.toggle('is-warn', code !== 'online');
-        const textEl = nodeStatusEl.querySelector('.status-text');
-        if (textEl) {
-          textEl.textContent = healthDetail || '';
-        }
       }
       if (summaryHealthChip) {
         summaryHealthChip.textContent = displayHealth || 'Status';
