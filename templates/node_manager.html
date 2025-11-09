@@ -73,6 +73,9 @@
   .setting-control select,
   .setting-control select,
   .setting-control input[type="number"]{padding:6px 10px;border:1px solid rgba(255,255,255,.15);border-radius:10px;background:rgba(255,255,255,.08);color:var(--text);font-size:12px;font-weight:600;box-sizing:border-box}
+  #settingAutoRestartHours,
+  #settingSnapshotMax,
+  #settingMemThreshold{width:90px}
   .setting-control select:focus,
   .setting-control input[type="number"]:focus{outline:none;border-color:rgba(255,255,255,.35);background:rgba(255,255,255,.12)}
   .overlay-chart-tile{width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:18px 22px;margin-top:8px}
@@ -99,9 +102,11 @@
   #settingSnapshotMax,
   #settingAutoRestartHours{width:52px;padding:6px 12px 6px 6px;border-radius:10px;border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.08);color:var(--text);font-size:13px;font-weight:600;text-align:right;margin-right:12px;box-sizing:border-box;transition:background .2s,border .2s,color .2s,opacity .2s}
   #settingSnapshotMax::-webkit-inner-spin-button,
-  #settingAutoRestartHours::-webkit-inner-spin-button{margin-left:4px;padding:0;transform:scale(.85)}
+  #settingAutoRestartHours::-webkit-inner-spin-button,
+  #settingMemThreshold::-webkit-inner-spin-button{margin-left:4px;padding:0;transform:scale(.85)}
   #settingSnapshotMax::-webkit-outer-spin-button,
-  #settingAutoRestartHours::-webkit-outer-spin-button{margin-left:4px;padding:0;transform:scale(.85)}
+  #settingAutoRestartHours::-webkit-outer-spin-button,
+  #settingMemThreshold::-webkit-outer-spin-button{margin-left:4px;padding:0;transform:scale(.85)}
   #settingSnapshotMax::-moz-focus-inner,
   #settingAutoRestartHours::-moz-focus-inner{border:0}
   #settingSnapshotMax:focus,
@@ -415,7 +420,7 @@
             <label class="setting-row">
               <div class="setting-text">
                 <span class="setting-title">Memory pressure restart</span>
-                <span class="setting-desc">Restart every node sequentially with 60s spacing whenever host memory usage exceeds the configured percent.</span>
+                <span class="setting-desc">Restart every node sequentially whenever memory usage climbs above that threshold. Use it as a safety valve before nodes start crashing.</span>
               </div>
               <div class="setting-control" data-tooltip-target="mem-restart-threshold">
                 <input
@@ -424,6 +429,7 @@
                   max="100"
                   step="1"
                   id="settingMemThreshold"
+                  class="setting-input"
                   name="auto_restart_mem_threshold"
                   data-setting-key="auto_restart_mem_threshold"
                   data-setting-type="number"
