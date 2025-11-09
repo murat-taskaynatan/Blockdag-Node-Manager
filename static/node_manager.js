@@ -260,8 +260,9 @@ const state = {
 
   if (logoutBtn) {
     logoutBtn.addEventListener('click', () => {
+      const logoutUrl = logoutBtn.dataset.logoutUrl || '/logout';
       logoutBtn.disabled = true;
-      fetch('/logout', {method: 'GET'})
+      fetch(logoutUrl, {method: 'GET'})
         .then(() => {
           location.reload();
         })

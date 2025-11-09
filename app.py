@@ -37,9 +37,27 @@ _log_level_name = (os.getenv("BDAG_LOG_LEVEL", "INFO") or "INFO").strip().upper(
 _log_level = getattr(logging, _log_level_name, logging.INFO)
 app.logger.setLevel(_log_level)
 
+def _parse_bool_env(value: Optional[str]) -> Optional[bool]:
+    if value is None:
+        return None
+    normalized = value.strip().lower()
+    if not normalized:
+        return None
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return None
+
+
 LOGIN_USER = os.getenv("BDAG_LOGIN_USER", "").strip()
 LOGIN_PASS = os.getenv("BDAG_LOGIN_PASS", "").strip()
-LOGIN_ENABLED = bool(LOGIN_USER and LOGIN_PASS)
+_login_override = _parse_bool_env(os.getenv("BDAG_LOGIN_ENABLED"))
+_default_login_enabled = bool(LOGIN_USER and LOGIN_PASS)
+if _login_override is None:
+    LOGIN_ENABLED = _default_login_enabled
+else:
+    LOGIN_ENABLED = _default_login_enabled and _login_override
 SESSION_SECRET = os.getenv("BDAG_SESSION_SECRET")
 if not SESSION_SECRET:
     SESSION_SECRET = os.urandom(32).hex()
@@ -48,7 +66,10 @@ app.secret_key = SESSION_SECRET
 
 @app.context_processor
 def inject_login_state():
-    return {"is_authenticated": bool(session.get("authenticated"))}
+    return {
+        "is_authenticated": bool(session.get("authenticated")),
+        "login_enabled": LOGIN_ENABLED,
+    }
 
 try:
     requests.packages.urllib3.disable_warnings()  # type: ignore[attr-defined]
@@ -440,7 +461,7 @@ DEFAULT_SETTINGS: Dict[str, object] = {
     "auto_snapshot_hours": 0,
     "display_wallet_balance": _coerce_bool(os.getenv("BDAG_WALLET_DISPLAY", "0"), False),
     "snapshot_max": SNAPSHOT_MAX_DEFAULT,
-    "cpu_temp_path": "",
+    "cpu_temp_path": "/mnt/hgfs/vmshared/cpu_temp.txt",
     "wallet_address": "",
     # Overclock preferences (persist UI selections)
     "overclock_data_path": "/home/node/blockdag",
@@ -495,6 +516,8 @@ def _apply_runtime_settings(settings: Dict[str, object]) -> None:
     path_value = str(settings.get("cpu_temp_path") or "").strip()
     if not path_value:
         path_value = os.getenv("BDAG_CPU_TEMP_PATH", "").strip()
+    if not path_value:
+        path_value = str(DEFAULT_SETTINGS.get("cpu_temp_path", "")).strip()
     _CUSTOM_TEMP_PATH = _normalize_path(path_value)
 
 

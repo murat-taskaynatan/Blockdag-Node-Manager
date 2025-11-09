@@ -109,9 +109,19 @@ if [[ ! -f "$ENV_FILE" ]]; then
 # BlockDAG Node Manager environment overrides
 HOST=$HOST_DEFAULT
 PORT=$PORT_DEFAULT
+# Remote login gate: set to 1 with credentials to require sign-in
+BDAG_LOGIN_ENABLED=0
+# BDAG_LOGIN_USER=
+# BDAG_LOGIN_PASS=
 # BDAG_RPC_BASE=http://127.0.0.1:18545
 # BDAG_RPC_USER=
 # BDAG_RPC_PASS=
+EOF
+fi
+if ! sudo grep -q "^BDAG_CPU_TEMP_PATH=" "$ENV_FILE" 2>/dev/null; then
+  sudo tee -a "$ENV_FILE" >/dev/null <<'EOF'
+# Default CPU temperature path (Settings tab updates this value)
+BDAG_CPU_TEMP_PATH=/mnt/hgfs/vmshared/cpu_temp.txt
 EOF
 fi
 sudo chown "$SERVICE_USER":"$SERVICE_GROUP" "$ENV_FILE"

@@ -43,13 +43,13 @@ curl -fsSL https://raw.githubusercontent.com/murat-taskaynatan/Blockdag-Node-Man
 
 Customize with the same environment variables (`REPO_REF`, `INSTALL_DIR`, etc.) as the local installer.
 
-### Updating `/opt` after tagging v1.4.7
+### Updating `/opt` after tagging v1.4.8
 
-Once the release is tagged and pushed (`git tag v1.4.7 && git push origin v1.4.7`), refresh the managed install:
+Once the release is tagged and pushed (`git tag v1.4.8 && git push origin v1.4.8`), refresh the managed install:
 
 ```bash
 git fetch --tags
-git checkout v1.4.7
+git checkout v1.4.8
 sudo ./install_node_manager.sh
 ```
 
@@ -57,7 +57,7 @@ Need to upgrade a host without cloning the repo first? Run:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/murat-taskaynatan/Blockdag-Node-Manager/main/install_nm_from_github.sh \
-  | sudo REPO_REF=v1.4.7 bash
+  | sudo REPO_REF=v1.4.8 bash
 ```
 
 ## 4. Customising the Install
@@ -99,6 +99,20 @@ Restart the service after changes:
 ```bash
 sudo systemctl restart blockdag-node-manager.service
 ```
+
+### Remote login toggle
+
+The installer now seeds `BDAG_LOGIN_ENABLED=0` so the login gate is off by default (matching the remote bootstrap experience). To require authentication, flip the flag and supply credentials:
+
+```
+BDAG_LOGIN_ENABLED=1
+BDAG_LOGIN_USER=manager
+BDAG_LOGIN_PASS=changeme
+```
+
+Leave `BDAG_LOGIN_ENABLED=0` or omit credentials to keep the UI fully open.
+
+The CPU temperature path is seeded to `/mnt/hgfs/vmshared/cpu_temp.txt` via `BDAG_CPU_TEMP_PATH` (see the env template above); change it in the Settings tab if you need another file, and that selection is saved back to `config/settings.json`.
 
 ## 6. Managing the Service
 
