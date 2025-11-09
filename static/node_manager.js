@@ -30,6 +30,7 @@ const state = {
       lastFetched: 0,
       filter: 'all',
     },
+    nodesDiscovering: false,
   };
 
   const cardsContainer = document.getElementById('fleetCards');
@@ -124,6 +125,7 @@ const state = {
   const ocOverlayChartEmpty = document.getElementById('ocOverlayChartEmpty');
   let ocOverlayChart = null;
   const logoutBtn = document.getElementById('btnLogout');
+  const nodeDiscoveryMessage = document.getElementById('nodeDiscoveryMessage');
   // Allow init() to push a metric once auto-verify returns
   let ocAppendMetric = null;
   function drawFallbackChart(labels, iopsData, p50Data) {
@@ -2316,6 +2318,13 @@ async function saveSettings() {
     if (emptyStateCard) {
       emptyStateCard.style.display = hasCards ? 'none' : 'block';
     }
+    updateDiscoveryMessage();
+  }
+
+  function updateDiscoveryMessage() {
+    if (!nodeDiscoveryMessage) return;
+    const show = state.nodesDiscovering && state.nodes.size === 0;
+    nodeDiscoveryMessage.hidden = !show;
   }
 
   function sortNodes(list) {
@@ -3227,6 +3236,8 @@ async function saveSettings() {
     const auto = options.auto === true;
     const btn = document.getElementById('btnDiscoverNodes');
     if (btn) btn.disabled = true;
+    state.nodesDiscovering = true;
+    updateDiscoveryMessage();
     const maxPasses = 8;
     let pass = 0;
     try {
@@ -3257,6 +3268,8 @@ async function saveSettings() {
       console.error('[fleet] discovery failed', err);
     } finally {
       if (btn) btn.disabled = false;
+      state.nodesDiscovering = false;
+      updateDiscoveryMessage();
     }
   }
 
