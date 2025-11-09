@@ -12,6 +12,7 @@ import pwd
 import string
 import shlex
 import hmac
+import itertools
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_UP, getcontext
 from collections import OrderedDict, deque
@@ -200,6 +201,10 @@ _MEMORY_RESTART_ACTIVE = False
 _OVERCLOCK_LOGS: deque[str] = deque(maxlen=500)
 _OVERCLOCK_LOGS_LOCK = threading.Lock()
 
+_AUTOMATION_LOG: deque[Dict[str, object]] = deque(maxlen=200)
+_AUTOMATION_LOG_LOCK = threading.Lock()
+_AUTOMATION_SEQ = itertools.count(1)
+
 _DOCKER_HEALTH_LOCK = threading.Lock()
 _DOCKER_HEALTH: Dict[str, object] = {
     "available": bool(DOCKER_BIN),
@@ -219,6 +224,47 @@ def _oc_log(message: str) -> None:
         line = message
     with _OVERCLOCK_LOGS_LOCK:
         _OVERCLOCK_LOGS.append(line)
+
+
+def _automation_event(
+    kind: str,
+    message: str,
+    *,
+    node: Optional[str] = None,
+    container: Optional[str] = None,
+    status: Optional[str] = None,
+    metadata: Optional[Dict[str, object]] = None,
+) -> None:
+    timestamp = time.time()
+    ts_iso = datetime.fromtimestamp(timestamp, timezone.utc).isoformat()
+    meta_copy: Dict[str, object] = {}
+    if isinstance(metadata, dict):
+        meta_copy = {k: v for k, v in metadata.items() if not isinstance(v, (set, bytes))}
+    entry = {
+        "id": next(_AUTOMATION_SEQ),
+        "ts": timestamp,
+        "ts_iso": ts_iso,
+        "kind": kind,
+        "message": str(message or "").strip() or kind,
+        "node": node,
+        "container": container,
+        "status": status,
+        "meta": meta_copy,
+    }
+    with _AUTOMATION_LOG_LOCK:
+        _AUTOMATION_LOG.appendleft(entry)
+
+
+def _automation_log_snapshot(limit: Optional[int] = None) -> List[Dict[str, object]]:
+    with _AUTOMATION_LOG_LOCK:
+        entries = list(_AUTOMATION_LOG)
+    if limit is not None:
+        try:
+            safe_limit = max(1, int(limit))
+        except Exception:
+            safe_limit = 50
+        entries = entries[:safe_limit]
+    return [dict(item) for item in entries]
 
 
 def _service_username() -> str:
@@ -1909,6 +1955,26 @@ def _auto_snapshot_mark_result(status: str) -> None:
                 _AUTO_SNAPSHOT_STATE["next_run"] = now + max(AUTO_SNAPSHOT_RETRY_SEC, 120.0)
             else:
                 _AUTO_SNAPSHOT_STATE["next_run"] = 0.0
+    job_snapshot = _snapshot_job_snapshot()
+    details = job_snapshot.get("details") if isinstance(job_snapshot, dict) else {}
+    if not isinstance(details, dict):
+        details = {}
+    node_id = details.get("node")
+    container = details.get("container")
+    label = details.get("label") or node_id
+    message = job_snapshot.get("message") if isinstance(job_snapshot, dict) else None
+    summary = message or (f"Auto snapshot {status}" if label else "Auto snapshot update")
+    _automation_event(
+        "auto_snapshot",
+        summary,
+        node=node_id,
+        container=container,
+        status=status,
+        metadata={
+            "node_label": label,
+            "path": details.get("path"),
+        },
+    )
     _AUTO_SNAPSHOT_EVENT.set()
 
 
@@ -1979,12 +2045,35 @@ def _auto_snapshot_worker() -> None:
                     _AUTO_SNAPSHOT_STATE["next_run"] = now + max(60.0, min(interval, 300.0))
                 continue
             best_node = _select_best_snapshot_node()
-            ok, message, _ = _start_snapshot_job(best_node, mode="auto_snapshot", trigger="auto", quiesce_overlay=True)
+            ok, message, job = _start_snapshot_job(best_node, mode="auto_snapshot", trigger="auto", quiesce_overlay=True)
             with _AUTO_SNAPSHOT_LOCK:
                 if ok:
                     _AUTO_SNAPSHOT_STATE["next_run"] = now + max(interval, AUTO_SNAPSHOT_MIN_INTERVAL_SEC)
                 else:
                     _AUTO_SNAPSHOT_STATE["next_run"] = now + max(AUTO_SNAPSHOT_RETRY_SEC, 120.0)
+            job_details = job.get("details") if isinstance(job, dict) else {}
+            if not isinstance(job_details, dict):
+                job_details = {}
+            node_label = (job_details or {}).get("label") or (job_details or {}).get("node")
+            container = (job_details or {}).get("container")
+            if ok:
+                _automation_event(
+                    "auto_snapshot",
+                    f"Auto snapshot started{f' for {node_label}' if node_label else ''}",
+                    node=job_details.get("node") if isinstance(job_details, dict) else best_node,
+                    container=container,
+                    status="started",
+                    metadata={"message": message, "node_label": node_label},
+                )
+            else:
+                _automation_event(
+                    "auto_snapshot",
+                    "Auto snapshot skipped",
+                    node=job_details.get("node") if isinstance(job_details, dict) else best_node,
+                    container=container,
+                    status="skipped",
+                    metadata={"message": message, "node_label": node_label},
+                )
             try:
                 if ok:
                     app.logger.info("Auto snapshot started (interval %.0fs).", interval)
@@ -2219,6 +2308,16 @@ def _run_snapshot_job(details: Dict[str, object]) -> None:
             )
         if details.get("trigger") == "auto":
             _auto_snapshot_mark_result(status)
+        trigger_label = (details or {}).get("trigger")
+        if trigger_label == "liveness":
+            _automation_event(
+                "chain_restore",
+                message,
+                node=details.get("node"),
+                container=details.get("container"),
+                status=status,
+                metadata={"trigger": trigger_label},
+            )
 
 
 def _snapshot_post_restore_sanity(data_dir: Optional[Path]) -> List[str]:
@@ -2587,7 +2686,7 @@ def _run_restore_job(details: Dict[str, object]) -> None:
             )
 
 
-def _start_restore_job(node_id: Optional[str]) -> Tuple[bool, str, Dict[str, object]]:
+def _start_restore_job(node_id: Optional[str], *, trigger: Optional[str] = None) -> Tuple[bool, str, Dict[str, object]]:
     details: Dict[str, object] = {}
     target_ctx: Optional["NodeContext"]
     preflight_warnings: List[str] = []
@@ -2630,6 +2729,8 @@ def _start_restore_job(node_id: Optional[str]) -> Tuple[bool, str, Dict[str, obj
     if not snapshot_path or not snapshot_path.exists():
         return False, "No snapshots available to restore.", _snapshot_job_snapshot()
     details["snapshot"] = snapshot_path.name
+    if trigger:
+        details["trigger"] = trigger
     details["mode"] = "restore"
     if preflight_warnings:
         details["preflight_warnings"] = preflight_warnings
@@ -3253,7 +3354,7 @@ def _get_recent_logs(limit: int, container: str) -> List[str]:
     return list(lines)
 
 
-def _restart_container_for_policy(ctx: "NodeContext", reason: str) -> bool:
+def _restart_container_for_policy(ctx: "NodeContext", reason: str, *, source: str = "policy") -> bool:
     if not ctx or not ctx.container:
         return False
     result = docker_action(ctx.container, "restart")
@@ -3267,6 +3368,14 @@ def _restart_container_for_policy(ctx: "NodeContext", reason: str) -> bool:
             )
         except Exception:
             pass
+        _automation_event(
+            "auto_restart",
+            f"Auto restart triggered via {source}",
+            node=ctx.id,
+            container=ctx.container,
+            status="success",
+            metadata={"reason": reason, "source": source},
+        )
         return True
     error_message = result.get("error") or result.get("output") or "unknown error"
     try:
@@ -3278,6 +3387,14 @@ def _restart_container_for_policy(ctx: "NodeContext", reason: str) -> bool:
         )
     except Exception:
         pass
+    _automation_event(
+        "auto_restart",
+        f"Auto restart failed via {source}",
+        node=getattr(ctx, "id", None),
+        container=getattr(ctx, "container", None),
+        status="failed",
+        metadata={"reason": reason, "source": source, "error": error_message},
+    )
     return False
 
 
@@ -3285,12 +3402,20 @@ def _trigger_restore_for_context(ctx: "NodeContext", reason: str) -> bool:
     if not ctx or not ctx.id:
         return False
     try:
-        ok, message, _ = _start_restore_job(ctx.id)
+        ok, message, job = _start_restore_job(ctx.id, trigger="liveness")
     except Exception as exc:
         try:
             app.logger.warning("Failed to trigger restore for %s: %s", ctx.id, exc)
         except Exception:
             pass
+        _automation_event(
+            "chain_restore",
+            f"Chain data recovery failed to start for {ctx.id}",
+            node=ctx.id,
+            container=ctx.container or None,
+            status="failed",
+            metadata={"reason": reason, "error": str(exc)},
+        )
         return False
     if ok:
         try:
@@ -3302,6 +3427,15 @@ def _trigger_restore_for_context(ctx: "NodeContext", reason: str) -> bool:
             )
         except Exception:
             pass
+        details = job.get("details") if isinstance(job, dict) else {}
+        _automation_event(
+            "chain_restore",
+            f"Chain data recovery started for {ctx.id}",
+            node=ctx.id,
+            container=ctx.container or (details.get("container") if isinstance(details, dict) else None),
+            status="started",
+            metadata={"reason": reason},
+        )
         return True
     try:
         app.logger.warning(
@@ -3312,6 +3446,14 @@ def _trigger_restore_for_context(ctx: "NodeContext", reason: str) -> bool:
         )
     except Exception:
         pass
+    _automation_event(
+        "chain_restore",
+        f"Chain data recovery failed for {ctx.id}",
+        node=ctx.id,
+        container=ctx.container or None,
+        status="failed",
+        metadata={"reason": reason, "error": message},
+    )
     return False
 
 
@@ -3402,7 +3544,7 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
                 with _LOG_POLICY_LOCK:
                     state["last_liveness"] = now
                 if liveness_restarts < LIVENESS_MAX_RESTARTS:
-                    if _restart_container_for_policy(ctx, stalled_reason):
+                    if _restart_container_for_policy(ctx, stalled_reason, source="liveness"):
                         with _LOG_POLICY_LOCK:
                             state["last_restart"] = now
                             state["error_streak"] = 0
@@ -3435,7 +3577,7 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
         last_restart = float(state.get("last_restart", 0.0))
     if now - last_restart < AUTO_RESTART_INTERVAL_SEC:
         return
-    if _restart_container_for_policy(ctx, reason):
+    if _restart_container_for_policy(ctx, reason, source="error_monitor"):
         with _LOG_POLICY_LOCK:
             state["last_restart"] = now
             state["error_streak"] = 0
@@ -4255,6 +4397,17 @@ def api_node_manager_logs():
             "timestamp": time.time(),
         }
     )
+
+
+@app.route("/api/node-manager/automation/logs")
+def api_automation_logs():
+    limit_param = request.args.get("limit")
+    try:
+        limit = max(1, min(int(limit_param), 200)) if limit_param is not None else 50
+    except Exception:
+        limit = 50
+    logs = _automation_log_snapshot(limit)
+    return jsonify({"logs": logs, "updated": time.time()})
 
 
 
@@ -5757,7 +5910,7 @@ def api_snapshots_scan():
 def api_snapshots_restore():
     body = request.get_json(silent=True) or {}
     node_id = body.get("node")
-    ok, message, job = _start_restore_job(str(node_id) if node_id else None)
+    ok, message, job = _start_restore_job(str(node_id) if node_id else None, trigger="api")
     if not ok:
         status = 409 if job and job.get("active") else 400
         return jsonify({"ok": False, "error": message, "job": job}), status
@@ -5847,10 +6000,34 @@ def _restart_all_nodes_sequentially(cooldown_sec: float) -> None:
             result = docker_action(container, "restart")
             if result.get("ok"):
                 app.logger.info("restarted %s via memory trigger", container)
+                _automation_event(
+                    "auto_restart",
+                    "Memory pressure restart issued",
+                    node=ctx.id,
+                    container=container,
+                    status="success",
+                    metadata={"source": "memory", "reason": "memory usage threshold exceeded"},
+                )
             else:
                 app.logger.warning("memory trigger restart failed for %s: %s", container, result.get("error"))
+                _automation_event(
+                    "auto_restart",
+                    "Memory pressure restart failed",
+                    node=ctx.id,
+                    container=container,
+                    status="failed",
+                    metadata={"source": "memory", "error": result.get("error")},
+                )
         except Exception as exc:
             app.logger.exception("memory trigger restart error for %s: %s", container, exc)
+            _automation_event(
+                "auto_restart",
+                "Memory pressure restart error",
+                node=ctx.id,
+                container=container,
+                status="failed",
+                metadata={"source": "memory", "error": str(exc)},
+            )
         time.sleep(cooldown_sec)
 
 

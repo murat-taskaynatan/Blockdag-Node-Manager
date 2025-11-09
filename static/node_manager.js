@@ -22,6 +22,13 @@ const state = {
     snapshotStatus: { text: '', level: '', manual: false },
     snapshotCountdown: null,
     overlayStatus: { items: [], byNode: new Map() },
+    automationLogs: {
+      items: [],
+      expanded: false,
+      loading: false,
+      error: null,
+      lastFetched: 0,
+    },
   };
 
   const cardsContainer = document.getElementById('fleetCards');
@@ -62,6 +69,14 @@ const state = {
   const snapshotEmptyState = document.getElementById('snapshotEmptyState');
   const snapshotRefreshBtn = document.getElementById('btnRefreshSnapshots');
   const snapshotScanBtn = document.getElementById('btnScanSnapshots');
+  const automationLogPanel = document.getElementById('automationLogPanel');
+  const automationLogToggle = document.getElementById('automationLogToggle');
+  const automationLogBody = document.getElementById('automationLogBody');
+  const automationLogList = document.getElementById('automationLogList');
+  const automationLogEmpty = document.getElementById('automationLogEmpty');
+  const automationLogStatus = document.getElementById('automationLogStatus');
+  const automationLogRefreshBtn = document.getElementById('automationLogRefresh');
+  const automationLogCount = document.getElementById('automationLogCount');
   const walletAddressValue = document.getElementById('walletAddressValue');
   const walletBalanceValue = document.getElementById('walletBalanceValue');
   const walletTotalValue = document.getElementById('walletTotalValue');
@@ -81,6 +96,9 @@ const state = {
   let ocLogPollTimer = null;
   const SYSTEM_POLL_INTERVAL_MS = 10000;
   let systemPollTimer = null;
+  const AUTOMATION_LOG_LIMIT = 100;
+  const AUTOMATION_LOG_POLL_MS = 30000;
+  let automationLogTimer = null;
   const ocChartPane = document.getElementById('overclockChartPane');
   const ocManualPane = document.getElementById('overclockManualPane');
   const ocManualContent = document.getElementById('overclockManualContent');
@@ -297,6 +315,165 @@ const state = {
       return fmtDateTime.format(date);
     } catch (_) {
       return String(value);
+    }
+  }
+
+  const automationKindLabels = {
+    auto_restart: 'Auto Restart',
+    chain_restore: 'Chain Recovery',
+    auto_snapshot: 'Auto Snapshot',
+  };
+
+  function automationKindLabel(kind) {
+    if (!kind) return 'Automation';
+    return automationKindLabels[kind] || 'Automation';
+  }
+
+  function automationStatusLabel(status) {
+    if (!status) return null;
+    const mapping = {
+      started: 'Started',
+      success: 'Success',
+      failed: 'Failed',
+      completed: 'Completed',
+      skipped: 'Skipped',
+      error: 'Error',
+    };
+    return mapping[status] || status;
+  }
+
+  function formatAutomationTimestamp(entry) {
+    if (!entry) return '';
+    const ts = Number(entry.ts);
+    if (Number.isFinite(ts)) {
+      return fmtShortDateTime.format(new Date(ts * 1000));
+    }
+    if (entry.ts_iso) {
+      const date = new Date(entry.ts_iso);
+      if (!Number.isNaN(Number(date))) {
+        return fmtShortDateTime.format(date);
+      }
+    }
+    return '';
+  }
+
+  function updateAutomationStatus(text, options = {}) {
+    if (!automationLogStatus) return;
+    automationLogStatus.textContent = text || '';
+    automationLogStatus.classList.toggle('is-error', !!options.error);
+  }
+
+  function renderAutomationLogs() {
+    if (!automationLogList || !automationLogEmpty) return;
+    const items = Array.isArray(state.automationLogs.items) ? state.automationLogs.items : [];
+    automationLogList.innerHTML = '';
+    if (!items.length) {
+      automationLogEmpty.hidden = false;
+    } else {
+      automationLogEmpty.hidden = true;
+      const fragment = document.createDocumentFragment();
+      items.forEach((entry) => {
+        const kind = String(entry?.kind || 'automation');
+        const li = document.createElement('li');
+        li.className = 'automation-log-entry';
+
+        const header = document.createElement('div');
+        header.className = 'automation-log-entry__header';
+        const kindChip = document.createElement('span');
+        kindChip.className = `automation-log-entry__kind automation-log-entry__kind--${kind}`;
+        kindChip.textContent = automationKindLabel(kind);
+        const timeLabel = document.createElement('span');
+        timeLabel.textContent = formatAutomationTimestamp(entry);
+        header.append(kindChip, timeLabel);
+
+        const title = document.createElement('div');
+        title.className = 'automation-log-entry__title';
+        title.textContent = entry?.message || automationKindLabel(kind);
+
+        const details = [];
+        if (entry?.node) {
+          details.push(`Node ${entry.node}`);
+        }
+        if (entry?.meta && typeof entry.meta.reason === 'string' && entry.meta.reason.trim()) {
+          details.push(entry.meta.reason.trim());
+        }
+        const statusLabel = automationStatusLabel(entry?.status);
+        if (statusLabel) {
+          details.push(statusLabel);
+        }
+        if (entry?.meta && typeof entry.meta.path === 'string') {
+          details.push(entry.meta.path);
+        }
+
+        li.append(header, title);
+        if (details.length) {
+          const detail = document.createElement('div');
+          detail.className = 'automation-log-entry__detail';
+          detail.textContent = details.join(' • ');
+          li.append(detail);
+        }
+        fragment.append(li);
+      });
+      automationLogList.append(fragment);
+    }
+    if (automationLogCount) {
+      automationLogCount.textContent = String(items.length);
+    }
+  }
+
+  function stopAutomationLogPolling() {
+    if (automationLogTimer) {
+      clearInterval(automationLogTimer);
+      automationLogTimer = null;
+    }
+  }
+
+  function startAutomationLogPolling() {
+    if (!state.automationLogs.expanded) return;
+    stopAutomationLogPolling();
+    automationLogTimer = window.setInterval(() => {
+      void loadAutomationLogs({ silent: true });
+    }, AUTOMATION_LOG_POLL_MS);
+  }
+
+  async function loadAutomationLogs(options = {}) {
+    if (!automationLogPanel) return;
+    const { force = false, silent = false } = options;
+    if (state.automationLogs.loading && !force) return;
+    state.automationLogs.loading = true;
+    if (!silent) {
+      updateAutomationStatus('Loading…');
+    }
+    try {
+      const res = await fetch(`/api/node-manager/automation/logs?limit=${AUTOMATION_LOG_LIMIT}`, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const payload = await res.json();
+      state.automationLogs.items = Array.isArray(payload.logs) ? payload.logs : [];
+      state.automationLogs.lastFetched = Date.now();
+      state.automationLogs.error = null;
+      renderAutomationLogs();
+      const updatedLabel = fmtTime.format(new Date(state.automationLogs.lastFetched));
+      updateAutomationStatus(`Updated ${updatedLabel}`);
+    } catch (err) {
+      state.automationLogs.error = err;
+      updateAutomationStatus('Failed to load logs', { error: true });
+    } finally {
+      state.automationLogs.loading = false;
+    }
+  }
+
+  function setAutomationLogsExpanded(expanded) {
+    if (!automationLogBody || !automationLogToggle) return;
+    state.automationLogs.expanded = expanded;
+    automationLogBody.hidden = !expanded;
+    automationLogToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    if (expanded) {
+      if (!state.automationLogs.items.length) {
+        void loadAutomationLogs({ force: true });
+      }
+      startAutomationLogPolling();
+    } else {
+      stopAutomationLogPolling();
     }
   }
 
@@ -1723,6 +1900,13 @@ function switchSummaryTab(target) {
   }
   if (activeView === 'snapshots' && !state.snapshotsLoaded) {
     void loadSnapshots();
+  }
+  if (activeView === 'settings') {
+    if (state.automationLogs.expanded) {
+      startAutomationLogPolling();
+    }
+  } else {
+    stopAutomationLogPolling();
   }
 }
 
@@ -3952,6 +4136,16 @@ async function saveSettings() {
         }
       });
     }
+    if (automationLogToggle) {
+      automationLogToggle.addEventListener('click', () => {
+        setAutomationLogsExpanded(!state.automationLogs.expanded);
+      });
+    }
+    if (automationLogRefreshBtn) {
+      automationLogRefreshBtn.addEventListener('click', () => {
+        void loadAutomationLogs({ force: true });
+      });
+    }
   }
 
   async function init() {
@@ -4009,6 +4203,12 @@ async function saveSettings() {
         void loadSnapshots({ silent: true });
       }
       void loadSystem();
+      if (state.automationLogs.expanded) {
+        void loadAutomationLogs({ force: true, silent: true });
+        startAutomationLogPolling();
+      }
+    } else {
+      stopAutomationLogPolling();
     }
   });
 
