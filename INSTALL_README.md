@@ -100,6 +100,8 @@ Restart the service after changes:
 sudo systemctl restart blockdag-node-manager.service
 ```
 
+Tweak Waitress concurrency with `WAITRESS_THREADS`, `WAITRESS_BACKLOG`, and `WAITRESS_CONNECTION_LIMIT` in the same env file (defaults are 12 threads, 256 backlog slots, and no connection cap).
+
 ### Remote login toggle
 
 The installer now seeds `BDAG_LOGIN_ENABLED=0` so the login gate is off by default (matching the remote bootstrap experience). To require authentication, flip the flag and supply credentials:

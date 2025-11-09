@@ -76,6 +76,8 @@ BDAG_LOGIN_PASS=changeme
 
 `BDAG_LOGIN_ENABLED=0` or missing credentials keeps the login page hidden, which matches the experience after a clean remote install.
 
+Waitress concurrency is tunable through `/etc/blockdag-node-manager/node-manager.env` via `WAITRESS_THREADS`, `WAITRESS_BACKLOG`, and `WAITRESS_CONNECTION_LIMIT`, which default to `12`, `256`, and `0` (unlimited) so the proxy can hold more simultaneous connections without overflowing the queue.
+
 The CPU temperature path also defaults to the shared-VM file (`/mnt/hgfs/vmshared/cpu_temp.txt`) via `BDAG_CPU_TEMP_PATH` and is only changed when you update the field inside the Settings tab—those edits are persisted in `config/settings.json`, so leave the dropdown blank if you want to keep the shared file in play.
 
 ## Production Install
