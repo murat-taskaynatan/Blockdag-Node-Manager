@@ -111,9 +111,14 @@
   .automation-log-toggle[aria-expanded="true"] .chevron{transform:rotate(180deg)}
   .automation-log-count{font-size:12px;color:var(--muted);background:rgba(255,255,255,.1);padding:2px 10px;border-radius:999px;margin-left:8px}
   .automation-log-body{border-top:1px solid rgba(255,255,255,.08);padding:16px;display:flex;flex-direction:column;gap:14px}
+  .automation-log-body[hidden]{display:none}
   .automation-log-controls{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
   .automation-log-status{font-size:12px;color:var(--muted)}
   .automation-log-status.is-error{color:var(--bad)}
+  .automation-log-filter{display:flex;align-items:center;gap:6px}
+  .automation-log-filter-label{font-size:12px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+  .automation-log-filter select{border:1px solid rgba(255,255,255,.15);background:rgba(11,16,32,.85);color:var(--text);border-radius:10px;padding:6px 10px;font-size:12px;font-weight:600;letter-spacing:.02em;box-sizing:border-box;min-width:150px}
+  .automation-log-filter select:focus{outline:none;border-color:rgba(255,255,255,.35);background:rgba(255,255,255,.12)}
   .automation-log-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px;max-height:260px;overflow-y:auto;padding-right:6px;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.16) transparent}
   .automation-log-list::-webkit-scrollbar{width:8px}
   .automation-log-list::-webkit-scrollbar-track{background:transparent}
@@ -554,6 +559,17 @@
                 <span class="automation-log-status" id="automationLogStatus">No events yet.</span>
                 <div class="automation-log-actions">
                   <button type="button" class="btn btn--ghost" id="automationLogRefresh">Refresh</button>
+                </div>
+                <div class="automation-log-filter">
+                  <label>
+                    <span class="automation-log-filter-label">Event</span>
+                    <select id="automationLogFilter">
+                      <option value="all">All events</option>
+                      <option value="auto_restart">Auto Restart</option>
+                      <option value="chain_restore">Chain Recovery</option>
+                      <option value="auto_snapshot">Auto Snapshot</option>
+                    </select>
+                  </label>
                 </div>
               </div>
               <div class="automation-log-empty" id="automationLogEmpty">No automation activity yet.</div>
