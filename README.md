@@ -118,7 +118,7 @@ To update a remote host directly from GitHub, point the bootstrap script at the 
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/murat-taskaynatan/Blockdag-Node-Manager/main/install_nm_from_github.sh \
-| sudo REPO_REF=v1.4.8 bash
+| sudo REPO_REF=v1.4.9 bash
 ```
 
 ## Uninstall
