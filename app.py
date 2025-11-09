@@ -4203,7 +4203,11 @@ def api_node_manager_nodes():
     nodes_payload = []
     settings = get_settings()
     for ctx in NODES.values():
-        ctx.sample()
+        if ctx.last_metrics is None:
+            try:
+                ctx.sample(force=True)
+            except Exception:
+                pass
         _apply_node_policies(ctx, settings)
         nodes_payload.append(
             {
