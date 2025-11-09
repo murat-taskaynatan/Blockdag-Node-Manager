@@ -79,6 +79,7 @@
   #settingMemThreshold{width:90px}
   #settingMemThreshold{margin-left:0}
   .mem-pressure-control{width:119.97px;height:28.35px}
+  .mem-field-prefix{margin-right:4px;font-size:14px;font-weight:700}
   .setting-control select:focus,
   .setting-control input[type="number"]:focus{outline:none;border-color:rgba(255,255,255,.35);background:rgba(255,255,255,.12)}
   .overlay-chart-tile{width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:18px 22px;margin-top:8px}
@@ -425,9 +426,10 @@
             <label class="setting-row">
               <div class="setting-text">
                 <span class="setting-title">Memory pressure restart</span>
-                <span class="setting-desc">Restart every node sequentially whenever memory usage climbs above that threshold. Use it as a safety valve before nodes start crashing.</span>
+                <span class="setting-desc">Restart every node sequentially whenever memory usage climbs above that threshold percentage. Use it as a safety valve before nodes start crashing.</span>
               </div>
               <div class="setting-control mem-pressure-control" data-tooltip-target="mem-restart-threshold">
+                <span class="mem-field-prefix"><strong>%</strong></span>
                 <input
                   type="number"
                   min="0"
@@ -454,7 +456,7 @@
             <label class="setting-row">
               <div class="setting-text">
                 <span class="setting-title">Auto-Snapshot</span>
-                <span class="setting-desc">Create node snapshots automatically on a fixed interval.</span>
+                <span class="setting-desc">Create node snapshots automatically on a fixed interval. (Hours)</span>
               </div>
               <div class="setting-control" data-tooltip-target="auto-snapshot-hours">
                 <input type="number" min="0" step="1" id="settingAutoSnapshotHours" name="auto_snapshot_hours" data-setting-key="auto_snapshot_hours" data-setting-type="number" title="Adjust the interval between automatic snapshots.">
