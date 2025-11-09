@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.4.9 - 2025-11-09
+
+### Enhancements
+- Memory-pressure settings now show a bold `%` prefix, matching toggle sizing, and descriptions that call out the threshold percentage.
+- The version badge, installer defaults, and docs now point at `v1.4.9`, keeping `/opt/blockdag-node-manager` and the remote bootstrap helpers aligned with the latest release artifacts.
+
 ## v1.4.8 - 2025-11-08
 
 ### Enhancements
