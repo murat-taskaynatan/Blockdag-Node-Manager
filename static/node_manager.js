@@ -2331,8 +2331,7 @@ function syncCards(nodes) {
 
   function updateDiscoveryMessage() {
     if (!nodeDiscoveryMessage) return;
-    const hasCards = cardsContainer ? cardsContainer.children.length > 0 : false;
-    const show = state.nodesDiscovering && !hasCards;
+    const show = state.nodesDiscovering && state.nodes.size === 0;
     nodeDiscoveryMessage.hidden = !show;
   }
 
