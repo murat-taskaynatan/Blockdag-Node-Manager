@@ -32,11 +32,12 @@
   .summary-pane[hidden]{display:none}
   .node-discovery-message{margin-bottom:16px;padding:14px 16px;border-radius:12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);font-size:13px;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;text-align:center}
   .node-discovery-message strong{font-size:14px}
-  .node-discovery-text::after{content:'…';animation:nodeEllipsis 1.4s infinite steps(4,start)}
+  .node-discovery-text{position:relative;padding:0 4px}
+  .node-discovery-text::after{content:'';position:absolute;inset:0;border-radius:6px;background:linear-gradient(120deg,rgba(68,242,168,.3),rgba(255,255,255,.2),rgba(68,242,168,.3));opacity:0;animation:nodeHighlight 1.8s infinite}
   .node-discovery-spinner{width:18px;height:18px;border:2px solid rgba(255,255,255,.3);border-top-color:var(--muted);border-radius:50%;animation:nodeSpinner 1s linear infinite}
   .node-discovery-subtext{width:100%;display:block;font-size:13px;color:var(--muted)}
   @keyframes nodeSpinner{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
-  @keyframes nodeEllipsis{0%{content:' '}25%{content:'.'}50%{content:'..'}75%{content:'...'}100%{content:' '}}
+  @keyframes nodeHighlight{0%{opacity:0;transform:translateX(-120%)}40%{opacity:.85;transform:translateX(0)}80%{opacity:0;transform:translateX(120%)}100%{opacity:0;transform:translateX(120%)}}
   .system-grid{display:grid;gap:12px;margin-top:12px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
   .system-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:6px;min-height:120px}
   .system-card .label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
