@@ -58,6 +58,38 @@ cleanup() {
   fi
 }
 
+ensure_nginx_rate_limit() {
+  local site_conf="/etc/nginx/sites-enabled/node_manager"
+  if [[ ! -f "$site_conf" ]]; then
+    return
+  fi
+  if grep -q "node_mgr_limit" "$site_conf"; then
+    return
+  fi
+  sudo python3 <<'PY'
+from pathlib import Path
+conf = Path("/etc/nginx/sites-enabled/node_manager")
+try:
+    text = conf.read_text()
+except FileNotFoundError:
+    raise SystemExit("node_manager site config missing")
+if "limit_req_zone $binary_remote_addr zone=node_mgr_limit" not in text:
+    text = text.replace(
+        "upstream node_manager_backend {",
+        "limit_req_zone $binary_remote_addr zone=node_mgr_limit:10m rate=10r/s;\n\nupstream node_manager_backend {",
+        1,
+    )
+if "limit_req zone=node_mgr_limit" not in text:
+    text = text.replace(
+        "location / {",
+        "location / {\n        limit_req zone=node_mgr_limit burst=20 nodelay;\n",
+        1,
+    )
+conf.write_text(text)
+PY
+  sudo nginx -t >/dev/null && sudo systemctl reload nginx >/dev/null
+}
+
 if [[ ! -f "$SOURCE_DIR/app.py" ]]; then
   need_cmd git
   TEMP_DIR="$(mktemp -d)"
@@ -238,6 +270,8 @@ BlockDAG Node Manager installation complete.
   - Logs: journalctl -u $SERVICE_NAME -f
 
 EOF
+
+ensure_nginx_rate_limit
 
 echo "[10/9] Restarting $SERVICE_NAME to load the new install"
 sudo systemctl restart "$SERVICE_NAME"

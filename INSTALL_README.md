@@ -42,6 +42,7 @@ curl -fsSL https://raw.githubusercontent.com/murat-taskaynatan/Blockdag-Node-Man
 ```
 
 Customize with the same environment variables (`REPO_REF`, `INSTALL_DIR`, etc.) as the local installer.
+The fetch-and-install helper also seeds the Node Manager nginx vhost with the built-in rate limit so new installations throttle abusive probes automatically.
 
 ### Updating `/opt` after tagging v1.4.9
 
