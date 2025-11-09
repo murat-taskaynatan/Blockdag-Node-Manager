@@ -74,10 +74,12 @@
   .setting-control select,
   .setting-control input[type="number"]{padding:6px 10px;border:1px solid rgba(255,255,255,.15);border-radius:10px;background:rgba(255,255,255,.08);color:var(--text);font-size:12px;font-weight:600;box-sizing:border-box}
   .setting-control input[type="number"]:disabled{background:rgba(255,255,255,.03);color:rgba(255,255,255,.55);border-color:rgba(255,255,255,.08);pointer-events:none}
+  .setting-control .input-with-prefix{position:relative;display:inline-flex;align-items:center}
+  .setting-control .input-with-prefix::before{content:'%';position:absolute;left:10px;color:var(--muted);font-size:12px}
+  .setting-control .input-with-prefix input{padding-left:20px}
   #settingAutoRestartHours,
   #settingSnapshotMax{width:90px}
   #settingMemThreshold{width:50px;margin-left:-15px}
-  .percent-prefix{display:inline-flex;align-items:center;margin-right:4px;font-size:12px;color:var(--muted);}
   .setting-control select:focus,
   .setting-control input[type="number"]:focus{outline:none;border-color:rgba(255,255,255,.35);background:rgba(255,255,255,.12)}
   .overlay-chart-tile{width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:18px 22px;margin-top:8px}
@@ -425,19 +427,20 @@
                 <span class="setting-desc">Restart every node sequentially whenever memory usage climbs above that threshold. Use it as a safety valve before nodes start crashing.</span>
               </div>
               <div class="setting-control" data-tooltip-target="mem-restart-threshold">
-                <span class="percent-prefix">%</span>
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="1"
-                  id="settingMemThreshold"
-                  class="setting-input"
-                  name="auto_restart_mem_threshold"
-                  data-setting-key="auto_restart_mem_threshold"
-                  data-setting-type="number"
-                  title="Percent of total memory that triggers a restart sweep"
-                >
+                <span class="input-with-prefix">
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    id="settingMemThreshold"
+                    class="setting-input"
+                    name="auto_restart_mem_threshold"
+                    data-setting-key="auto_restart_mem_threshold"
+                    data-setting-type="number"
+                    title="Percent of total memory that triggers a restart sweep"
+                  >
+                </span>
                 <label class="toggle" title="Toggle memory restart">
                   <input
                     type="checkbox"
