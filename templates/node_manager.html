@@ -500,6 +500,15 @@
             </label>
             <label class="setting-row">
               <div class="setting-text">
+                <span class="setting-title">Maximum snapshots</span>
+                <span class="setting-desc">Limit stored snapshots; 0 keeps every snapshot.</span>
+              </div>
+              <div class="setting-control">
+                <input type="number" min="0" step="1" id="settingSnapshotMax" name="snapshot_max" data-setting-key="snapshot_max" data-setting-type="number">
+              </div>
+            </label>
+            <label class="setting-row">
+              <div class="setting-text">
                 <span class="setting-title">Display wallet balance</span>
                 <span class="setting-desc">Show the configured wallet address and cached balance in the global badge.</span>
               </div>
@@ -517,15 +526,6 @@
               </div>
               <div class="setting-control">
                 <input type="text" id="settingWalletAddress" name="wallet_address" placeholder="0x…" data-setting-key="wallet_address" data-setting-type="text" autocomplete="off" spellcheck="false">
-              </div>
-            </label>
-            <label class="setting-row">
-              <div class="setting-text">
-                <span class="setting-title">Maximum snapshots</span>
-                <span class="setting-desc">Limit stored snapshots; 0 keeps every snapshot.</span>
-              </div>
-              <div class="setting-control">
-                <input type="number" min="0" step="1" id="settingSnapshotMax" name="snapshot_max" data-setting-key="snapshot_max" data-setting-type="number">
               </div>
             </label>
             <label class="setting-row">
