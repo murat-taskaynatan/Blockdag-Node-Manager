@@ -32,8 +32,9 @@
   .summary-pane[hidden]{display:none}
   .node-discovery-message{margin-bottom:16px;padding:14px 16px;border-radius:12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);font-size:13px;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;text-align:center}
   .node-discovery-message strong{font-size:14px}
-  .node-discovery-text{position:relative;padding:0 4px;font-weight:600;--base-color:var(--warn);--base-gradient-color:#eef4ff;color:var(--base-color);text-shadow:0 0 10px rgba(68,242,168,.25);overflow:hidden}
-  .node-discovery-text::after{content:'';position:absolute;inset:0;background:linear-gradient(120deg,transparent 0%,var(--base-gradient-color) 50%,transparent 100%);mix-blend-mode:screen;animation:nodeTextShimmer 1.2s linear infinite}
+  .node-discovery-text{position:relative;padding:0 4px;font-weight:600;color:var(--text);overflow:hidden}
+  .node-discovery-text::before{content:attr(data-text);position:absolute;inset:0;color:transparent;background:linear-gradient(120deg,rgba(68,242,168,.15),rgba(255,255,255,.95),rgba(68,242,168,.15));background-size:200% auto;-webkit-background-clip:text;animation:nodeTextShimmer 1.4s linear infinite}
+  .node-discovery-text span{visibility:hidden}
   .node-discovery-spinner{width:18px;height:18px;border:2px solid rgba(255,255,255,.3);border-top-color:var(--muted);border-radius:50%;animation:nodeSpinner 1s linear infinite}
   .node-discovery-subtext{width:100%;display:block;font-size:13px;color:var(--muted)}
   @keyframes nodeSpinner{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
@@ -790,7 +791,7 @@
 
           <div class="node-discovery-message" id="nodeDiscoveryMessage" hidden title="Discovery may take a moment while each node responds.">
             <span class="node-discovery-spinner" aria-hidden="true"></span>
-            <strong class="node-discovery-text">Discovering Nodes</strong>
+            <strong class="node-discovery-text" data-text="Discovering Nodes"><span>Discovering Nodes</span></strong>
             <span class="node-discovery-subtext">Please hang tight while the initial scan completes.</span>
           </div>
           <div class="card" id="emptyFleetState" style="display:none;">
