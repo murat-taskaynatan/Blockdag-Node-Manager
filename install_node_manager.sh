@@ -224,6 +224,9 @@ BlockDAG Node Manager installation complete.
 
 EOF
 
+echo "[10/9] Restarting $SERVICE_NAME to load the new install"
+sudo systemctl restart "$SERVICE_NAME"
+
 if [[ "$DOCKER_GROUP_NOTICE" -eq 1 ]]; then
   cat <<EOF
 Additional action required:
