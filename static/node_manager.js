@@ -92,7 +92,11 @@ const state = {
   const memoryRestartToggle = document.getElementById('settingMemRestartEnabled');
   const memoryRestartThresholdInput = document.getElementById('settingMemThreshold');
   const ocLogsPanel = document.getElementById('ocLogsPanel');
+  const ocLogsToggle = document.getElementById('ocLogsToggle');
+  const ocLogsBody = document.getElementById('ocLogsBody');
+  const ocLogsMeta = document.getElementById('ocLogsMeta');
   const ocLogsOutput = document.getElementById('ocLogsOutput');
+  const ocLogsRefreshBtn = document.getElementById('ocLogsRefresh');
   let ocLogPollTimer = null;
   const SYSTEM_POLL_INTERVAL_MS = 10000;
   let systemPollTimer = null;
@@ -191,12 +195,26 @@ const state = {
       form.classList.remove('oc-compact-logs');
     }
   }
-  function openOcLogs() {
-    if (ocLogsPanel) {
-      ocLogsPanel.hidden = false;
+  function setOcLogsExpanded(expanded) {
+    if (!ocLogsPanel) return;
+    ocLogsPanel.hidden = false;
+    if (ocLogsBody) {
+      ocLogsBody.hidden = !expanded;
     }
+    if (ocLogsToggle) {
+      ocLogsToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    }
+    ocLogsPanel.classList.toggle('is-open', !!expanded);
+    if (!expanded) {
+      if (ocLogsMeta) ocLogsMeta.textContent = 'Collapsed';
+      stopOcLogPolling();
+    } else {
+      startOcLogPolling();
+    }
+  }
+  function openOcLogs() {
+    setOcLogsExpanded(true);
     void loadOcLogs({ force: true });
-    startOcLogPolling();
   }
   let settingsStatusTimer = null;
   let snapshotPollTimer = null;
@@ -4136,6 +4154,26 @@ async function saveSettings() {
         }
       });
     }
+    if (ocLogsToggle) {
+      ocLogsToggle.addEventListener('click', () => {
+        const expanded = ocLogsToggle.getAttribute('aria-expanded') === 'true';
+        if (expanded) {
+          setOcLogsExpanded(false);
+        } else {
+          openOcLogs();
+        }
+      });
+    }
+    if (ocLogsRefreshBtn) {
+      ocLogsRefreshBtn.addEventListener('click', () => {
+        const expanded = ocLogsToggle && ocLogsToggle.getAttribute('aria-expanded') === 'true';
+        if (!expanded) {
+          openOcLogs();
+        } else {
+          void loadOcLogs({ force: true });
+        }
+      });
+    }
     if (automationLogToggle) {
       automationLogToggle.addEventListener('click', () => {
         setAutomationLogsExpanded(!state.automationLogs.expanded);
@@ -4163,9 +4201,6 @@ async function saveSettings() {
     await loadSnapshots({ silent: true });
     await discoverNodes({ auto: true });
     await refreshMetrics();
-    // Always load and poll Overclock logs panel
-    void loadOcLogs({ force: true });
-    startOcLogPolling();
     // Chart removed per request; skipping auto-prime visualization
     setInterval(refreshMetrics, 5000);
   }
@@ -4179,8 +4214,12 @@ async function saveSettings() {
       if (ocLogsOutput) {
         ocLogsOutput.textContent = lines.length ? lines.join('\n') + '\n' : 'No log lines yet.';
       }
+      if (ocLogsMeta) {
+        ocLogsMeta.textContent = `Updated ${fmtShortDateTime.format(new Date())}`;
+      }
     } catch (err) {
       if (ocLogsOutput) ocLogsOutput.textContent = 'Failed to load logs';
+      if (ocLogsMeta) ocLogsMeta.textContent = 'Failed to load logs';
     }
   }
 
@@ -4203,11 +4242,17 @@ async function saveSettings() {
         void loadSnapshots({ silent: true });
       }
       void loadSystem();
+      const ocExpanded = ocLogsToggle && ocLogsToggle.getAttribute('aria-expanded') === 'true';
+      if (ocExpanded) {
+        startOcLogPolling();
+        void loadOcLogs({ force: true });
+      }
       if (state.automationLogs.expanded) {
         void loadAutomationLogs({ force: true, silent: true });
         startAutomationLogPolling();
       }
     } else {
+      stopOcLogPolling();
       stopAutomationLogPolling();
     }
   });

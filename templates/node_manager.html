@@ -680,10 +680,20 @@
               </div>
             </div>
             <div class="node-logs" id="ocLogsPanel">
-              <div class="node-logs__header">
+              <button class="node-logs__toggle" type="button" id="ocLogsToggle" aria-expanded="false">
                 <span class="node-logs__title">Overclock Logs</span>
+                <span class="node-logs__chevron" aria-hidden="true">▾</span>
+              </button>
+              <div class="node-logs__panel" id="ocLogsBody" hidden>
+                <div class="node-logs__toolbar">
+                  <span class="node-logs__meta" id="ocLogsMeta">Collapsed</span>
+                  <button type="button" class="pill-btn node-logs__refresh" id="ocLogsRefresh" title="Refresh Overclock logs">
+                    <span class="icon">↻</span>
+                    Refresh
+                  </button>
+                </div>
+                <pre class="node-logs__output" id="ocLogsOutput">No log lines yet.</pre>
               </div>
-              <pre class="node-logs__output" id="ocLogsOutput">No log lines yet.</pre>
             </div>
           </form>
         </div>
