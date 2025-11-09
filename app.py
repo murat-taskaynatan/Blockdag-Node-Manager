@@ -187,6 +187,15 @@ POLICY_WORKER_INTERVAL_SEC = max(
 )
 _POLICY_EVENT = threading.Event()
 
+MEMORY_RESTART_INTERVAL_SEC = max(
+    15.0, float(os.getenv("BDAG_MEMORY_RESTART_INTERVAL_SEC", "30") or "30")
+)
+MEMORY_RESTART_COOLDOWN_SEC = max(
+    10.0, float(os.getenv("BDAG_MEMORY_RESTART_COOLDOWN_SEC", "60") or "60")
+)
+_MEMORY_RESTART_LOCK = threading.Lock()
+_MEMORY_RESTART_ACTIVE = False
+
 # Overclock logs buffer (UI tailing)
 _OVERCLOCK_LOGS: deque[str] = deque(maxlen=500)
 _OVERCLOCK_LOGS_LOCK = threading.Lock()
@@ -457,6 +466,8 @@ DEFAULT_SETTINGS: Dict[str, object] = {
     "auto_restart_on_error": False,
     "auto_restart_enabled": False,
     "auto_restart_hours": 0,
+    "auto_restart_mem_enabled": False,
+    "auto_restart_mem_threshold": 0,
     "auto_snapshot_enabled": False,
     "auto_snapshot_hours": 0,
     "display_wallet_balance": _coerce_bool(os.getenv("BDAG_WALLET_DISPLAY", "0"), False),
@@ -5823,6 +5834,56 @@ def docker_action(container: str, action: str) -> dict:
         return {"ok": False, "error": str(exc)}
 
 
+def _restart_all_nodes_sequentially(cooldown_sec: float) -> None:
+    nodes = sorted(NODES.values(), key=lambda ctx: (ctx.id or "").lower())
+    if not nodes:
+        return
+    app.logger.info("memory-triggered restart: restarting %d node(s)", len(nodes))
+    for ctx in nodes:
+        container = (ctx.container or "").strip()
+        if not container:
+            continue
+        try:
+            result = docker_action(container, "restart")
+            if result.get("ok"):
+                app.logger.info("restarted %s via memory trigger", container)
+            else:
+                app.logger.warning("memory trigger restart failed for %s: %s", container, result.get("error"))
+        except Exception as exc:
+            app.logger.exception("memory trigger restart error for %s: %s", container, exc)
+        time.sleep(cooldown_sec)
+
+
+def _memory_restart_monitor() -> None:
+    global _MEMORY_RESTART_ACTIVE
+    while True:
+        enabled = False
+        threshold = 0.0
+        try:
+            settings = get_settings()
+            enabled = bool(settings.get("auto_restart_mem_enabled"))
+            threshold = float(settings.get("auto_restart_mem_threshold") or 0.0)
+        except Exception:
+            pass
+        if enabled and threshold > 0:
+            try:
+                mem_percent = psutil.virtual_memory().percent
+            except Exception as exc:
+                app.logger.debug("failed to read virtual memory: %s", exc)
+                mem_percent = 0.0
+            if mem_percent >= threshold:
+                if _MEMORY_RESTART_LOCK.acquire(blocking=False):
+                    try:
+                        _MEMORY_RESTART_ACTIVE = True
+                        _restart_all_nodes_sequentially(MEMORY_RESTART_COOLDOWN_SEC)
+                    finally:
+                        _MEMORY_RESTART_ACTIVE = False
+                        _MEMORY_RESTART_LOCK.release()
+                    time.sleep(max(MEMORY_RESTART_COOLDOWN_SEC, MEMORY_RESTART_INTERVAL_SEC))
+                    continue
+        time.sleep(MEMORY_RESTART_INTERVAL_SEC)
+
+
 @app.route("/api/control", methods=["POST"])
 def api_control():
     body = request.get_json(silent=True) or {}
@@ -5888,3 +5949,6 @@ _AUTO_SNAPSHOT_EVENT.set()
 _POLICY_THREAD = threading.Thread(target=_policy_worker, daemon=True)
 _POLICY_THREAD.start()
 _POLICY_EVENT.set()
+
+_MEMORY_RESTART_THREAD = threading.Thread(target=_memory_restart_monitor, daemon=True)
+_MEMORY_RESTART_THREAD.start()

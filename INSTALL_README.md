@@ -100,6 +100,8 @@ Restart the service after changes:
 sudo systemctl restart blockdag-node-manager.service
 ```
 
+The settings UI includes a memory-pressure auto-restart toggle/threshold that restarts every node one by one (with a 60 s gap) when overall memory usage exceeds the configured percent. Adjust `auto_restart_mem_threshold` via the form and keep the toggle enabled to use this safeguard.
+
 Tweak Waitress concurrency with `WAITRESS_THREADS`, `WAITRESS_BACKLOG`, and `WAITRESS_CONNECTION_LIMIT` in the same env file (defaults are 12 threads, 256 backlog slots, and no connection cap).
 
 ### Remote login toggle
