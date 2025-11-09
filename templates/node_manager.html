@@ -77,6 +77,7 @@
   #settingAutoRestartHours,
   #settingSnapshotMax{width:90px}
   #settingMemThreshold{width:50px;margin-left:-15px}
+  .percent-prefix{display:inline-flex;align-items:center;margin-right:4px;font-size:12px;color:var(--muted);}
   .setting-control select:focus,
   .setting-control input[type="number"]:focus{outline:none;border-color:rgba(255,255,255,.35);background:rgba(255,255,255,.12)}
   .overlay-chart-tile{width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:18px 22px;margin-top:8px}
@@ -424,6 +425,7 @@
                 <span class="setting-desc">Restart every node sequentially whenever memory usage climbs above that threshold. Use it as a safety valve before nodes start crashing.</span>
               </div>
               <div class="setting-control" data-tooltip-target="mem-restart-threshold">
+                <span class="percent-prefix">%</span>
                 <input
                   type="number"
                   min="0"
