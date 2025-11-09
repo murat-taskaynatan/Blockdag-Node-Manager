@@ -109,14 +109,6 @@ Need a zero-touch install on a fresh host? Use the remote installer:
 curl -fsSL https://raw.githubusercontent.com/murat-taskaynatan/Blockdag-Node-Manager/main/install_nm_from_github.sh \ | sudo bash
 ```
 
-## Updating the `/opt` install to v1.4.8
-After tagging and pushing `v1.4.8` (`git tag v1.4.8 && git push origin v1.4.8`), rerun the installer so `/opt/blockdag-node-manager` picks up the release:
-
-```bash
-git fetch --tags
-git checkout v1.4.8
-sudo ./install_node_manager.sh
-```
 
 To update a remote host directly from GitHub, point the bootstrap script at the tag:
 
