@@ -286,8 +286,16 @@
           <span class="icon">🔍</span>
           Search Nodes
         </button>
-        {% if is_authenticated %}
-        <button class="pill-btn" id="btnLogout" type="button">
+        {% if login_enabled %}
+        <button
+          class="pill-btn"
+          id="btnLogout"
+          type="button"
+          data-logout-url="{{ url_for('logout') }}"
+          title="Sign out of the console"
+          aria-label="Log out"
+        >
+          <span class="icon">🚪</span>
           Logout
         </button>
         {% endif %}

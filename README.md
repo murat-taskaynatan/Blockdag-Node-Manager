@@ -64,6 +64,20 @@ Node definitions live in `config/nodes.json`. Each entry can specify:
 
 Environment variables (`BDAG_RPC_BASE`, `BDAG_REMOTE_RPC_BASES`, etc.) are honoured and can be referenced inside the JSON using `${VAR:-default}` placeholders.
 
+### Remote login toggle
+
+Authentication is disabled unless you explicitly set it in `/etc/blockdag-node-manager/node-manager.env` (the installer now writes `BDAG_LOGIN_ENABLED=0` by default). To require login, update the file so the gate is enabled and include credentials:
+
+```ini
+BDAG_LOGIN_ENABLED=1
+BDAG_LOGIN_USER=manager
+BDAG_LOGIN_PASS=changeme
+```
+
+`BDAG_LOGIN_ENABLED=0` or missing credentials keeps the login page hidden, which matches the experience after a clean remote install.
+
+The CPU temperature path also defaults to the shared-VM file (`/mnt/hgfs/vmshared/cpu_temp.txt`) via `BDAG_CPU_TEMP_PATH` and is only changed when you update the field inside the Settings tab—those edits are persisted in `config/settings.json`, so leave the dropdown blank if you want to keep the shared file in play.
+
 ## Production Install
 Use the bundled helper to deploy under `/opt/blockdag-node-manager` with systemd integration:
 
@@ -95,12 +109,12 @@ Need a zero-touch install on a fresh host? Use the remote installer:
 curl -fsSL https://raw.githubusercontent.com/murat-taskaynatan/Blockdag-Node-Manager/main/install_nm_from_github.sh \ | sudo bash
 ```
 
-## Updating the `/opt` install to v1.4.7
-After tagging and pushing `v1.4.7` (`git tag v1.4.7 && git push origin v1.4.7`), rerun the installer so `/opt/blockdag-node-manager` picks up the release:
+## Updating the `/opt` install to v1.4.8
+After tagging and pushing `v1.4.8` (`git tag v1.4.8 && git push origin v1.4.8`), rerun the installer so `/opt/blockdag-node-manager` picks up the release:
 
 ```bash
 git fetch --tags
-git checkout v1.4.7
+git checkout v1.4.8
 sudo ./install_node_manager.sh
 ```
 
@@ -108,7 +122,7 @@ To update a remote host directly from GitHub, point the bootstrap script at the 
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/murat-taskaynatan/Blockdag-Node-Manager/main/install_nm_from_github.sh \
-| sudo REPO_REF=v1.4.7 bash
+| sudo REPO_REF=v1.4.8 bash
 ```
 
 ## Uninstall

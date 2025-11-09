@@ -4,6 +4,7 @@
   "auto_restart_on_error": false,
   "auto_snapshot_enabled": false,
   "auto_snapshot_hours": 0,
+  "cpu_temp_path": "/mnt/hgfs/vmshared/cpu_temp.txt",
   "display_wallet_balance": false,
   "liveness_auto_recover": false,
   "overclock_cpu": false,

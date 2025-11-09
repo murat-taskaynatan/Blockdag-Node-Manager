@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.4.8 - 2025-11-08
+
+### Enhancements
+- Remote installs now ship with a `BDAG_LOGIN_ENABLED=0` toggle so the login portal is disabled by default while `/opt` deployments stay in sync with the release badge.
+- Installer docs, bootstrap helpers, and `/etc/blockdag-node-manager/node-manager.env` notes were updated to explain how to flip `BDAG_LOGIN_ENABLED=1` and provide credentials when you need authentication.
+- The CPU monitor now defaults to `/mnt/hgfs/vmshared/cpu_temp.txt` (with `BDAG_CPU_TEMP_PATH` seeded accordingly) so shared-VM temperature files work without extra setup, and changing the path through Settings persists into `config/settings.json`.
+
 ## v1.4.7 - 2025-11-07
 
 ### Enhancements
