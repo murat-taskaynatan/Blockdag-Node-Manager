@@ -30,6 +30,8 @@
   .summary-body{margin-top:16px}
   .summary-pane{display:block}
   .summary-pane[hidden]{display:none}
+  .node-discovery-message{margin-bottom:16px;padding:14px 16px;border-radius:12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);font-size:13px;display:flex;flex-direction:column;gap:4px}
+  .node-discovery-message strong{font-size:14px}
   .system-grid{display:grid;gap:12px;margin-top:12px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
   .system-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:6px;min-height:120px}
   .system-card .label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
@@ -780,11 +782,15 @@
       </div>
     </div>
 
-    <div class="card" id="emptyFleetState" style="display:none;">
-      <div class="empty-state">
-        <p>No nodes detected yet. Use <strong>Search Nodes</strong> to discover BlockDAG containers reachable from this host.</p>
-      </div>
-    </div>
+          <div class="node-discovery-message" id="nodeDiscoveryMessage" hidden>
+            <strong>Discovering nodes…</strong>
+            <span>Gathering data from every BlockDAG container reachable from this host. Please hang tight while the initial scan completes.</span>
+          </div>
+          <div class="card" id="emptyFleetState" style="display:none;">
+            <div class="empty-state">
+              <p>No nodes detected yet. Use <strong>Search Nodes</strong> to discover BlockDAG containers reachable from this host.</p>
+            </div>
+          </div>
 
     <div class="fleet-grid" id="fleetCards"></div>
   </div>
