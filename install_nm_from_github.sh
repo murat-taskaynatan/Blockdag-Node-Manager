@@ -100,3 +100,6 @@ cat <<EOF
   - Config file: $ENV_FILE
   - UI: http://$DISPLAY_HOST:${PORT_VALUE:-8081}/
 EOF
+
+echo "[5/4] Restarting $SERVICE_NAME to load the new install"
+sudo systemctl restart "$SERVICE_NAME"
