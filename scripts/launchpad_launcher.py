@@ -54,6 +54,17 @@ def _find_available_port(used: set[int], start: int) -> int:
     return port
 
 
+def _safe_rmtree(path: Path) -> None:
+    def _onerror(func, path_str, exc_info):
+        try:
+            os.chmod(path_str, 0o755)
+        except Exception:
+            pass
+        func(path_str)
+
+    shutil.rmtree(path, onerror=_onerror)
+
+
 def _existing_node_ports() -> Dict[str, List[int]]:
     ports = {"p2p": [], "rpc": [], "ws": [], "peer": []}
     try:
@@ -125,7 +136,7 @@ def launch_node(payload: Dict) -> Dict:
     install_path.mkdir(parents=True, exist_ok=True)
     scripts_dir = install_path / "blockdag-scripts"
     if scripts_dir.exists():
-        shutil.rmtree(scripts_dir)
+        _safe_rmtree(scripts_dir)
     _run_command(["git", "clone", "--depth", "1", LAUNCHPAD_REPO, str(scripts_dir)])
     env_path = scripts_dir / ".env"
     env_path.write_text(f"PUB_ETH_ADDR={wallet}\n", encoding="utf-8")
