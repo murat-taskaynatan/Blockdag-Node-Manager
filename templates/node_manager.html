@@ -60,7 +60,6 @@
   .launchpad-step[data-launchpad-step="3"] .launchpad-summary{margin-bottom:20px}
   button#launchpadNextBtn .icon{display:none}
   button#launchpadNextBtn.launch-mode .icon[data-launch-icon]{display:inline-block}
-  button#launchpadNextBtn:not(.launch-mode) .icon[data-step-icon]{display:inline-block}
   .launchpad-summary .missing{color:#ff6b6b;font-weight:600}
   .launchpad-actions{display:flex;gap:10px;flex-wrap:wrap}
   .launchpad-actions .pill-btn{flex:1;justify-content:center}
@@ -883,7 +882,6 @@
           <div class="launchpad-actions">
             <button type="button" class="pill-btn" id="launchpadBackBtn" disabled>Back</button>
             <button type="button" class="pill-btn" id="launchpadNextBtn" data-mode="next">
-              <span class="icon" data-step-icon>→</span>
               <span class="icon" data-launch-icon hidden>🚀</span>
               <span data-launch-label>Next</span>
             </button>
