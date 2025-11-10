@@ -47,6 +47,34 @@ def _run_command(cmd, cwd=None, env=None):
     return process.stdout.strip()
 
 
+def _ensure_git_safe_directory(path: Path) -> None:
+    try:
+        resolved = str(path.resolve())
+    except Exception:
+        resolved = str(path)
+    try:
+        existing = subprocess.run(
+            ["git", "config", "--global", "--get-all", "safe.directory"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        entries = [line.strip() for line in (existing.stdout or "").splitlines() if line.strip()]
+        if resolved in entries:
+            return
+    except Exception:
+        pass
+    try:
+        subprocess.run(
+            ["git", "config", "--global", "--add", "safe.directory", resolved],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except Exception:
+        pass
+
+
 def _sanitize_label(label: str) -> str:
     slug = re.sub(r"[^a-z0-9_-]+", "", label.lower())
     return slug or "node"
@@ -178,8 +206,10 @@ def launch_node(payload: Dict) -> Dict:
     if scripts_dir.exists():
         if not git_dir.exists():
             raise LaunchError("Existing blockdag-scripts directory is not a git repo; remove it and retry")
+        _ensure_git_safe_directory(scripts_dir)
         _run_command(["git", "-C", str(scripts_dir), "pull"])
     else:
+        _ensure_git_safe_directory(scripts_dir)
         _run_command(["git", "clone", "--depth", "1", LAUNCHPAD_REPO, str(scripts_dir)])
     env_path = scripts_dir / ".env"
     env_path.write_text(f"PUB_ETH_ADDR={wallet}\n", encoding="utf-8")
