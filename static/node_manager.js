@@ -2408,6 +2408,7 @@ function syncCards(nodes) {
     if (launchpadNextStepIcon) {
       launchpadNextStepIcon.hidden = onFinalStep;
     }
+    launchpadNextBtn.classList.toggle('launch-mode', onFinalStep);
     launchpadNextBtn.disabled = onFinalStep ? !complete : false;
   }
 
