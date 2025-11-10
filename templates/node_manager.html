@@ -839,10 +839,6 @@
             </div>
             <div class="launchpad-step" data-launchpad-step="2" hidden>
               <h3>Ports</h3>
-              <label class="launchpad-checkbox">
-                <input type="checkbox" id="launchpadAutoPorts" checked>
-                <span>Let Node Manager choose non-conflicting ports automatically</span>
-              </label>
               <label>
                 Base P2P port
                 <input type="number" id="launchpadP2PPort" min="10000" value="38130">
@@ -850,6 +846,10 @@
               <label>
                 RPC port
                 <input type="number" id="launchpadRpcPort" min="10000" value="18545">
+              </label>
+              <label class="launchpad-checkbox">
+                <input type="checkbox" id="launchpadAutoPorts" checked>
+                <span>Let Node Manager choose non-conflicting ports automatically</span>
               </label>
               <p style="font-size:12px;color:var(--muted);margin:0">
                 Disable auto-management to pin specific ports; otherwise Node Manager will pick the next available values.
