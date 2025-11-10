@@ -1,5 +1,6 @@
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Dict, List, Tuple
@@ -125,9 +126,12 @@ def launch_node(payload: Dict) -> Dict:
         raise LaunchError("Installation path is required")
     install_path.mkdir(parents=True, exist_ok=True)
     scripts_dir = install_path / "blockdag-scripts"
-    if scripts_dir.exists():
+    git_dir = scripts_dir / ".git"
+    if scripts_dir.exists() and git_dir.exists():
         _run_command(["git", "-C", str(scripts_dir), "pull"])
     else:
+        if scripts_dir.exists():
+            shutil.rmtree(scripts_dir)
         _run_command(["git", "clone", "--depth", "1", LAUNCHPAD_REPO, str(scripts_dir)])
     env_path = scripts_dir / ".env"
     env_path.write_text(f"PUB_ETH_ADDR={wallet}\n", encoding="utf-8")
