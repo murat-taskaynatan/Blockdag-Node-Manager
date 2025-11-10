@@ -2439,7 +2439,6 @@ function syncCards(nodes) {
       chip.classList.toggle('is-active', chipStep === step);
     });
     if (launchpadBackBtn) launchpadBackBtn.disabled = step === 1;
-    if (launchpadNextBtn) launchpadNextBtn.hidden = step === 3;
     if (step === 3) {
       renderLaunchpadSummary();
     }
