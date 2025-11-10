@@ -128,6 +128,8 @@ const state = {
     autoPorts: document.getElementById('launchpadAutoPorts'),
     walletAddress: document.getElementById('launchpadWalletAddress'),
     externalP2PPort: document.getElementById('launchpadExternalP2PPort'),
+    wsPort: document.getElementById('launchpadWsPort'),
+    peerPort: document.getElementById('launchpadPeerPort'),
   };
   const launchpadSummaryRefs = {
     label: document.getElementById('launchpadSummaryLabel'),
@@ -137,6 +139,8 @@ const state = {
     rpcPort: document.getElementById('launchpadSummaryRpc'),
     wallet: document.getElementById('launchpadSummaryWallet'),
     externalP2P: document.getElementById('launchpadSummaryExternalP2P'),
+    ws: document.getElementById('launchpadSummaryWs'),
+    peer: document.getElementById('launchpadSummaryPeer'),
   };
   const launchpadBackBtn = document.getElementById('launchpadBackBtn');
   const launchpadNextBtn = document.getElementById('launchpadNextBtn');
@@ -2392,11 +2396,21 @@ function syncCards(nodes) {
       autoPorts,
       walletAddress: launchpadFields.walletAddress?.value?.trim() || '',
       externalP2PPort: Number(launchpadFields.externalP2PPort?.value) || null,
+      wsPort: Number(launchpadFields.wsPort?.value) || 18546,
+      peerPort: Number(launchpadFields.peerPort?.value) || 18150,
     };
   }
 
   function isLaunchpadComplete(data = getLaunchpadData()) {
-    const manualPortsValid = Number.isFinite(data.p2pPort) && data.p2pPort > 0 && Number.isFinite(data.rpcPort) && data.rpcPort > 0;
+    const manualPortsValid =
+      Number.isFinite(data.p2pPort) &&
+      data.p2pPort > 0 &&
+      Number.isFinite(data.rpcPort) &&
+      data.rpcPort > 0 &&
+      Number.isFinite(data.wsPort) &&
+      data.wsPort > 0 &&
+      Number.isFinite(data.peerPort) &&
+      data.peerPort > 0;
     const externalValid = data.autoPorts || Number.isFinite(data.externalP2PPort) && data.externalP2PPort > 0;
     return Boolean(data.label && data.installPath && data.walletAddress && manualPortsValid && externalValid);
   }
@@ -2417,7 +2431,13 @@ function syncCards(nodes) {
   }
 
   function syncLaunchpadPortInputs(auto = launchpadFields.autoPorts?.checked ?? false) {
-    const manualFields = [launchpadFields.p2pPort, launchpadFields.rpcPort, launchpadFields.externalP2PPort];
+    const manualFields = [
+      launchpadFields.p2pPort,
+      launchpadFields.rpcPort,
+      launchpadFields.externalP2PPort,
+      launchpadFields.wsPort,
+      launchpadFields.peerPort,
+    ];
     manualFields.forEach((field) => {
       if (!field) return;
       field.disabled = auto;
@@ -2441,6 +2461,9 @@ function syncCards(nodes) {
     if (launchpadSummaryRefs.p2pPort) {
       launchpadSummaryRefs.p2pPort.textContent = data.p2pPort;
     }
+    if (launchpadSummaryRefs.ws) {
+      launchpadSummaryRefs.ws.textContent = data.wsPort;
+    }
     if (launchpadSummaryRefs.rpcPort) {
       launchpadSummaryRefs.rpcPort.textContent = data.rpcPort;
     }
@@ -2449,6 +2472,9 @@ function syncCards(nodes) {
     }
     if (launchpadSummaryRefs.externalP2P) {
       launchpadSummaryRefs.externalP2P.textContent = data.externalP2PPort || (data.autoPorts ? data.p2pPort : '—');
+    }
+    if (launchpadSummaryRefs.peer) {
+      launchpadSummaryRefs.peer.textContent = data.peerPort || data.peerPort;
     }
     updateLaunchpadLaunchState();
   }
@@ -2498,7 +2524,9 @@ function syncCards(nodes) {
         getLaunchpadFieldValue(launchpadFields.label) &&
           getLaunchpadFieldValue(launchpadFields.installPath) &&
           getLaunchpadFieldValue(launchpadFields.walletAddress) &&
-          getLaunchpadFieldValue(launchpadFields.externalP2PPort)
+          getLaunchpadFieldValue(launchpadFields.externalP2PPort) &&
+          getLaunchpadFieldValue(launchpadFields.wsPort) &&
+          getLaunchpadFieldValue(launchpadFields.peerPort)
       );
     }
     if (step === 2) {
