@@ -40,6 +40,8 @@ const state = {
         installPath: '',
         network: 'testnet',
         p2pPort: 38130,
+        rpcPort: 18545,
+        autoPorts: true,
       },
     },
   };
@@ -122,12 +124,15 @@ const state = {
     installPath: document.getElementById('launchpadInstallPath'),
     network: document.getElementById('launchpadNetwork'),
     p2pPort: document.getElementById('launchpadP2PPort'),
+    rpcPort: document.getElementById('launchpadRpcPort'),
+    autoPorts: document.getElementById('launchpadAutoPorts'),
   };
   const launchpadSummaryRefs = {
     label: document.getElementById('launchpadSummaryLabel'),
     path: document.getElementById('launchpadSummaryPath'),
     network: document.getElementById('launchpadSummaryNetwork'),
     p2pPort: document.getElementById('launchpadSummaryP2P'),
+    rpcPort: document.getElementById('launchpadSummaryRpc'),
   };
   const launchpadBackBtn = document.getElementById('launchpadBackBtn');
   const launchpadNextBtn = document.getElementById('launchpadNextBtn');
@@ -2371,16 +2376,20 @@ function syncCards(nodes) {
   }
 
   function getLaunchpadData() {
+    const autoPorts = launchpadFields.autoPorts?.checked ?? false;
     return {
       label: launchpadFields.label?.value?.trim() || '',
       installPath: launchpadFields.installPath?.value?.trim() || '',
       network: launchpadFields.network?.value || 'testnet',
       p2pPort: Number(launchpadFields.p2pPort?.value) || 38130,
+      rpcPort: Number(launchpadFields.rpcPort?.value) || 18545,
+      autoPorts,
     };
   }
 
   function isLaunchpadComplete(data = getLaunchpadData()) {
-    return Boolean(data.label && data.installPath && data.p2pPort);
+    const manualPortsValid = Number.isFinite(data.p2pPort) && data.p2pPort > 0 && Number.isFinite(data.rpcPort) && data.rpcPort > 0;
+    return Boolean(data.label && data.installPath && (data.autoPorts || manualPortsValid));
   }
 
   function updateLaunchpadLaunchState() {
@@ -2391,12 +2400,23 @@ function syncCards(nodes) {
     launchpadLaunchBtn.disabled = !complete;
   }
 
+  function syncLaunchpadPortInputs(auto = launchpadFields.autoPorts?.checked ?? false) {
+    const manualFields = [launchpadFields.p2pPort, launchpadFields.rpcPort];
+    manualFields.forEach((field) => {
+      if (!field) return;
+      field.disabled = auto;
+    });
+  }
+
   function renderLaunchpadSummary(data = getLaunchpadData()) {
     if (!launchpadSummaryRefs.label) return;
     launchpadSummaryRefs.label.textContent = data.label || 'auto';
     launchpadSummaryRefs.path.textContent = data.installPath || '/home/node/<auto>';
     launchpadSummaryRefs.network.textContent = data.network;
-    launchpadSummaryRefs.p2pPort.textContent = data.p2pPort;
+    launchpadSummaryRefs.p2pPort.textContent = data.autoPorts ? 'Auto-managed' : data.p2pPort;
+    if (launchpadSummaryRefs.rpcPort) {
+      launchpadSummaryRefs.rpcPort.textContent = data.autoPorts ? 'Auto-managed' : data.rpcPort;
+    }
     updateLaunchpadLaunchState();
   }
 
@@ -3550,12 +3570,18 @@ function syncCards(nodes) {
         }
       });
     });
-    Object.values(launchpadFields).forEach((field) => {
+    Object.entries(launchpadFields).forEach(([key, field]) => {
       if (!field) return;
-      const handler = () => renderLaunchpadSummary();
-      field.addEventListener('input', handler);
-      field.addEventListener('change', handler);
+      const handler = () => {
+        if (key === 'autoPorts') {
+          syncLaunchpadPortInputs();
+        }
+        renderLaunchpadSummary();
+      };
+      const events = key === 'autoPorts' ? ['change'] : ['input', 'change'];
+      events.forEach((eventName) => field.addEventListener(eventName, handler));
     });
+    syncLaunchpadPortInputs();
     if (launchpadBackBtn) {
       launchpadBackBtn.addEventListener('click', () => changeLaunchpadStep(-1));
     }
