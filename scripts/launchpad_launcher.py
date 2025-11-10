@@ -132,12 +132,15 @@ def _prepare_ports(config: Dict) -> Tuple[int, int, int, int]:
     base_p2p = int(config.get("p2pPort") or 38130)
     base_rpc = int(config.get("rpcPort") or 18545)
     base_ws = int(config.get("wsPort") or base_rpc + 1)
-    base_peer = int(config.get("peerPort") or 18150)
+    existing = _existing_node_ports()
+    if existing["peer"]:
+        base_peer = min(existing["peer"])
+    else:
+        base_peer = int(config.get("peerPort") or 18150)
     external_override = config.get("externalP2PPort")
     peer_external_override = config.get("externalPeerPort")
     used = _collect_used_ports()
     if config.get("autoPorts"):
-        existing = _existing_node_ports()
         start_p2p = max(existing["p2p"]) + 1 if existing["p2p"] else base_p2p
         start_rpc = max(existing["rpc"]) + 1 if existing["rpc"] else base_rpc
         start_ws = max(existing["ws"]) + 1 if existing["ws"] else base_ws
