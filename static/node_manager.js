@@ -2501,6 +2501,18 @@ function syncCards(nodes) {
     try {
       const data = await requestLaunch(getLaunchpadData());
       launchpadStatus.textContent = `Started ${data.label} (P2P ${data.p2pPort}, RPC ${data.rpcPort}).`;
+      const updateField = (field, value) => {
+        if (field && Number.isFinite(+value)) {
+          field.value = value;
+        }
+      };
+      updateField(launchpadFields.p2pPort, data.p2pPort);
+      updateField(launchpadFields.rpcPort, data.rpcPort);
+      updateField(launchpadFields.wsPort, data.wsPort);
+      updateField(launchpadFields.peerPort, data.peerPort);
+      if (launchpadFields.externalP2PPort && launchpadFields.autoPorts?.checked) {
+        launchpadFields.externalP2PPort.value = data.p2pPort;
+      }
       if (launchpadFields.externalP2PPort && launchpadFields.autoPorts?.checked) {
         launchpadFields.externalP2PPort.value = data.p2pPort;
       }
