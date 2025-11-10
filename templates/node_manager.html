@@ -53,6 +53,8 @@
   .launchpad-card select{padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:var(--text);font-weight:600}
   .launchpad-card input:disabled,
   .launchpad-card select:disabled{opacity:0.45;cursor:not-allowed}
+  .launchpad-card select:focus,
+  .launchpad-card select:focus-visible{background:rgba(255,255,255,.12);border-color:rgba(68,242,168,.8);box-shadow:none}
   .launchpad-summary{background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;font-size:13px;line-height:1.5}
   .launchpad-summary strong{display:inline-block;width:140px;color:var(--muted)}
   .launchpad-summary .missing{color:#ff6b6b;font-weight:600}
@@ -827,7 +829,7 @@
           <div class="launchpad-card" id="launchpadCard">
             <div class="launchpad-step" data-launchpad-step="1">
               <h3>Node Basics</h3>
-              <div class="launchpad-port-gap" style="height:20px"></div>
+              <div class="launchpad-port-gap" style="height:10px"></div>
               <label>
                 Node label
                 <input type="text" id="launchpadNodeLabel" placeholder="Example: blockdag-node-25" autocomplete="off">
