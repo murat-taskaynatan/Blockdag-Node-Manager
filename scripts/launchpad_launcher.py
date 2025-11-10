@@ -21,6 +21,13 @@ def _simplify_launch_error(raw: str) -> Optional[str]:
     if conflict:
         name = conflict.group(1)
         return f"Container '{name}' already exists. Remove or rename the existing container before launching."
+    safe_dir = re.search(r"git config --global --add safe\.directory\s+(\S+)", text, re.IGNORECASE)
+    if safe_dir:
+        repo_path = safe_dir.group(1)
+        return (
+            "Git needs to trust the scripts directory. "
+            f"Run `git config --global --add safe.directory {repo_path}` once and retry."
+        )
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     if not lines:
         return None
