@@ -136,6 +136,8 @@ const state = {
   };
   const launchpadBackBtn = document.getElementById('launchpadBackBtn');
   const launchpadNextBtn = document.getElementById('launchpadNextBtn');
+  const launchpadNextIcon = launchpadNextBtn?.querySelector('[data-launch-icon]') ?? null;
+  const launchpadNextLabel = launchpadNextBtn?.querySelector('[data-launch-label]') ?? null;
   let ocLogPollTimer = null;
   const SYSTEM_POLL_INTERVAL_MS = 10000;
   let systemPollTimer = null;
@@ -2396,7 +2398,12 @@ function syncCards(nodes) {
     const complete = isLaunchpadComplete();
     const onFinalStep = state.launchpad.step === 3;
     launchpadNextBtn.dataset.mode = onFinalStep ? 'launch' : 'next';
-    launchpadNextBtn.textContent = onFinalStep ? 'Launch node' : 'Next';
+    if (launchpadNextLabel) {
+      launchpadNextLabel.textContent = onFinalStep ? 'Launch node' : 'Next';
+    }
+    if (launchpadNextIcon) {
+      launchpadNextIcon.hidden = !onFinalStep;
+    }
     launchpadNextBtn.disabled = onFinalStep ? !complete : false;
   }
 
