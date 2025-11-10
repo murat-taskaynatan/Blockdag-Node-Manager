@@ -164,32 +164,6 @@ const state = {
   const ocOverlayChartEmpty = document.getElementById('ocOverlayChartEmpty');
   let ocOverlayChart = null;
   const logoutBtn = document.getElementById('btnLogout');
-  const launchpadStepsContainer = document.getElementById('launchpadSteps');
-  const launchpadCards = {
-    1: document.getElementById('launchpadCardStep1'),
-    2: document.getElementById('launchpadCardStep2'),
-    3: document.getElementById('launchpadCardStep3'),
-  };
-  const launchpadFields = {
-    label: document.getElementById('launchpadNodeLabel'),
-    installPath: document.getElementById('launchpadInstallPath'),
-    network: document.getElementById('launchpadNetwork'),
-    p2pPort: document.getElementById('launchpadP2PPort'),
-    rpcPort: document.getElementById('launchpadRpcPort'),
-    peerMode: document.getElementById('launchpadPeerMode'),
-  };
-  const launchpadSummaryRefs = {
-    label: document.getElementById('launchpadSummaryLabel'),
-    path: document.getElementById('launchpadSummaryPath'),
-    network: document.getElementById('launchpadSummaryNetwork'),
-    p2pPort: document.getElementById('launchpadSummaryP2P'),
-    rpcPort: document.getElementById('launchpadSummaryRpc'),
-    peerMode: document.getElementById('launchpadSummaryPeerMode'),
-    peerPreview: document.getElementById('launchpadPeerIdText'),
-  };
-  const launchpadBackBtn = document.getElementById('launchpadBackBtn');
-  const launchpadNextBtn = document.getElementById('launchpadNextBtn');
-  const launchpadLaunchBtn = document.getElementById('launchpadLaunchBtn');
   const nodeDiscoveryMessage = document.getElementById('nodeDiscoveryMessage');
   const nodeDiscoverySubtext = document.getElementById('nodeDiscoverySubtext');
   const nodeDiscoveryDismissBtn = document.getElementById('nodeDiscoveryDismissBtn');
