@@ -74,8 +74,8 @@ def _existing_node_ports() -> Dict[str, List[int]]:
 def _prepare_ports(config: Dict) -> Tuple[int, int, int, int]:
     base_p2p = int(config.get("p2pPort") or 38130)
     base_rpc = int(config.get("rpcPort") or 18545)
-    base_ws = base_rpc + 1
-    base_peer = 18150
+    base_ws = int(config.get("wsPort") or base_rpc + 1)
+    base_peer = int(config.get("peerPort") or 18150)
     external_override = config.get("externalP2PPort")
     used = _collect_used_ports()
     if config.get("autoPorts"):
@@ -92,12 +92,18 @@ def _prepare_ports(config: Dict) -> Tuple[int, int, int, int]:
         peer = _find_available_port(used, start_peer)
     else:
         override = int(external_override) if external_override and str(external_override).isdigit() else base_p2p
-        if override in used or base_rpc in used or base_peer in used:
+        manual_ws = base_ws
+        manual_peer = base_peer
+        if str(config.get("wsPort")) and str(config.get("wsPort")).isdigit():
+            manual_ws = int(config.get("wsPort"))
+        if str(config.get("peerPort")) and str(config.get("peerPort")).isdigit():
+            manual_peer = int(config.get("peerPort"))
+        if override in used or base_rpc in used or manual_ws in used or manual_peer in used:
             raise LaunchError("Selected ports are already in use")
         p2p = override
         rpc = base_rpc
-        ws = base_ws
-        peer = base_peer
+        ws = manual_ws
+        peer = manual_peer
     return p2p, rpc, ws, peer
 
 
@@ -148,4 +154,11 @@ def launch_node(payload: Dict) -> Dict:
         cwd=str(scripts_dir),
         env=env,
     )
-    return {"label": label, "p2pPort": p2p_port, "rpcPort": rpc_port, "dockerOutput": output}
+    return {
+        "label": label,
+        "p2pPort": p2p_port,
+        "rpcPort": rpc_port,
+        "wsPort": ws_port,
+        "peerPort": peer_port,
+        "dockerOutput": output,
+    }
