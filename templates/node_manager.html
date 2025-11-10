@@ -62,6 +62,8 @@
   button#launchpadNextBtn .icon{display:none}
   button#launchpadNextBtn.launch-mode .icon[data-launch-icon]{display:inline-block}
   .launchpad-summary .missing{color:#ff6b6b;font-weight:600}
+  .launchpad-status{min-height:20px;font-size:13px;color:var(--muted);margin-top:6px}
+  .launchpad-status.error{color:#ff6b6b}
   .launchpad-actions{display:flex;gap:10px;flex-wrap:wrap}
   .launchpad-actions .pill-btn{flex:1;justify-content:center}
   .launchpad-pane{display:flex;flex-direction:column;gap:16px}
@@ -885,6 +887,7 @@
                 <div><strong>RPC port</strong><span id="launchpadSummaryRpc">—</span></div>
                 <div><strong>Wallet</strong><span id="launchpadSummaryWallet">—</span></div>
               </div>
+              <div class="launchpad-status" id="launchpadStatus" aria-live="polite"></div>
               <p style="font-size:12px;color:var(--muted)">Launchpad will generate a unique peer ID and non-conflicting ports for every node.</p>
             </div>
           </div>

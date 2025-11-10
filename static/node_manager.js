@@ -140,6 +140,7 @@ const state = {
   const launchpadNextBtn = document.getElementById('launchpadNextBtn');
   const launchpadNextIcon = launchpadNextBtn?.querySelector('[data-launch-icon]') ?? null;
   const launchpadNextLabel = launchpadNextBtn?.querySelector('[data-launch-label]') ?? null;
+  const launchpadStatus = document.getElementById('launchpadStatus');
   let ocLogPollTimer = null;
   const SYSTEM_POLL_INTERVAL_MS = 10000;
   let systemPollTimer = null;
@@ -2445,6 +2446,36 @@ function syncCards(nodes) {
     updateLaunchpadLaunchState();
   }
 
+  async function requestLaunch(payload) {
+    const res = await fetch('/api/node-manager/launch', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(errText || res.statusText);
+    }
+    return res.json();
+  }
+
+  async function handleLaunch() {
+    if (!launchpadNextBtn) return;
+    if (!launchpadStatus) return;
+    launchpadStatus.classList.remove('error');
+    launchpadStatus.textContent = 'Launching node…';
+    launchpadNextBtn.disabled = true;
+    try {
+      const data = await requestLaunch(getLaunchpadData());
+      launchpadStatus.textContent = `Started ${data.label} (P2P ${data.p2pPort}, RPC ${data.rpcPort}).`;
+    } catch (err) {
+      launchpadStatus.classList.add('error');
+      launchpadStatus.textContent = err?.message || 'Launch failed';
+    } finally {
+      updateLaunchpadLaunchState();
+    }
+  }
+
   function getLaunchpadFieldValue(field) {
     if (!field) return '';
     return field.value?.trim?.() || '';
@@ -2482,6 +2513,10 @@ function syncCards(nodes) {
       renderLaunchpadSummary();
     }
     updateLaunchpadLaunchState();
+    if (launchpadStatus && step !== 3) {
+      launchpadStatus.textContent = '';
+      launchpadStatus.classList.remove('error');
+    }
   }
 
   function changeLaunchpadStep(direction) {
@@ -3635,15 +3670,14 @@ function syncCards(nodes) {
       launchpadBackBtn.addEventListener('click', () => changeLaunchpadStep(-1));
     }
     if (launchpadNextBtn) {
-      launchpadNextBtn.addEventListener('click', () => {
+      launchpadNextBtn.addEventListener('click', async () => {
         const mode = launchpadNextBtn.dataset.mode || 'next';
         if (mode === 'launch') {
           if (!isLaunchpadComplete()) {
             renderLaunchpadSummary();
             return;
           }
-          const data = getLaunchpadData();
-          console.log('[launchpad] launch requested', data);
+          await handleLaunch();
         } else {
           changeLaunchpadStep(1);
         }
