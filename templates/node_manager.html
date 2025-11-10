@@ -53,12 +53,12 @@
   .launchpad-port-grid label{margin:0}
   .launchpad-port-grid__full{grid-column:1 / -1}
   .launchpad-basics-grid{display:flex;flex-direction:column;gap:16px;width:100%}
-  .launchpad-basics-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 18px}
-  .launchpad-basics-row label{margin:0}
+  .launchpad-basics-row{display:flex;flex-direction:column;gap:16px 18px}
+  .launchpad-basics-row label{margin:0;display:flex;flex-direction:column;gap:6px}
+  .launchpad-basics-row input{max-width:400px;width:100%}
+  .launchpad-basics-row__full{align-self:stretch}
   .launchpad-step[data-launchpad-step="1"] label + label{margin-top:-2px;height:59px}
   .launchpad-field-label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
-  .launchpad-network-field{display:flex;flex-direction:column;gap:6px}
-  .launchpad-network-field select{padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:var(--text);font-weight:600;height:38px;line-height:1.2}
   .launchpad-network-note{font-size:11px;color:var(--muted)}
   .launchpad-card input{padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:var(--text);font-weight:600;min-height:30px;margin-top:-4px;position:relative;top:5px}
   .launchpad-card select{padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:var(--text);font-weight:600;min-height:30px;height:28px}
@@ -111,7 +111,7 @@
     .chart-tabs .summary-tab{flex:1 0 45%;margin-bottom:4px}
     .node-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
     .node-logs{margin-top:12px}
-    .launchpad-basics-row{grid-template-columns:1fr}
+    .launchpad-basics-row{gap:14px}
   }
   .system-grid{display:grid;gap:12px;margin-top:12px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
   .system-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:6px;min-height:120px}
@@ -862,20 +862,10 @@
                   </label>
                 </div>
                 <div class="launchpad-basics-row">
-                  <label>
+                  <label class="launchpad-basics-row__full">
                     Wallet address
                     <input type="text" id="launchpadWalletAddress" placeholder="0x..." autocomplete="off">
                   </label>
-                  <div class="launchpad-network-field">
-                    <div>
-                      <span class="launchpad-field-label">Network profile</span>
-                    </div>
-                    <select id="launchpadNetwork" aria-label="Network profile">
-                      <option value="testnet">Testnet</option>
-                      <option value="mainnet" disabled>Mainnet (coming soon)</option>
-                    </select>
-                    <span class="launchpad-network-note">Testnet is the only supported profile for Launchpad today.</span>
-                  </div>
                 </div>
               </div>
               <div class="launchpad-port-gap" style="height:20px"></div>
@@ -920,7 +910,6 @@
               <div class="launchpad-summary">
                 <div><strong>Node label</strong><span id="launchpadSummaryLabel">—</span></div>
                 <div><strong>Install path</strong><span id="launchpadSummaryPath">—</span></div>
-                <div><strong>Network</strong><span id="launchpadSummaryNetwork">—</span></div>
                 <div><strong>P2P port</strong><span id="launchpadSummaryP2P">—</span></div>
                 <div><strong>WS port</strong><span id="launchpadSummaryWs">—</span></div>
                 <div><strong>RPC port</strong><span id="launchpadSummaryRpc">—</span></div>
@@ -970,11 +959,6 @@
           <div class="node-discovery-message" id="nodeDiscoveryMessage" hidden title="Discovery may take a moment while each node responds.">
             <span class="node-discovery-spinner" aria-hidden="true"></span>
             <span class="node-discovery-subtext">Please hang tight while the initial scan completes.</span>
-          </div>
-          <div class="card" id="emptyFleetState" style="display:none;">
-            <div class="empty-state">
-              <p>No nodes detected yet. Use <strong>Search Nodes</strong> to discover BlockDAG containers reachable from this host.</p>
-            </div>
           </div>
 
     <div class="fleet-grid" id="fleetCards"></div>
