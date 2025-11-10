@@ -61,8 +61,6 @@ def _existing_node_ports() -> Dict[str, List[int]]:
     except LaunchError:
         return ports
     for name in names.splitlines():
-        if not name.startswith("blockdag-node-"):
-            continue
         for target, key in ((38131, "p2p"), (18545, "rpc"), (18546, "ws"), (18150, "peer")):
             try:
                 mapping = _run_command(["docker", "port", name, f"{target}/tcp"])
