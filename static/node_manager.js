@@ -1994,7 +1994,7 @@ function switchSummaryTab(target) {
       },
       launchpad: {
         title: 'Launchpad',
-        desc: 'Plan, configure, and launch new nodes with guided steps and automatic port assignment.',
+        desc: 'Launch new nodes with guided steps and automatic port assignment.',
       },
     };
     const next = copy[activeView] || copy.stats;
