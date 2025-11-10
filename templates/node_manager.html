@@ -37,6 +37,30 @@
   .node-discovery-subtext{width:100%;display:block;font-size:13px;color:var(--muted)}
   @keyframes nodeSpinner{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
   @keyframes nodeTextShimmer{0%{background-position:-200% 50%}100%{background-position:200% 50%}}
+  .launchpad-pane{display:flex;flex-direction:column;gap:16px}
+  .launchpad-steps{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .launchpad-step-chip{padding:6px 12px;border-radius:999px;background:rgba(255,255,255,.05);color:var(--muted);font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+  .launchpad-step-chip.is-active{background:rgba(68,242,168,.16);color:#44f2a8}
+  .launchpad-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:14px;min-height:200px}
+  .launchpad-card h3{margin:0;color:var(--text);font-size:16px}
+  .launchpad-card label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+  .launchpad-card input,
+  .launchpad-card select{padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:var(--text);font-weight:600}
+  .launchpad-summary{background:rgba(255,255,255,.02);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;font-size:13px;line-height:1.5}
+  .launchpad-summary strong{display:inline-block;width:140px;color:var(--muted)}
+  .launchpad-actions{display:flex;gap:10px;flex-wrap:wrap}
+  .launchpad-actions .pill-btn{flex:1;justify-content:center}
+  .launchpad-pane{display:flex;flex-direction:column;gap:16px}
+  .launchpad-steps{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .launchpad-step-chip{padding:6px 12px;border-radius:999px;background:rgba(255,255,255,.05);color:var(--muted);font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+  .launchpad-step-chip.is-active{background:rgba(68,242,168,.16);color:#44f2a8}
+  .launchpad-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:14px;min-height:220px}
+  .launchpad-card label{display:flex;flex-direction:column;font-size:13px;color:var(--muted);gap:4px}
+  .launchpad-card input,.launchpad-card select{padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);color:var(--text);font-weight:600}
+  .launchpad-actions{display:flex;justify-content:space-between;gap:10px}
+  .launchpad-actions .pill-btn{flex:1;justify-content:center}
+  .launchpad-summary{background:rgba(0,0,0,.25);border-radius:10px;padding:12px;font-size:13px;line-height:1.5}
+  .launchpad-summary strong{display:inline-block;width:140px;font-weight:600;color:var(--muted)}
   @media (max-width:900px){
     .header{flex-direction:column;align-items:flex-start;padding:0}
     .header-actions{width:100%;justify-content:flex-start;flex-wrap:wrap}
@@ -391,6 +415,7 @@
               <button class="summary-tab" type="button" data-summary-tab="overclock" aria-selected="false">Overclock</button>
               <button class="summary-tab" type="button" data-summary-tab="snapshots" aria-selected="false">Snapshots</button>
               <button class="summary-tab" type="button" data-summary-tab="wallet" aria-selected="false">Wallet</button>
+              <button class="summary-tab" type="button" data-summary-tab="launchpad" aria-selected="false">Launchpad</button>
             </div>
           </div>
       </div>
@@ -783,6 +808,73 @@
               <div class="wallet-empty" id="walletHistoryEmpty">No history captured yet.</div>
               <ul id="walletHistoryList" hidden></ul>
             </div>
+          </div>
+        </div>
+        <div class="summary-pane launchpad-pane" data-summary-pane="launchpad" hidden>
+          <div class="launchpad-steps" id="launchpadSteps">
+            <span class="launchpad-step-chip" data-step-chip="1">Step 1 · Basics</span>
+            <span class="launchpad-step-chip" data-step-chip="2">Step 2 · Ports</span>
+            <span class="launchpad-step-chip" data-step-chip="3">Step 3 · Review</span>
+          </div>
+          <div class="launchpad-card" id="launchpadCardStep1">
+            <h3>Node Basics</h3>
+            <label>
+              Node label
+              <input type="text" id="launchpadNodeLabel" placeholder="Example: blockdag-node-25" autocomplete="off">
+            </label>
+            <label>
+              Installation path
+              <input type="text" id="launchpadInstallPath" placeholder="/home/node/blockdag-node25">
+            </label>
+            <label>
+              Network profile
+              <select id="launchpadNetwork">
+                <option value="testnet">Testnet</option>
+                <option value="mainnet" disabled>Mainnet (coming soon)</option>
+              </select>
+            </label>
+          </div>
+          <div class="launchpad-card" id="launchpadCardStep2" hidden>
+            <h3>Ports & Peer ID</h3>
+            <label>
+              Base P2P port
+              <input type="number" id="launchpadP2PPort" min="10000" value="38130">
+            </label>
+            <label>
+              RPC port
+              <input type="number" id="launchpadRpcPort" min="10000" value="18545">
+            </label>
+            <label>
+              Peer ID mode
+              <select id="launchpadPeerMode">
+                <option value="auto">Auto generate via APU</option>
+                <option value="manual">Use existing peer key</option>
+              </select>
+            </label>
+            <div class="launchpad-summary" id="launchpadPeerPreview">
+              <strong>Peer ID</strong>
+              <span id="launchpadPeerIdText">Will be generated during launch.</span>
+            </div>
+          </div>
+          <div class="launchpad-card" id="launchpadCardStep3" hidden>
+            <h3>Review & Launch</h3>
+            <div class="launchpad-summary">
+              <div><strong>Node label</strong><span id="launchpadSummaryLabel">—</span></div>
+              <div><strong>Install path</strong><span id="launchpadSummaryPath">—</span></div>
+              <div><strong>Network</strong><span id="launchpadSummaryNetwork">—</span></div>
+              <div><strong>P2P port</strong><span id="launchpadSummaryP2P">—</span></div>
+              <div><strong>RPC port</strong><span id="launchpadSummaryRpc">—</span></div>
+              <div><strong>Peer mode</strong><span id="launchpadSummaryPeerMode">—</span></div>
+            </div>
+            <p style="font-size:12px;color:var(--muted)">Launchpad will run the updated <code>apu.sh</code> script, generating a unique peer ID and non-conflicting ports for every node.</p>
+          </div>
+          <div class="launchpad-actions">
+            <button type="button" class="pill-btn" id="launchpadBackBtn" disabled>Back</button>
+            <button type="button" class="pill-btn" id="launchpadNextBtn">Next</button>
+            <button type="button" class="pill-btn" id="launchpadLaunchBtn" hidden>
+              <span class="icon">🚀</span>
+              Launch node
+            </button>
           </div>
         </div>
         <div class="summary-pane" data-summary-pane="snapshots" hidden>
