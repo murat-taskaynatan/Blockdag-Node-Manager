@@ -2722,7 +2722,7 @@ function syncCards(nodes) {
     entry.state.cardOpen = Boolean(card && card.open);
     entry.state.logsOpen = Boolean(panelEl && !panelEl.hasAttribute('hidden'));
     if (nameEl) {
-      nameEl.textContent = 'BlockDAG Node';
+      nameEl.textContent = node.id || 'Node';
     }
     if (metaEl) {
       metaEl.textContent = node.container || '—';
