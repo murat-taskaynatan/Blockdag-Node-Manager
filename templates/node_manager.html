@@ -56,6 +56,10 @@
   .launchpad-basics-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 18px}
   .launchpad-basics-row label{margin:0}
   .launchpad-step[data-launchpad-step="1"] label + label{margin-top:-2px;height:59px}
+  .launchpad-field-label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+  .launchpad-network-field{display:flex;flex-direction:column;gap:6px}
+  .launchpad-network-field select{padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:var(--text);font-weight:600;height:32px}
+  .launchpad-network-note{font-size:11px;color:var(--muted)}
   .launchpad-card input{padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:var(--text);font-weight:600;min-height:30px;margin-top:-4px;position:relative;top:5px}
   .launchpad-card select{padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:var(--text);font-weight:600;min-height:30px;height:28px}
   .launchpad-card input[type=number]{width:80px}
@@ -862,13 +866,16 @@
                     Wallet address
                     <input type="text" id="launchpadWalletAddress" placeholder="0x..." autocomplete="off">
                   </label>
-                  <label>
-                    Network profile
-                    <select id="launchpadNetwork">
+                  <div class="launchpad-network-field">
+                    <div>
+                      <span class="launchpad-field-label">Network profile</span>
+                    </div>
+                    <select id="launchpadNetwork" aria-label="Network profile">
                       <option value="testnet">Testnet</option>
                       <option value="mainnet" disabled>Mainnet (coming soon)</option>
                     </select>
-                  </label>
+                    <span class="launchpad-network-note">Testnet is the only supported profile for Launchpad today.</span>
+                  </div>
                 </div>
               </div>
               <div class="launchpad-port-gap" style="height:20px"></div>
