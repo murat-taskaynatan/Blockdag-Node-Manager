@@ -4316,6 +4316,11 @@ def login():
             session["authenticated"] = True
             return redirect(request.args.get("next") or url_for("node_manager_view"))
         error = "Invalid username or password."
+        try:
+            remote_ip = request.headers.get("X-Forwarded-For", request.remote_addr or "?")
+            app.logger.warning("Login failure for user=%s ip=%s", username or "<blank>", remote_ip)
+        except Exception:
+            pass
     return render_template("login.html", error=error)
 
 
