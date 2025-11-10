@@ -423,7 +423,9 @@
           title="Sign out of the console"
           aria-label="Log out"
         >
-          <span class="icon">🚪</span>
+          <span class="icon" aria-hidden="true">
+            <img src="{{ url_for('static', filename='logout-icon.jpeg') }}" alt="" style="width:16px;height:16px;object-fit:cover;border-radius:50%;">
+          </span>
           Logout
         </button>
         {% endif %}
