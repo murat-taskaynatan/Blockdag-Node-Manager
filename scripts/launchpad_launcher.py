@@ -1,6 +1,5 @@
 import os
 import re
-import shutil
 import subprocess
 from pathlib import Path
 from typing import Dict, List, Tuple
@@ -52,17 +51,6 @@ def _find_available_port(used: set[int], start: int) -> int:
         port += 1
     used.add(port)
     return port
-
-
-def _safe_rmtree(path: Path) -> None:
-    def _onerror(func, path_str, exc_info):
-        try:
-            os.chmod(path_str, 0o755)
-        except Exception:
-            pass
-        func(path_str)
-
-    shutil.rmtree(path, onerror=_onerror)
 
 
 def _existing_node_ports() -> Dict[str, List[int]]:
@@ -135,9 +123,13 @@ def launch_node(payload: Dict) -> Dict:
         raise LaunchError("Installation path is required")
     install_path.mkdir(parents=True, exist_ok=True)
     scripts_dir = install_path / "blockdag-scripts"
+    git_dir = scripts_dir / ".git"
     if scripts_dir.exists():
-        _safe_rmtree(scripts_dir)
-    _run_command(["git", "clone", "--depth", "1", LAUNCHPAD_REPO, str(scripts_dir)])
+        if not git_dir.exists():
+            raise LaunchError("Existing blockdag-scripts directory is not a git repo; remove it and retry")
+        _run_command(["git", "-C", str(scripts_dir), "pull"])
+    else:
+        _run_command(["git", "clone", "--depth", "1", LAUNCHPAD_REPO, str(scripts_dir)])
     env_path = scripts_dir / ".env"
     env_path.write_text(f"PUB_ETH_ADDR={wallet}\n", encoding="utf-8")
     (scripts_dir / "wallet.txt").write_text(wallet + "\n", encoding="utf-8")
