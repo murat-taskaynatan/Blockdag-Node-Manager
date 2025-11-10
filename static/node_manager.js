@@ -40,8 +40,6 @@ const state = {
         installPath: '',
         network: 'testnet',
         p2pPort: 38130,
-        rpcPort: 18545,
-        peerMode: 'auto',
       },
     },
   };
@@ -124,17 +122,12 @@ const state = {
     installPath: document.getElementById('launchpadInstallPath'),
     network: document.getElementById('launchpadNetwork'),
     p2pPort: document.getElementById('launchpadP2PPort'),
-    rpcPort: document.getElementById('launchpadRpcPort'),
-    peerMode: document.getElementById('launchpadPeerMode'),
   };
   const launchpadSummaryRefs = {
     label: document.getElementById('launchpadSummaryLabel'),
     path: document.getElementById('launchpadSummaryPath'),
     network: document.getElementById('launchpadSummaryNetwork'),
     p2pPort: document.getElementById('launchpadSummaryP2P'),
-    rpcPort: document.getElementById('launchpadSummaryRpc'),
-    peerMode: document.getElementById('launchpadSummaryPeerMode'),
-    peerPreview: document.getElementById('launchpadPeerIdText'),
   };
   const launchpadBackBtn = document.getElementById('launchpadBackBtn');
   const launchpadNextBtn = document.getElementById('launchpadNextBtn');
@@ -2383,9 +2376,19 @@ function syncCards(nodes) {
       installPath: launchpadFields.installPath?.value?.trim() || '',
       network: launchpadFields.network?.value || 'testnet',
       p2pPort: Number(launchpadFields.p2pPort?.value) || 38130,
-      rpcPort: Number(launchpadFields.rpcPort?.value) || 18545,
-      peerMode: launchpadFields.peerMode?.value || 'auto',
     };
+  }
+
+  function isLaunchpadComplete(data = getLaunchpadData()) {
+    return Boolean(data.label && data.installPath && data.p2pPort);
+  }
+
+  function updateLaunchpadLaunchState() {
+    if (!launchpadLaunchBtn) return;
+    const complete = isLaunchpadComplete();
+    const show = state.launchpad.step === 3 && complete;
+    launchpadLaunchBtn.hidden = !show;
+    launchpadLaunchBtn.disabled = !complete;
   }
 
   function renderLaunchpadSummary(data = getLaunchpadData()) {
@@ -2394,11 +2397,7 @@ function syncCards(nodes) {
     launchpadSummaryRefs.path.textContent = data.installPath || '/home/node/<auto>';
     launchpadSummaryRefs.network.textContent = data.network;
     launchpadSummaryRefs.p2pPort.textContent = data.p2pPort;
-    launchpadSummaryRefs.rpcPort.textContent = data.rpcPort;
-    launchpadSummaryRefs.peerMode.textContent = data.peerMode === 'auto' ? 'Auto (apu.sh)' : 'Manual key';
-    launchpadSummaryRefs.peerPreview.textContent = data.peerMode === 'auto'
-      ? 'Will be generated during launch.'
-      : 'User provided key will be used.';
+    updateLaunchpadLaunchState();
   }
 
   function setLaunchpadStep(step) {
@@ -2414,10 +2413,10 @@ function syncCards(nodes) {
     });
     if (launchpadBackBtn) launchpadBackBtn.disabled = step === 1;
     if (launchpadNextBtn) launchpadNextBtn.hidden = step === 3;
-    if (launchpadLaunchBtn) launchpadLaunchBtn.hidden = step !== 3;
     if (step === 3) {
       renderLaunchpadSummary();
     }
+    updateLaunchpadLaunchState();
   }
 
   function changeLaunchpadStep(direction) {
@@ -3551,6 +3550,12 @@ function syncCards(nodes) {
         }
       });
     });
+    Object.values(launchpadFields).forEach((field) => {
+      if (!field) return;
+      const handler = () => renderLaunchpadSummary();
+      field.addEventListener('input', handler);
+      field.addEventListener('change', handler);
+    });
     if (launchpadBackBtn) {
       launchpadBackBtn.addEventListener('click', () => changeLaunchpadStep(-1));
     }
@@ -3559,6 +3564,10 @@ function syncCards(nodes) {
     }
     if (launchpadLaunchBtn) {
       launchpadLaunchBtn.addEventListener('click', () => {
+        if (!isLaunchpadComplete()) {
+          renderLaunchpadSummary();
+          return;
+        }
         const data = getLaunchpadData();
         console.log('[launchpad] launch requested', data);
       });

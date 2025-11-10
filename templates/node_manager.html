@@ -835,26 +835,14 @@
             </label>
           </div>
           <div class="launchpad-card" id="launchpadCardStep2" hidden>
-            <h3>Ports & Peer ID</h3>
+            <h3>Ports</h3>
             <label>
               Base P2P port
               <input type="number" id="launchpadP2PPort" min="10000" value="38130">
             </label>
-            <label>
-              RPC port
-              <input type="number" id="launchpadRpcPort" min="10000" value="18545">
-            </label>
-            <label>
-              Peer ID mode
-              <select id="launchpadPeerMode">
-                <option value="auto">Auto generate via APU</option>
-                <option value="manual">Use existing peer key</option>
-              </select>
-            </label>
-            <div class="launchpad-summary" id="launchpadPeerPreview">
-              <strong>Peer ID</strong>
-              <span id="launchpadPeerIdText">Will be generated during launch.</span>
-            </div>
+            <p style="font-size:12px;color:var(--muted);margin:0">
+              RPC and peer credentials are auto-managed by Launchpad.
+            </p>
           </div>
           <div class="launchpad-card" id="launchpadCardStep3" hidden>
             <h3>Review & Launch</h3>
@@ -863,8 +851,6 @@
               <div><strong>Install path</strong><span id="launchpadSummaryPath">—</span></div>
               <div><strong>Network</strong><span id="launchpadSummaryNetwork">—</span></div>
               <div><strong>P2P port</strong><span id="launchpadSummaryP2P">—</span></div>
-              <div><strong>RPC port</strong><span id="launchpadSummaryRpc">—</span></div>
-              <div><strong>Peer mode</strong><span id="launchpadSummaryPeerMode">—</span></div>
             </div>
             <p style="font-size:12px;color:var(--muted)">Launchpad will run the updated <code>apu.sh</code> script, generating a unique peer ID and non-conflicting ports for every node.</p>
           </div>
