@@ -31,6 +31,19 @@ const state = {
       filter: 'all',
     },
     nodesDiscovering: false,
+    discoveryStartTs: 0,
+    discoveryDismissed: false,
+    launchpad: {
+      step: 1,
+      data: {
+        label: '',
+        installPath: '',
+        network: 'testnet',
+        p2pPort: 38130,
+        rpcPort: 18545,
+        peerMode: 'auto',
+      },
+    },
   };
 
   const cardsContainer = document.getElementById('fleetCards');
@@ -100,6 +113,32 @@ const state = {
   const ocLogsMeta = document.getElementById('ocLogsMeta');
   const ocLogsOutput = document.getElementById('ocLogsOutput');
   const ocLogsRefreshBtn = document.getElementById('ocLogsRefresh');
+  const launchpadStepsContainer = document.getElementById('launchpadSteps');
+  const launchpadCards = {
+    1: document.getElementById('launchpadCardStep1'),
+    2: document.getElementById('launchpadCardStep2'),
+    3: document.getElementById('launchpadCardStep3'),
+  };
+  const launchpadFields = {
+    label: document.getElementById('launchpadNodeLabel'),
+    installPath: document.getElementById('launchpadInstallPath'),
+    network: document.getElementById('launchpadNetwork'),
+    p2pPort: document.getElementById('launchpadP2PPort'),
+    rpcPort: document.getElementById('launchpadRpcPort'),
+    peerMode: document.getElementById('launchpadPeerMode'),
+  };
+  const launchpadSummaryRefs = {
+    label: document.getElementById('launchpadSummaryLabel'),
+    path: document.getElementById('launchpadSummaryPath'),
+    network: document.getElementById('launchpadSummaryNetwork'),
+    p2pPort: document.getElementById('launchpadSummaryP2P'),
+    rpcPort: document.getElementById('launchpadSummaryRpc'),
+    peerMode: document.getElementById('launchpadSummaryPeerMode'),
+    peerPreview: document.getElementById('launchpadPeerIdText'),
+  };
+  const launchpadBackBtn = document.getElementById('launchpadBackBtn');
+  const launchpadNextBtn = document.getElementById('launchpadNextBtn');
+  const launchpadLaunchBtn = document.getElementById('launchpadLaunchBtn');
   let ocLogPollTimer = null;
   const SYSTEM_POLL_INTERVAL_MS = 10000;
   let systemPollTimer = null;
@@ -125,7 +164,35 @@ const state = {
   const ocOverlayChartEmpty = document.getElementById('ocOverlayChartEmpty');
   let ocOverlayChart = null;
   const logoutBtn = document.getElementById('btnLogout');
+  const launchpadStepsContainer = document.getElementById('launchpadSteps');
+  const launchpadCards = {
+    1: document.getElementById('launchpadCardStep1'),
+    2: document.getElementById('launchpadCardStep2'),
+    3: document.getElementById('launchpadCardStep3'),
+  };
+  const launchpadFields = {
+    label: document.getElementById('launchpadNodeLabel'),
+    installPath: document.getElementById('launchpadInstallPath'),
+    network: document.getElementById('launchpadNetwork'),
+    p2pPort: document.getElementById('launchpadP2PPort'),
+    rpcPort: document.getElementById('launchpadRpcPort'),
+    peerMode: document.getElementById('launchpadPeerMode'),
+  };
+  const launchpadSummaryRefs = {
+    label: document.getElementById('launchpadSummaryLabel'),
+    path: document.getElementById('launchpadSummaryPath'),
+    network: document.getElementById('launchpadSummaryNetwork'),
+    p2pPort: document.getElementById('launchpadSummaryP2P'),
+    rpcPort: document.getElementById('launchpadSummaryRpc'),
+    peerMode: document.getElementById('launchpadSummaryPeerMode'),
+    peerPreview: document.getElementById('launchpadPeerIdText'),
+  };
+  const launchpadBackBtn = document.getElementById('launchpadBackBtn');
+  const launchpadNextBtn = document.getElementById('launchpadNextBtn');
+  const launchpadLaunchBtn = document.getElementById('launchpadLaunchBtn');
   const nodeDiscoveryMessage = document.getElementById('nodeDiscoveryMessage');
+  const nodeDiscoverySubtext = document.getElementById('nodeDiscoverySubtext');
+  const nodeDiscoveryDismissBtn = document.getElementById('nodeDiscoveryDismissBtn');
   // Allow init() to push a metric once auto-verify returns
   let ocAppendMetric = null;
   function drawFallbackChart(labels, iopsData, p50Data) {
@@ -2336,6 +2403,55 @@ function syncCards(nodes) {
     nodeDiscoveryMessage.hidden = !show;
   }
 
+  function getLaunchpadData() {
+    return {
+      label: launchpadFields.label?.value?.trim() || '',
+      installPath: launchpadFields.installPath?.value?.trim() || '',
+      network: launchpadFields.network?.value || 'testnet',
+      p2pPort: Number(launchpadFields.p2pPort?.value) || 38130,
+      rpcPort: Number(launchpadFields.rpcPort?.value) || 18545,
+      peerMode: launchpadFields.peerMode?.value || 'auto',
+    };
+  }
+
+  function renderLaunchpadSummary(data = getLaunchpadData()) {
+    if (!launchpadSummaryRefs.label) return;
+    launchpadSummaryRefs.label.textContent = data.label || 'auto';
+    launchpadSummaryRefs.path.textContent = data.installPath || '/home/node/<auto>';
+    launchpadSummaryRefs.network.textContent = data.network;
+    launchpadSummaryRefs.p2pPort.textContent = data.p2pPort;
+    launchpadSummaryRefs.rpcPort.textContent = data.rpcPort;
+    launchpadSummaryRefs.peerMode.textContent = data.peerMode === 'auto' ? 'Auto (apu.sh)' : 'Manual key';
+    launchpadSummaryRefs.peerPreview.textContent = data.peerMode === 'auto'
+      ? 'Will be generated during launch.'
+      : 'User provided key will be used.';
+  }
+
+  function setLaunchpadStep(step) {
+    if (!launchpadCards[step]) return;
+    state.launchpad.step = step;
+    Object.entries(launchpadCards).forEach(([key, card]) => {
+      if (!card) return;
+      card.hidden = Number(key) !== step;
+    });
+    launchpadStepsContainer?.querySelectorAll('[data-step-chip]')?.forEach((chip) => {
+      const chipStep = Number(chip.dataset.stepChip);
+      chip.classList.toggle('is-active', chipStep === step);
+    });
+    if (launchpadBackBtn) launchpadBackBtn.disabled = step === 1;
+    if (launchpadNextBtn) launchpadNextBtn.hidden = step === 3;
+    if (launchpadLaunchBtn) launchpadLaunchBtn.hidden = step !== 3;
+    if (step === 3) {
+      renderLaunchpadSummary();
+    }
+  }
+
+  function changeLaunchpadStep(direction) {
+    const next = state.launchpad.step + direction;
+    if (next < 1 || next > 3) return;
+    setLaunchpadStep(next);
+  }
+
   function sortNodes(list) {
     return (list || []).slice().sort((a, b) => {
       const parseInfo = (node) => {
@@ -3461,6 +3577,18 @@ function syncCards(nodes) {
         }
       });
     });
+    if (launchpadBackBtn) {
+      launchpadBackBtn.addEventListener('click', () => changeLaunchpadStep(-1));
+    }
+    if (launchpadNextBtn) {
+      launchpadNextBtn.addEventListener('click', () => changeLaunchpadStep(1));
+    }
+    if (launchpadLaunchBtn) {
+      launchpadLaunchBtn.addEventListener('click', () => {
+        const data = getLaunchpadData();
+        console.log('[launchpad] launch requested', data);
+      });
+    }
     if (settingsForm) {
       settingsForm.addEventListener('change', (event) => {
         const target = event.target;
@@ -4259,6 +4387,7 @@ function syncCards(nodes) {
     startSystemPolling();
     await loadSnapshots({ silent: true });
     await discoverNodes({ auto: true });
+    setLaunchpadStep(1);
     await refreshMetrics();
     // Chart removed per request; skipping auto-prime visualization
     setInterval(refreshMetrics, 5000);
