@@ -4601,6 +4601,7 @@ function syncCards(nodes) {
     if (initialTab) {
       switchSummaryTab(initialTab);
     }
+    setLaunchpadStep(1);
     await loadSettings();
     // No manual data dir field; backend auto-detects on actions
     await loadNodes();
@@ -4609,7 +4610,6 @@ function syncCards(nodes) {
     startSystemPolling();
     await loadSnapshots({ silent: true });
     await discoverNodes({ auto: true });
-    setLaunchpadStep(1);
     await refreshMetrics();
     // Chart removed per request; skipping auto-prime visualization
     setInterval(refreshMetrics, 5000);

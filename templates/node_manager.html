@@ -49,11 +49,11 @@
   .launchpad-checkbox input{margin-top:2px}
   .launchpad-checkbox span{flex:1;line-height:1.4}
   .launchpad-port-gap{height:16px}
-  .launchpad-port-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px 18px}
+  .launchpad-port-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 12px}
   .launchpad-port-grid label{margin:0}
   .launchpad-port-grid__full{grid-column:1 / -1}
   .launchpad-basics-grid{display:flex;flex-direction:column;gap:5px;width:100%}
-  .launchpad-basics-row{display:flex;flex-direction:column;gap:16px 18px}
+  .launchpad-basics-row{display:flex;flex-direction:column;gap:10px 12px}
   .launchpad-basics-row label{margin:0;display:flex;flex-direction:column;gap:6px}
   .launchpad-basics-row input{max-width:400px;width:100%}
   .launchpad-basics-row__full{align-self:stretch}
@@ -111,7 +111,7 @@
     .chart-tabs .summary-tab{flex:1 0 45%;margin-bottom:4px}
     .node-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
     .node-logs{margin-top:12px}
-    .launchpad-basics-row{gap:14px}
+    .launchpad-basics-row{gap:10px}
   }
   .system-grid{display:grid;gap:12px;margin-top:12px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
   .system-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:6px;min-height:120px}
@@ -424,7 +424,7 @@
           aria-label="Log out"
         >
           <span class="icon" aria-hidden="true">
-            <img src="{{ url_for('static', filename='logout-icon.png') }}" alt="" style="width:16px;height:16px;object-fit:cover;border-radius:50%;">
+            <img src="{{ url_for('static', filename='logout-icon.svg') }}" alt="" style="width:18px;height:18px;object-fit:contain;">
           </span>
           Logout
         </button>
