@@ -2564,7 +2564,7 @@ function syncCards(nodes) {
     const nameEl = details.querySelector('.node-name');
     const metaEl = details.querySelector('.node-meta');
     if (nameEl) {
-      nameEl.textContent = node.label || node.id || 'Node';
+      nameEl.textContent = node.id || 'Node';
     }
     if (metaEl) {
       metaEl.textContent = node.container || '—';
@@ -2722,7 +2722,7 @@ function syncCards(nodes) {
     entry.state.cardOpen = Boolean(card && card.open);
     entry.state.logsOpen = Boolean(panelEl && !panelEl.hasAttribute('hidden'));
     if (nameEl) {
-      nameEl.textContent = node.label || node.id || 'Node';
+      nameEl.textContent = 'BlockDAG Node';
     }
     if (metaEl) {
       metaEl.textContent = node.container || '—';
