@@ -2689,6 +2689,9 @@ function syncCards(nodes) {
     const toggleEl = card?.querySelector?.('[data-role="logs-toggle"]');
     const wrapperEl = card?.querySelector?.('.node-logs');
 
+    const nameEl = card?.querySelector?.('.node-name');
+    const metaEl = card?.querySelector?.('.node-meta');
+
     if (previousState.cardOpen && card) {
       card.open = true;
       card.setAttribute('open', '');
