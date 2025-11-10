@@ -2468,6 +2468,7 @@ function syncCards(nodes) {
     try {
       const data = await requestLaunch(getLaunchpadData());
       launchpadStatus.textContent = `Started ${data.label} (P2P ${data.p2pPort}, RPC ${data.rpcPort}).`;
+      await discoverNodes({ auto: true });
     } catch (err) {
       launchpadStatus.classList.add('error');
       launchpadStatus.textContent = err?.message || 'Launch failed';
