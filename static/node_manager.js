@@ -2486,7 +2486,7 @@ function syncCards(nodes) {
     const resolvedP2P = usePreview ? preview?.p2pPort ?? (pendingText || data.p2pPort) : data.p2pPort;
     const resolvedRpc = usePreview ? preview?.rpcPort ?? (pendingText || data.rpcPort) : data.rpcPort;
     const resolvedWs = usePreview ? preview?.wsPort ?? (pendingText || data.wsPort) : data.wsPort;
-    const resolvedPeer = usePreview ? preview?.peerPort ?? (pendingText || data.peerPort) : data.peerPort;
+    const resolvedPeer = data.peerPort; // internal peer port stays at the configured base
     const resolvedExternalP2P = data.autoPorts
       ? (usePreview ? preview?.p2pPort ?? (pendingText || data.p2pPort) : data.p2pPort)
       : data.externalP2PPort || '—';
