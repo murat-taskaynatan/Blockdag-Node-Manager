@@ -112,10 +112,10 @@ const state = {
   const ocLogsOutput = document.getElementById('ocLogsOutput');
   const ocLogsRefreshBtn = document.getElementById('ocLogsRefresh');
   const launchpadStepsContainer = document.getElementById('launchpadSteps');
-  const launchpadCards = {
-    1: document.getElementById('launchpadCardStep1'),
-    2: document.getElementById('launchpadCardStep2'),
-    3: document.getElementById('launchpadCardStep3'),
+  const launchpadSections = {
+    1: document.querySelector('[data-launchpad-step="1"]'),
+    2: document.querySelector('[data-launchpad-step="2"]'),
+    3: document.querySelector('[data-launchpad-step="3"]'),
   };
   const launchpadFields = {
     label: document.getElementById('launchpadNodeLabel'),
@@ -2401,11 +2401,11 @@ function syncCards(nodes) {
   }
 
   function setLaunchpadStep(step) {
-    if (!launchpadCards[step]) return;
+    if (!launchpadSections[step]) return;
     state.launchpad.step = step;
-    Object.entries(launchpadCards).forEach(([key, card]) => {
-      if (!card) return;
-      card.hidden = Number(key) !== step;
+    Object.entries(launchpadSections).forEach(([key, section]) => {
+      if (!section) return;
+      section.hidden = Number(key) !== step;
     });
     launchpadStepsContainer?.querySelectorAll('[data-step-chip]')?.forEach((chip) => {
       const chipStep = Number(chip.dataset.stepChip);
