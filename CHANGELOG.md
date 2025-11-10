@@ -3,6 +3,7 @@
 ## v1.5.0 - 2025-11-10
 - Launchpad now calls the backend to preview auto-selected ports before you reach the Review step, so the UI shows the exact external bindings and blocks launch until the preview succeeds.
 - The `/api/node-manager/launch/preview` endpoint reuses the launch logic to expose the resolved P2P/RPC/WS/peer mappings without starting a container.
+- Peer fields on the Review screen now keep the internal container port (18150) while the “External peer” row lists the published host port so the mapping is unambiguous.
 - Version badge, installer defaults, and docs now point at `v1.5.0` to keep `/opt/blockdag-node-manager` in sync with the latest tag.
 
 ## v1.4.9 - 2025-11-09
