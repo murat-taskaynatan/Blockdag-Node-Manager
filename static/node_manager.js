@@ -126,6 +126,7 @@ const state = {
     p2pPort: document.getElementById('launchpadP2PPort'),
     rpcPort: document.getElementById('launchpadRpcPort'),
     autoPorts: document.getElementById('launchpadAutoPorts'),
+    walletAddress: document.getElementById('launchpadWalletAddress'),
   };
   const launchpadSummaryRefs = {
     label: document.getElementById('launchpadSummaryLabel'),
@@ -133,6 +134,7 @@ const state = {
     network: document.getElementById('launchpadSummaryNetwork'),
     p2pPort: document.getElementById('launchpadSummaryP2P'),
     rpcPort: document.getElementById('launchpadSummaryRpc'),
+    wallet: document.getElementById('launchpadSummaryWallet'),
   };
   const launchpadBackBtn = document.getElementById('launchpadBackBtn');
   const launchpadNextBtn = document.getElementById('launchpadNextBtn');
@@ -2385,12 +2387,13 @@ function syncCards(nodes) {
       p2pPort: Number(launchpadFields.p2pPort?.value) || 38130,
       rpcPort: Number(launchpadFields.rpcPort?.value) || 18545,
       autoPorts,
+      walletAddress: launchpadFields.walletAddress?.value?.trim() || '',
     };
   }
 
   function isLaunchpadComplete(data = getLaunchpadData()) {
     const manualPortsValid = Number.isFinite(data.p2pPort) && data.p2pPort > 0 && Number.isFinite(data.rpcPort) && data.rpcPort > 0;
-    return Boolean(data.label && data.installPath && (data.autoPorts || manualPortsValid));
+    return Boolean(data.label && data.installPath && data.walletAddress && (data.autoPorts || manualPortsValid));
   }
 
   function updateLaunchpadLaunchState() {
@@ -2436,6 +2439,9 @@ function syncCards(nodes) {
     if (launchpadSummaryRefs.rpcPort) {
       launchpadSummaryRefs.rpcPort.textContent = data.autoPorts ? 'Auto-managed' : data.rpcPort;
     }
+    if (launchpadSummaryRefs.wallet) {
+      setSummaryField(launchpadSummaryRefs.wallet, data.walletAddress);
+    }
     updateLaunchpadLaunchState();
   }
 
@@ -2448,7 +2454,8 @@ function syncCards(nodes) {
     if (step === 1) {
       return Boolean(
         getLaunchpadFieldValue(launchpadFields.label) &&
-          getLaunchpadFieldValue(launchpadFields.installPath)
+          getLaunchpadFieldValue(launchpadFields.installPath) &&
+          getLaunchpadFieldValue(launchpadFields.walletAddress)
       );
     }
     if (step === 2) {
