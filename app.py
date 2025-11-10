@@ -9,10 +9,12 @@ import tarfile
 import threading
 import time
 import pwd
+import grp
 import string
 import shlex
 import hmac
 import itertools
+import stat
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_UP, getcontext
 from collections import OrderedDict, deque
@@ -273,6 +275,69 @@ def _service_username() -> str:
         return pwd.getpwuid(os.geteuid()).pw_name
     except Exception:
         return os.getenv("USER") or "node"
+
+
+def _user_in_group(user: str, group: str) -> bool:
+    if not user or user == "root":
+        return True
+    try:
+        user_entry = pwd.getpwnam(user)
+    except KeyError:
+        return False
+    try:
+        target_group = grp.getgrnam(group)
+    except KeyError:
+        return True
+    if target_group.gr_gid == user_entry.pw_gid or user in target_group.gr_mem:
+        return True
+    try:
+        members = os.getgrouplist(user, user_entry.pw_gid)  # type: ignore[attr-defined]
+        if target_group.gr_gid in members:
+            return True
+    except Exception:
+        pass
+    try:
+        return target_group.gr_gid in os.getgroups()
+    except Exception:
+        pass
+    try:
+        for entry in grp.getgrall():
+            if entry.gr_gid == target_group.gr_gid and user in entry.gr_mem:
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def _ensure_docker_group_membership() -> None:
+    user = _service_username()
+    if not user or user == "root":
+        return
+    if _user_in_group(user, "docker"):
+        return
+    if os.geteuid() == 0:
+        try:
+            subprocess.run(
+                ["usermod", "-aG", "docker", user],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            app.logger.info(
+                "Added service user '%s' to docker group; restart the node manager service to apply permissions",
+                user,
+            )
+        except Exception as exc:
+            app.logger.warning("Failed to add user '%s' to docker group: %s", user, exc)
+    else:
+        try:
+            app.logger.warning(
+                "Service user '%s' is not a member of the docker group. Run `sudo usermod -aG docker %s` and restart.",
+                user,
+                user,
+            )
+        except Exception:
+            pass
 
 
 def _docker_health_record(success: bool, message: Optional[str] = None) -> None:
@@ -977,6 +1042,50 @@ def _normalize_path(value) -> Optional[Path]:
         return path
 
 
+def _ensure_directory_rw(path: Optional[Path], *, create: bool) -> None:
+    normalized = _normalize_path(path)
+    if not normalized:
+        return
+    if create:
+        try:
+            normalized.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            return
+    if not normalized.exists():
+        return
+    user = _service_username()
+    if os.access(normalized, os.R_OK | os.W_OK | os.X_OK):
+        return
+    setfacl_bin = shutil.which("setfacl")
+    if setfacl_bin:
+        try:
+            subprocess.run(
+                [setfacl_bin, "-m", f"u:{user}:rwX", str(normalized)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+            if os.access(normalized, os.R_OK | os.W_OK | os.X_OK):
+                return
+        except Exception:
+            pass
+    if os.geteuid() == 0:
+        try:
+            current_mode = stat.S_IMODE(os.stat(normalized).st_mode)
+            os.chmod(normalized, current_mode | 0o770)
+        except Exception:
+            pass
+    if not os.access(normalized, os.R_OK | os.W_OK | os.X_OK):
+        try:
+            app.logger.warning(
+                "Insufficient permissions on %s for user %s; snapshot and restore operations may fail",
+                normalized,
+                user,
+            )
+        except Exception:
+            pass
+
+
 def _preferred_path(candidates: Iterable[str], fallback: str) -> str:
     for candidate in candidates:
         try:
@@ -1010,6 +1119,14 @@ _SNAPSHOT_DIR_FALLBACK = _preferred_path(
     str(Path.home() / "blockdag-scripts" / "backups"),
 )
 SNAPSHOT_DIR = _expanded_path(os.getenv("BDAG_SNAPSHOT_DIR"), _SNAPSHOT_DIR_FALLBACK)
+try:
+    _ensure_directory_rw(SNAPSHOT_DIR, create=True)
+except Exception:
+    pass
+try:
+    _ensure_directory_rw(SNAPSHOT_DATA_DIR, create=False)
+except Exception:
+    pass
 _CUSTOM_TEMP_PATH = _normalize_path(os.getenv("BDAG_CPU_TEMP_PATH") or "")
 _SENSOR_PACKAGES = ("lm-sensors",)
 _CUSTOM_TEMP_PATH = _normalize_path(os.getenv("BDAG_CPU_TEMP_PATH") or "")
@@ -1685,7 +1802,7 @@ def _snapshot_patterns() -> List[str]:
 def _ensure_snapshot_dir() -> Path:
     with _SNAPSHOT_DIR_LOCK:
         directory = SNAPSHOT_DIR
-        directory.mkdir(parents=True, exist_ok=True)
+        _ensure_directory_rw(directory, create=True)
         return directory
 
 
@@ -2143,6 +2260,7 @@ def _update_snapshot_dir(new_dir: Path) -> bool:
         if SNAPSHOT_DIR == normalized:
             return False
         SNAPSHOT_DIR = normalized
+        _ensure_directory_rw(SNAPSHOT_DIR, create=True)
     return True
 
 
@@ -3111,6 +3229,9 @@ class NodeContext:
         else:
             self.chain_data_dir = None
 
+        if self.chain_data_dir:
+            _ensure_directory_rw(self.chain_data_dir, create=False)
+
         self.lock = threading.RLock()
         self.height_series: deque = deque(maxlen=WINDOW)
         self.remote_series: deque = deque(maxlen=WINDOW)
@@ -3163,6 +3284,7 @@ class NodeContext:
             normalized = _normalize_path(chain_dir)
             if normalized and normalized != self.chain_data_dir:
                 self.chain_data_dir = normalized
+                _ensure_directory_rw(self.chain_data_dir, create=False)
                 self._peer_identity = None
                 self._peer_identity_ts = 0.0
                 changed = True
@@ -6298,6 +6420,11 @@ except Exception:
 
 try:
     _ensure_sensor_packages()
+except Exception:
+    pass
+
+try:
+    _ensure_docker_group_membership()
 except Exception:
     pass
 
