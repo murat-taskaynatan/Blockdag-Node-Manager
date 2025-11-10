@@ -38,7 +38,6 @@ const state = {
       data: {
         label: '',
         installPath: '',
-        network: 'testnet',
         p2pPort: 38130,
         rpcPort: 18545,
         autoPorts: true,
@@ -75,6 +74,7 @@ const state = {
   const overclockForm = document.getElementById('overclockForm');
   const overclockStatus = document.getElementById('overclockStatus');
   // Data directory input removed; backend auto-detects
+  const ocDataPath = document.getElementById('ocDataPath');
   const ocCpu = document.getElementById('ocCpu');
   const ocNvmeLatency = document.getElementById('ocNvmeLatency');
   const ocScheduler = document.getElementById('ocScheduler');
@@ -127,7 +127,6 @@ const state = {
   const launchpadFields = {
     label: document.getElementById('launchpadNodeLabel'),
     installPath: document.getElementById('launchpadInstallPath'),
-    network: document.getElementById('launchpadNetwork'),
     p2pPort: document.getElementById('launchpadP2PPort'),
     rpcPort: document.getElementById('launchpadRpcPort'),
     autoPorts: document.getElementById('launchpadAutoPorts'),
@@ -140,7 +139,6 @@ const state = {
   const launchpadSummaryRefs = {
     label: document.getElementById('launchpadSummaryLabel'),
     path: document.getElementById('launchpadSummaryPath'),
-    network: document.getElementById('launchpadSummaryNetwork'),
     p2pPort: document.getElementById('launchpadSummaryP2P'),
     rpcPort: document.getElementById('launchpadSummaryRpc'),
     wallet: document.getElementById('launchpadSummaryWallet'),
@@ -2401,7 +2399,6 @@ function syncCards(nodes) {
     return {
       label: launchpadFields.label?.value?.trim() || '',
       installPath: launchpadFields.installPath?.value?.trim() || '',
-      network: launchpadFields.network?.value || 'testnet',
       p2pPort: Number(launchpadFields.p2pPort?.value) || 38130,
       rpcPort: Number(launchpadFields.rpcPort?.value) || 18545,
       autoPorts,
@@ -2495,9 +2492,6 @@ function syncCards(nodes) {
       : data.externalPeerPort || '—';
     setSummaryField(launchpadSummaryRefs.label, data.label);
     setSummaryField(launchpadSummaryRefs.path, data.installPath);
-    if (launchpadSummaryRefs.network) {
-      launchpadSummaryRefs.network.textContent = data.network;
-    }
     if (launchpadSummaryRefs.p2pPort) {
       launchpadSummaryRefs.p2pPort.textContent = resolvedP2P;
     }
