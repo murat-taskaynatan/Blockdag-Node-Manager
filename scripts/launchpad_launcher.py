@@ -2,7 +2,7 @@ import os
 import re
 import subprocess
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 LAUNCHPAD_REPO = "https://github.com/BlockdagNetworkLabs/blockdag-scripts.git"
 
@@ -11,10 +11,32 @@ class LaunchError(RuntimeError):
     """Raised when the launch process fails."""
 
 
+def _simplify_launch_error(raw: str) -> Optional[str]:
+    if not raw:
+        return None
+    text = raw.strip()
+    if not text:
+        return None
+    conflict = re.search(r'container name "([^"]+)" is already in use', text, re.IGNORECASE)
+    if conflict:
+        name = conflict.group(1)
+        return f"Container '{name}' already exists. Remove or rename the existing container before launching."
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines:
+        return None
+    return lines[-1]
+
+
 def _run_command(cmd, cwd=None, env=None):
     process = subprocess.run(cmd, cwd=cwd, env=env or os.environ, capture_output=True, text=True)
     if process.returncode != 0:
-        raise LaunchError(f"Command {' '.join(cmd)} failed: {process.stderr.strip()}")
+        stderr = (process.stderr or "").strip()
+        stdout = (process.stdout or "").strip()
+        friendly = _simplify_launch_error(stderr or stdout)
+        if friendly:
+            raise LaunchError(friendly)
+        message = stderr.splitlines()[-1] if stderr else stdout.splitlines()[-1] if stdout else "command failed"
+        raise LaunchError(f"Command {' '.join(cmd)} failed: {message}")
     return process.stdout.strip()
 
 
