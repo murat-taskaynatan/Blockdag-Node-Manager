@@ -52,14 +52,13 @@
   .launchpad-port-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px 18px}
   .launchpad-port-grid label{margin:0}
   .launchpad-port-grid__full{grid-column:1 / -1}
-  .launchpad-basics-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px;width:100%}
+  .launchpad-basics-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;width:100%}
   .launchpad-field{display:flex;flex-direction:column;gap:8px;padding:14px;background:rgba(255,255,255,.03);border-radius:12px;border:1px solid rgba(255,255,255,.05);width:100%}
   .launchpad-field-label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
   .launchpad-field-hint{font-size:11px;color:var(--muted)}
   .launchpad-field input,
   .launchpad-field select{margin-top:0;top:0;min-height:38px;background:rgba(255,255,255,.06);width:100%;min-width:0}
-  .launchpad-field select{height:33px}
-  .launchpad-field--wide{grid-column:1 / -1}
+  .launchpad-field select{height:32px}
   .launchpad-card input{padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:var(--text);font-weight:600;min-height:30px;margin-top:-4px;position:relative;top:5px}
   .launchpad-card select{padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:var(--text);font-weight:600;min-height:30px;height:28px}
   .launchpad-card input[type=number]{width:80px}
@@ -112,7 +111,6 @@
     .node-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
     .node-logs{margin-top:12px}
     .launchpad-basics-grid{grid-template-columns:1fr}
-    .launchpad-field--wide{grid-column:1 / -1}
   }
   .system-grid{display:grid;gap:12px;margin-top:12px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
   .system-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:6px;min-height:120px}
@@ -857,7 +855,7 @@
                   <input type="text" id="launchpadNodeLabel" placeholder="blockdag-node-25" autocomplete="off">
                   <span class="launchpad-field-hint">Used for the Docker project name.</span>
                 </label>
-                <label class="launchpad-field launchpad-field--wide">
+                <label class="launchpad-field">
                   <span class="launchpad-field-label">Installation path</span>
                   <input type="text" id="launchpadInstallPath" placeholder="/home/node/blockdag-node25">
                   <span class="launchpad-field-hint">A folder will be created here if it does not exist.</span>
