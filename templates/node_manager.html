@@ -845,6 +845,10 @@
                 <input type="text" id="launchpadInstallPath" placeholder="/home/node/blockdag-node25">
               </label>
               <label>
+                Wallet address
+                <input type="text" id="launchpadWalletAddress" placeholder="0x..." autocomplete="off">
+              </label>
+              <label>
                 Network profile
                 <select id="launchpadNetwork">
                   <option value="testnet">Testnet</option>
@@ -879,6 +883,7 @@
                 <div><strong>Network</strong><span id="launchpadSummaryNetwork">—</span></div>
                 <div><strong>P2P port</strong><span id="launchpadSummaryP2P">—</span></div>
                 <div><strong>RPC port</strong><span id="launchpadSummaryRpc">—</span></div>
+                <div><strong>Wallet</strong><span id="launchpadSummaryWallet">—</span></div>
               </div>
               <p style="font-size:12px;color:var(--muted)">Launchpad will generate a unique peer ID and non-conflicting ports for every node.</p>
             </div>
