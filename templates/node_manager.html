@@ -49,9 +49,16 @@
   .launchpad-checkbox input{margin-top:2px}
   .launchpad-checkbox span{flex:1;line-height:1.4}
   .launchpad-port-gap{height:16px}
-  .launchpad-step[data-launchpad-step="1"] label + label{margin-top:12px}
-  .launchpad-card input,
-  .launchpad-card select{padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:var(--text);font-weight:600}
+  .launchpad-port-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px 18px}
+  .launchpad-port-grid label{margin:0}
+  .launchpad-port-grid__full{grid-column:1 / -1}
+  .launchpad-step[data-launchpad-step="1"] label + label{margin-top:-2px;height:59px}
+  .launchpad-basics-grid{display:flex;flex-direction:column;gap:16px;width:100%}
+  .launchpad-basics-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 18px}
+  .launchpad-basics-row label{margin:0}
+  .launchpad-basics-row label + label{margin-top:0}
+  .launchpad-card input{padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:var(--text);font-weight:600;min-height:30px;margin-top:-4px;position:relative;top:5px}
+  .launchpad-card select{padding:8px 10px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:var(--text);font-weight:600;min-height:30px;height:28px}
   .launchpad-card input[type=number]{width:80px}
   .launchpad-card input:disabled,
   .launchpad-card select:disabled{opacity:0.45;cursor:not-allowed}
@@ -101,6 +108,7 @@
     .chart-tabs .summary-tab{flex:1 0 45%;margin-bottom:4px}
     .node-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
     .node-logs{margin-top:12px}
+    .launchpad-basics-row{grid-template-columns:1fr}
   }
   .system-grid{display:grid;gap:12px;margin-top:12px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
   .system-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:6px;min-height:120px}
@@ -839,54 +847,66 @@
             <div class="launchpad-step" data-launchpad-step="1">
               <h3>Node Basics</h3>
               <div class="launchpad-port-gap" style="height:10px"></div>
-              <label>
-                Node label
-                <input type="text" id="launchpadNodeLabel" placeholder="Example: blockdag-node-25" autocomplete="off">
-              </label>
-              <label>
-                Installation path
-                <input type="text" id="launchpadInstallPath" placeholder="/home/node/blockdag-node25">
-              </label>
-              <label>
-                Wallet address
-                <input type="text" id="launchpadWalletAddress" placeholder="0x..." autocomplete="off">
-              </label>
-              <label>
-                Network profile
-                <select id="launchpadNetwork">
-                  <option value="testnet">Testnet</option>
-                  <option value="mainnet" disabled>Mainnet (coming soon)</option>
-                </select>
-              </label>
+              <div class="launchpad-basics-grid">
+                <div class="launchpad-basics-row">
+                  <label>
+                    Node label
+                    <input type="text" id="launchpadNodeLabel" placeholder="Example: blockdag-node-25" autocomplete="off">
+                  </label>
+                  <label>
+                    Installation path
+                    <input type="text" id="launchpadInstallPath" placeholder="/home/node/blockdag-node25">
+                  </label>
+                </div>
+                <div class="launchpad-basics-row">
+                  <label>
+                    Wallet address
+                    <input type="text" id="launchpadWalletAddress" placeholder="0x..." autocomplete="off">
+                  </label>
+                  <label>
+                    Network profile
+                    <select id="launchpadNetwork">
+                      <option value="testnet">Testnet</option>
+                      <option value="mainnet" disabled>Mainnet (coming soon)</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
               <div class="launchpad-port-gap" style="height:20px"></div>
             </div>
             <div class="launchpad-step" data-launchpad-step="2" hidden>
               <h3>Configure Ports</h3>
               <div class="launchpad-port-gap" style="height:20px"></div>
-              <label>
-                Base P2P port
-                <input type="number" id="launchpadP2PPort" min="10000" value="38130">
-              </label>
-              <label>
-                External P2P port
-                <input type="number" id="launchpadExternalP2PPort" min="10000" value="38130">
-              </label>
-              <label>
-                RPC port
-                <input type="number" id="launchpadRpcPort" min="10000" value="18545">
-              </label>
-              <label>
-                WS port
-                <input type="number" id="launchpadWsPort" min="10000" value="18546">
-              </label>
-              <label>
-                Peer port
-                <input type="number" id="launchpadPeerPort" min="10000" value="18150">
-              </label>
-              <label class="launchpad-checkbox">
-                <input type="checkbox" id="launchpadAutoPorts" checked>
-                <span>Let Node Manager choose non-conflicting ports automatically</span>
-              </label>
+              <div class="launchpad-port-grid">
+                <label>
+                  Base P2P port
+                  <input type="number" id="launchpadP2PPort" min="10000" value="38130">
+                </label>
+                <label>
+                  External P2P port
+                  <input type="number" id="launchpadExternalP2PPort" min="10000" value="38130">
+                </label>
+                <label>
+                  RPC port
+                  <input type="number" id="launchpadRpcPort" min="10000" value="18545">
+                </label>
+                <label>
+                  WS port
+                  <input type="number" id="launchpadWsPort" min="10000" value="18546">
+                </label>
+                <label>
+                  Peer port
+                  <input type="number" id="launchpadPeerPort" min="10000" value="18150">
+                </label>
+                <label>
+                  External peer port
+                  <input type="number" id="launchpadExternalPeerPort" min="10000" value="18150">
+                </label>
+                <label class="launchpad-checkbox launchpad-port-grid__full">
+                  <input type="checkbox" id="launchpadAutoPorts" checked>
+                  <span>Let Node Manager choose non-conflicting ports automatically</span>
+                </label>
+              </div>
             </div>
             <div class="launchpad-step" data-launchpad-step="3" hidden>
               <h3>Review & Launch</h3>
@@ -899,8 +919,9 @@
                 <div><strong>WS port</strong><span id="launchpadSummaryWs">—</span></div>
                 <div><strong>RPC port</strong><span id="launchpadSummaryRpc">—</span></div>
                 <div><strong>Peer port</strong><span id="launchpadSummaryPeer">—</span></div>
-                <div><strong>Wallet</strong><span id="launchpadSummaryWallet">—</span></div>
+                <div><strong>External peer</strong><span id="launchpadSummaryExternalPeer">—</span></div>
                 <div><strong>External P2P</strong><span id="launchpadSummaryExternalP2P">—</span></div>
+                <div><strong>Wallet</strong><span id="launchpadSummaryWallet">—</span></div>
               </div>
               <div class="launchpad-status" id="launchpadStatus" aria-live="polite"></div>
               <p style="font-size:12px;color:var(--muted)">Launchpad will generate a unique peer ID and non-conflicting ports for every node.</p>

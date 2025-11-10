@@ -43,6 +43,10 @@ const state = {
         rpcPort: 18545,
         autoPorts: true,
       },
+      previewPorts: null,
+      previewLoading: false,
+      previewError: null,
+      previewRequestId: 0,
     },
   };
 
@@ -78,6 +82,7 @@ const state = {
   // WAL/VWC controls removed from UI
   const ocVwcRisk = document.getElementById('ocVwcRisk');
   let ocChart = null;
+  let launchpadPreviewSeq = 0;
   const ocHistory = [];
   const snapshotList = document.getElementById('snapshotList');
   const snapshotStatus = document.getElementById('snapshotStatus');
@@ -130,6 +135,7 @@ const state = {
     externalP2PPort: document.getElementById('launchpadExternalP2PPort'),
     wsPort: document.getElementById('launchpadWsPort'),
     peerPort: document.getElementById('launchpadPeerPort'),
+    externalPeerPort: document.getElementById('launchpadExternalPeerPort'),
   };
   const launchpadSummaryRefs = {
     label: document.getElementById('launchpadSummaryLabel'),
@@ -141,6 +147,7 @@ const state = {
     externalP2P: document.getElementById('launchpadSummaryExternalP2P'),
     ws: document.getElementById('launchpadSummaryWs'),
     peer: document.getElementById('launchpadSummaryPeer'),
+    externalPeer: document.getElementById('launchpadSummaryExternalPeer'),
   };
   const launchpadBackBtn = document.getElementById('launchpadBackBtn');
   const launchpadNextBtn = document.getElementById('launchpadNextBtn');
@@ -1987,6 +1994,10 @@ function switchSummaryTab(target) {
         title: 'Wallet',
         desc: 'Wallet address, balance, and recent history collected from rpc.awakening.bdagscan.com.',
       },
+      launchpad: {
+        title: 'Launchpad',
+        desc: 'Plan, configure, and launch new nodes with guided steps and automatic port assignment.',
+      },
     };
     const next = copy[activeView] || copy.stats;
     summaryDynamicTitle.textContent = next.title;
@@ -2398,6 +2409,7 @@ function syncCards(nodes) {
       externalP2PPort: Number(launchpadFields.externalP2PPort?.value) || null,
       wsPort: Number(launchpadFields.wsPort?.value) || 18546,
       peerPort: Number(launchpadFields.peerPort?.value) || 18150,
+      externalPeerPort: Number(launchpadFields.externalPeerPort?.value) || null,
     };
   }
 
@@ -2411,14 +2423,17 @@ function syncCards(nodes) {
       data.wsPort > 0 &&
       Number.isFinite(data.peerPort) &&
       data.peerPort > 0;
-    const externalValid = data.autoPorts || Number.isFinite(data.externalP2PPort) && data.externalP2PPort > 0;
-    return Boolean(data.label && data.installPath && data.walletAddress && manualPortsValid && externalValid);
+    const externalValid = data.autoPorts || (Number.isFinite(data.externalP2PPort) && data.externalP2PPort > 0);
+    const externalPeerValid = data.autoPorts || (Number.isFinite(data.externalPeerPort) && data.externalPeerPort > 0);
+    return Boolean(data.label && data.installPath && data.walletAddress && manualPortsValid && externalValid && externalPeerValid);
   }
 
   function updateLaunchpadLaunchState() {
     if (!launchpadNextBtn) return;
+    const data = getLaunchpadData();
     const complete = isLaunchpadComplete();
     const onFinalStep = state.launchpad.step === 3;
+    const waitingForPreview = onFinalStep && data.autoPorts && state.launchpad.previewLoading;
     launchpadNextBtn.dataset.mode = onFinalStep ? 'launch' : 'next';
     if (launchpadNextLabel) {
       launchpadNextLabel.textContent = onFinalStep ? 'Launch node' : 'Next';
@@ -2427,7 +2442,7 @@ function syncCards(nodes) {
       launchpadNextIcon.hidden = !onFinalStep;
     }
     launchpadNextBtn.classList.toggle('launch-mode', onFinalStep);
-    launchpadNextBtn.disabled = onFinalStep ? !complete : false;
+    launchpadNextBtn.disabled = onFinalStep ? !complete || waitingForPreview : false;
   }
 
   function syncLaunchpadPortInputs(auto = launchpadFields.autoPorts?.checked ?? false) {
@@ -2437,6 +2452,7 @@ function syncCards(nodes) {
       launchpadFields.externalP2PPort,
       launchpadFields.wsPort,
       launchpadFields.peerPort,
+      launchpadFields.externalPeerPort,
     ];
     manualFields.forEach((field) => {
       if (!field) return;
@@ -2451,32 +2467,82 @@ function syncCards(nodes) {
     ref.classList.toggle('missing', isMissing);
   }
 
+  function clearLaunchpadPreviewState() {
+    if (!state.launchpad) return;
+    state.launchpad.previewPorts = null;
+    state.launchpad.previewLoading = false;
+    state.launchpad.previewError = null;
+    state.launchpad.previewRequestId = 0;
+  }
+
   function renderLaunchpadSummary(data = getLaunchpadData()) {
     if (!launchpadSummaryRefs.label) return;
+    const onReviewStep = state.launchpad?.step === 3;
+    const usePreview = Boolean(onReviewStep && data.autoPorts);
+    const preview = usePreview ? state.launchpad?.previewPorts : null;
+    const previewLoading = usePreview ? !!state.launchpad?.previewLoading : false;
+    const previewError = usePreview ? state.launchpad?.previewError : null;
+    const pendingText = previewError || (previewLoading ? 'Calculating…' : null);
+    const resolvedP2P = usePreview ? preview?.p2pPort ?? (pendingText || data.p2pPort) : data.p2pPort;
+    const resolvedRpc = usePreview ? preview?.rpcPort ?? (pendingText || data.rpcPort) : data.rpcPort;
+    const resolvedWs = usePreview ? preview?.wsPort ?? (pendingText || data.wsPort) : data.wsPort;
+    const resolvedPeer = usePreview ? preview?.peerPort ?? (pendingText || data.peerPort) : data.peerPort;
+    const resolvedExternalP2P = data.autoPorts
+      ? (usePreview ? preview?.p2pPort ?? (pendingText || data.p2pPort) : data.p2pPort)
+      : data.externalP2PPort || '—';
+    const resolvedExternalPeer = data.autoPorts
+      ? (usePreview ? preview?.peerPort ?? (pendingText || data.peerPort) : data.peerPort)
+      : data.externalPeerPort || '—';
     setSummaryField(launchpadSummaryRefs.label, data.label);
     setSummaryField(launchpadSummaryRefs.path, data.installPath);
     if (launchpadSummaryRefs.network) {
       launchpadSummaryRefs.network.textContent = data.network;
     }
     if (launchpadSummaryRefs.p2pPort) {
-      launchpadSummaryRefs.p2pPort.textContent = data.p2pPort;
+      launchpadSummaryRefs.p2pPort.textContent = resolvedP2P;
     }
     if (launchpadSummaryRefs.ws) {
-      launchpadSummaryRefs.ws.textContent = data.wsPort;
+      launchpadSummaryRefs.ws.textContent = resolvedWs;
     }
     if (launchpadSummaryRefs.rpcPort) {
-      launchpadSummaryRefs.rpcPort.textContent = data.rpcPort;
+      launchpadSummaryRefs.rpcPort.textContent = resolvedRpc;
     }
     if (launchpadSummaryRefs.wallet) {
       setSummaryField(launchpadSummaryRefs.wallet, data.walletAddress);
     }
     if (launchpadSummaryRefs.externalP2P) {
-      launchpadSummaryRefs.externalP2P.textContent = data.externalP2PPort || (data.autoPorts ? data.p2pPort : '—');
+      launchpadSummaryRefs.externalP2P.textContent = resolvedExternalP2P;
     }
     if (launchpadSummaryRefs.peer) {
-      launchpadSummaryRefs.peer.textContent = data.peerPort || data.peerPort;
+      launchpadSummaryRefs.peer.textContent = resolvedPeer;
+    }
+    if (launchpadSummaryRefs.externalPeer) {
+      launchpadSummaryRefs.externalPeer.textContent = resolvedExternalPeer;
     }
     updateLaunchpadLaunchState();
+  }
+
+  async function requestLaunchpadPreview(payload) {
+    const res = await fetch('/api/node-manager/launch/preview', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let errText = await res.text();
+      if (errText) {
+        try {
+          const parsed = JSON.parse(errText);
+          if (parsed && parsed.error) {
+            errText = parsed.error;
+          }
+        } catch (err) {
+          // ignore parse errors; fall back to original text
+        }
+      }
+      throw new Error(errText || res.statusText);
+    }
+    return res.json();
   }
 
   async function requestLaunch(payload) {
@@ -2490,6 +2556,46 @@ function syncCards(nodes) {
       throw new Error(errText || res.statusText);
     }
     return res.json();
+  }
+
+  async function refreshLaunchpadPreview() {
+    if (!state.launchpad) return;
+    const data = getLaunchpadData();
+    if (!data.autoPorts) {
+      clearLaunchpadPreviewState();
+      updateLaunchpadLaunchState();
+      return;
+    }
+    const requestId = ++launchpadPreviewSeq;
+    state.launchpad.previewRequestId = requestId;
+    state.launchpad.previewLoading = true;
+    state.launchpad.previewPorts = null;
+    state.launchpad.previewError = null;
+    if (launchpadStatus && state.launchpad.step === 3) {
+      launchpadStatus.textContent = 'Calculating ports…';
+      launchpadStatus.classList.remove('error');
+    }
+    renderLaunchpadSummary(data);
+    try {
+      const preview = await requestLaunchpadPreview(data);
+      if (state.launchpad.previewRequestId !== requestId) return;
+      state.launchpad.previewPorts = preview;
+      state.launchpad.previewLoading = false;
+      if (launchpadStatus && launchpadStatus.textContent === 'Calculating ports…') {
+        launchpadStatus.textContent = '';
+      }
+      renderLaunchpadSummary();
+    } catch (err) {
+      if (state.launchpad.previewRequestId !== requestId) return;
+      state.launchpad.previewPorts = null;
+      state.launchpad.previewLoading = false;
+      state.launchpad.previewError = err?.message || 'Preview failed';
+      if (launchpadStatus && state.launchpad.step === 3) {
+        launchpadStatus.textContent = state.launchpad.previewError;
+        launchpadStatus.classList.add('error');
+      }
+      renderLaunchpadSummary();
+    }
   }
 
   async function handleLaunch() {
@@ -2516,6 +2622,9 @@ function syncCards(nodes) {
       if (launchpadFields.externalP2PPort && launchpadFields.autoPorts?.checked) {
         launchpadFields.externalP2PPort.value = data.p2pPort;
       }
+      if (launchpadFields.externalPeerPort && launchpadFields.autoPorts?.checked) {
+        launchpadFields.externalPeerPort.value = data.peerPort;
+      }
       await discoverNodes({ auto: true });
     } catch (err) {
       launchpadStatus.classList.add('error');
@@ -2538,7 +2647,8 @@ function syncCards(nodes) {
           getLaunchpadFieldValue(launchpadFields.walletAddress) &&
           getLaunchpadFieldValue(launchpadFields.externalP2PPort) &&
           getLaunchpadFieldValue(launchpadFields.wsPort) &&
-          getLaunchpadFieldValue(launchpadFields.peerPort)
+          getLaunchpadFieldValue(launchpadFields.peerPort) &&
+          getLaunchpadFieldValue(launchpadFields.externalPeerPort)
       );
     }
     if (step === 2) {
@@ -2551,6 +2661,7 @@ function syncCards(nodes) {
 
   function setLaunchpadStep(step) {
     if (!launchpadSections[step]) return;
+    const previousStep = state.launchpad.step;
     state.launchpad.step = step;
     Object.entries(launchpadSections).forEach(([key, section]) => {
       if (!section) return;
@@ -2561,14 +2672,20 @@ function syncCards(nodes) {
       chip.classList.toggle('is-active', chipStep === step);
     });
     if (launchpadBackBtn) launchpadBackBtn.disabled = step === 1;
-    if (step === 3) {
-      renderLaunchpadSummary();
+    if (step !== 3) {
+      clearLaunchpadPreviewState();
     }
-    updateLaunchpadLaunchState();
-    if (launchpadStatus && step !== 3) {
+    if (launchpadStatus && (step === 3 || previousStep === 3)) {
       launchpadStatus.textContent = '';
       launchpadStatus.classList.remove('error');
     }
+    if (step === 3) {
+      renderLaunchpadSummary();
+      refreshLaunchpadPreview();
+    } else {
+      renderLaunchpadSummary();
+    }
+    updateLaunchpadLaunchState();
   }
 
   function changeLaunchpadStep(direction) {

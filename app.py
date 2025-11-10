@@ -24,7 +24,7 @@ import psutil
 import requests
 from flask import Flask, abort, jsonify, render_template, request
 from flask import Response, send_from_directory, session, redirect, url_for
-from scripts.launchpad_launcher import LaunchError, launch_node
+from scripts.launchpad_launcher import LaunchError, launch_node, preview_ports
 
 
 # ---------------------------------------------------------------------------
@@ -4237,6 +4237,20 @@ def api_node_manager_launch():
     except Exception as exc:
         app.logger.exception("Launchpad launch errored")
         return jsonify(error="Launch failed"), 500
+    return jsonify(result)
+
+
+@app.route("/api/node-manager/launch/preview", methods=["POST"])
+def api_node_manager_launch_preview():
+    payload = request.get_json(force=True, silent=True) or {}
+    try:
+        result = preview_ports(payload)
+    except LaunchError as exc:
+        app.logger.warning("Launchpad preview failed: %s", exc)
+        return jsonify(error=str(exc)), 400
+    except Exception as exc:
+        app.logger.exception("Launchpad preview errored")
+        return jsonify(error="Preview failed"), 500
     return jsonify(result)
 
 

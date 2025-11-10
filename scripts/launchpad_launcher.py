@@ -77,6 +77,7 @@ def _prepare_ports(config: Dict) -> Tuple[int, int, int, int]:
     base_ws = int(config.get("wsPort") or base_rpc + 1)
     base_peer = int(config.get("peerPort") or 18150)
     external_override = config.get("externalP2PPort")
+    peer_external_override = config.get("externalPeerPort")
     used = _collect_used_ports()
     if config.get("autoPorts"):
         existing = _existing_node_ports()
@@ -96,7 +97,9 @@ def _prepare_ports(config: Dict) -> Tuple[int, int, int, int]:
         manual_peer = base_peer
         if str(config.get("wsPort")) and str(config.get("wsPort")).isdigit():
             manual_ws = int(config.get("wsPort"))
-        if str(config.get("peerPort")) and str(config.get("peerPort")).isdigit():
+        if peer_external_override and str(peer_external_override).isdigit():
+            manual_peer = int(peer_external_override)
+        elif str(config.get("peerPort")) and str(config.get("peerPort")).isdigit():
             manual_peer = int(config.get("peerPort"))
         if override in used or base_rpc in used or manual_ws in used or manual_peer in used:
             raise LaunchError("Selected ports are already in use")
@@ -119,6 +122,17 @@ def _render_compose(source: Path, target: Path, label: str, p2p: int, rpc: int, 
     text = text.replace("--ws.port=18546", f"--ws.port={ws}")
     text = text.replace("ws://127.0.0.1:18546", f"ws://127.0.0.1:{ws}")
     target.write_text(text)
+
+
+def preview_ports(payload: Dict) -> Dict[str, int]:
+    """Return the resolved port mappings without starting any containers."""
+    p2p_port, rpc_port, ws_port, peer_port = _prepare_ports(payload)
+    return {
+        "p2pPort": p2p_port,
+        "rpcPort": rpc_port,
+        "wsPort": ws_port,
+        "peerPort": peer_port,
+    }
 
 
 def launch_node(payload: Dict) -> Dict:
