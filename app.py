@@ -402,16 +402,27 @@ def _parse_remote_rpc_bases(raw) -> List[str]:
     return bases
 
 
+_REMOTE_RPC_OVERRIDE_DEFINED = (
+    os.getenv("BDAG_REMOTE_RPC_BASES") is not None or os.getenv("BDAG_REMOTE_RPC_BASE") is not None
+)
 ENV_REMOTE_RPC_BASES = _parse_remote_rpc_bases(
     os.getenv("BDAG_REMOTE_RPC_BASES", os.getenv("BDAG_REMOTE_RPC_BASE"))
 )
-DEFAULT_REMOTE_BASES = ENV_REMOTE_RPC_BASES or DEFAULT_REMOTE_RPC_BASES[:]
+if ENV_REMOTE_RPC_BASES:
+    DEFAULT_REMOTE_BASES = ENV_REMOTE_RPC_BASES[:]
+elif _REMOTE_RPC_OVERRIDE_DEFINED:
+    DEFAULT_REMOTE_BASES = []
+else:
+    DEFAULT_REMOTE_BASES = DEFAULT_REMOTE_RPC_BASES[:]
 
 WEI_PER_BDAG = Decimal("1000000000000000000")
 WALLET_BALANCE_CACHE_SEC = max(0.0, float(os.getenv("BDAG_BALANCE_CACHE_SEC", "120") or "120"))
 _wallet_address_cache: Dict[str, object] = {"path": None, "mtime": 0.0, "address": None}
 _wallet_balance_cache: Dict[str, object] = {"ts": 0.0, "data": None}
 _WALLET_BALANCE_HISTORY: deque[Dict[str, object]] = deque(maxlen=120)
+_WALLET_REFRESH_EVENT = threading.Event()
+_WALLET_REFRESH_LOCK = threading.Lock()
+_wallet_refresh_pending = False
 WALLET_HISTORY_PATH = (Path(__file__).resolve().parent / "data" / "wallet_history.json")
 WALLET_HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
 
@@ -455,6 +466,15 @@ def _persist_wallet_history() -> None:
         temp_path.replace(WALLET_HISTORY_PATH)
     except Exception:
         pass
+
+
+def _schedule_wallet_refresh(*, force: bool = False) -> None:
+    global _wallet_refresh_pending
+    with _WALLET_REFRESH_LOCK:
+        if _wallet_refresh_pending and not force:
+            return
+        _wallet_refresh_pending = True
+    _WALLET_REFRESH_EVENT.set()
 
 
 _load_wallet_history()
@@ -2802,6 +2822,8 @@ def _discover_docker_nodes() -> List[dict]:
             or env.get("REMOTE_RPC_BASES")
             or env.get("BDAG_REMOTE_RPC_BASE")
         )
+        if _REMOTE_RPC_OVERRIDE_DEFINED:
+            remote_bases = DEFAULT_REMOTE_BASES[:]
         chain_data_dir = None
         for mount in data.get("Mounts") or []:
             if mount.get("Destination") == "/bdag/data" and mount.get("Source"):
@@ -2928,7 +2950,7 @@ def _format_balance_decimal(value: Decimal) -> str:
 def _fetch_wallet_balance(address: str) -> dict:
     if not BALANCE_RPC_BASE:
         raise RuntimeError("RPC endpoint not configured")
-    temp = _collect_cpu_temperature()
+    _collect_cpu_temperature()
     payload = {
         "jsonrpc": "2.0",
         "method": "eth_getBalance",
@@ -2964,7 +2986,43 @@ def _fetch_wallet_balance(address: str) -> dict:
     }
 
 
-def _get_wallet_overview() -> dict:
+def _refresh_wallet_overview(address: Optional[str] = None, source: Optional[str] = None) -> dict:
+    if not address:
+        address, source = _get_wallet_address()
+    if not address:
+        info = {"error": "wallet not found"}
+    else:
+        try:
+            info = _fetch_wallet_balance(address)
+        except Exception as exc:
+            info = {"address": address, "error": str(exc)}
+        info["source"] = source
+        info["timestamp"] = time.time()
+        info["short"] = info.get("balance_formatted", "—")
+        balance_entry: Optional[Dict[str, object]] = None
+        if "balance_bdag" in info:
+            try:
+                balance_decimal = Decimal(str(info["balance_bdag"]))
+                balance_entry = {
+                    "timestamp": info["timestamp"],
+                    "balance": float(balance_decimal),
+                    "formatted": info.get("balance_formatted"),
+                }
+            except Exception:
+                balance_entry = None
+        if balance_entry:
+            _WALLET_BALANCE_HISTORY.append(balance_entry)
+            _persist_wallet_history()
+        info["balance_history"] = list(_WALLET_BALANCE_HISTORY)
+    info.setdefault("balance_history", list(_WALLET_BALANCE_HISTORY))
+    if "timestamp" not in info:
+        info["timestamp"] = time.time()
+    _wallet_balance_cache["data"] = dict(info)
+    _wallet_balance_cache["ts"] = info["timestamp"]
+    return dict(info)
+
+
+def _get_wallet_overview(*, block: bool = True) -> dict:
     address, source = _get_wallet_address()
     if not address:
         return {"error": "wallet not found"}
@@ -2980,31 +3038,32 @@ def _get_wallet_overview() -> dict:
         cached_copy = dict(cached)
         cached_copy["balance_history"] = list(_WALLET_BALANCE_HISTORY)
         return cached_copy
-    try:
-        info = _fetch_wallet_balance(address)
-    except Exception as exc:
-        info = {"address": address, "error": str(exc)}
-    info["source"] = source
-    info["timestamp"] = time.time()
-    info["short"] = info.get("balance_formatted", "—")
-    balance_entry: Optional[Dict[str, object]] = None
-    if "balance_bdag" in info:
+    if not block:
+        _schedule_wallet_refresh()
+        if cached and isinstance(cached, dict):
+            cached_copy = dict(cached)
+            cached_copy["balance_history"] = list(_WALLET_BALANCE_HISTORY)
+            cached_copy["stale"] = True
+            return cached_copy
+        return {"address": address, "source": source, "pending": True}
+    return _refresh_wallet_overview(address, source)
+
+
+def _wallet_refresh_worker() -> None:
+    global _wallet_refresh_pending
+    while True:
+        _WALLET_REFRESH_EVENT.wait()
+        _WALLET_REFRESH_EVENT.clear()
         try:
-            balance_decimal = Decimal(str(info["balance_bdag"]))
-            balance_entry = {
-                "timestamp": info["timestamp"],
-                "balance": float(balance_decimal),
-                "formatted": info.get("balance_formatted"),
-            }
-        except Exception:
-            balance_entry = None
-    if balance_entry:
-        _WALLET_BALANCE_HISTORY.append(balance_entry)
-        _persist_wallet_history()
-    info["balance_history"] = list(_WALLET_BALANCE_HISTORY)
-    _wallet_balance_cache["data"] = dict(info)
-    _wallet_balance_cache["ts"] = info["timestamp"]
-    return dict(info)
+            _refresh_wallet_overview()
+        except Exception as exc:
+            try:
+                app.logger.debug("Wallet refresh failed: %s", exc)
+            except Exception:
+                pass
+        finally:
+            with _WALLET_REFRESH_LOCK:
+                _wallet_refresh_pending = False
 
 NODE_CONFIG_PATH = Path(
     os.getenv("BDAG_NODE_CONFIG_PATH")
@@ -3651,6 +3710,77 @@ NODES: "OrderedDict[str, NodeContext]" = _initialise_nodes()
 # ---------------------------------------------------------------------------
 # Sampling helpers
 # ---------------------------------------------------------------------------
+STALE_METRICS_SEC = max(15.0, float(SAMPLE_SEC) * 3.0)
+_SAMPLE_QUEUE: deque[str] = deque()
+_SAMPLE_QUEUE_LOCK = threading.Lock()
+_SAMPLE_QUEUE_PENDING: Set[str] = set()
+_SAMPLE_WAKE = threading.Event()
+
+
+def _queue_node_sample(node: Optional["NodeContext"], *, urgent: bool = False) -> None:
+    if not node or not getattr(node, "id", None):
+        return
+    node_id = node.id
+    with _SAMPLE_QUEUE_LOCK:
+        if node_id in _SAMPLE_QUEUE_PENDING:
+            return
+        if urgent:
+            _SAMPLE_QUEUE.appendleft(node_id)
+        else:
+            _SAMPLE_QUEUE.append(node_id)
+        _SAMPLE_QUEUE_PENDING.add(node_id)
+    _SAMPLE_WAKE.set()
+
+
+def _pop_queued_sample() -> Optional[str]:
+    with _SAMPLE_QUEUE_LOCK:
+        if not _SAMPLE_QUEUE:
+            return None
+        node_id = _SAMPLE_QUEUE.popleft()
+        if node_id in _SAMPLE_QUEUE_PENDING:
+            _SAMPLE_QUEUE_PENDING.discard(node_id)
+        return node_id
+
+
+def _metrics_stale(ctx: "NodeContext", *, now: Optional[float] = None) -> bool:
+    if ctx.last_metrics is None:
+        return True
+    last_ts = float(ctx.last_sample_ts or 0.0)
+    if not last_ts:
+        return True
+    now_val = now if now is not None else time.time()
+    return (now_val - last_ts) >= STALE_METRICS_SEC
+
+
+def _safe_sample_context(ctx: "NodeContext", *, force: bool) -> None:
+    try:
+        ctx.sample(force=force)
+    except Exception as exc:
+        try:
+            app.logger.debug("Sampling failed for %s (force=%s): %s", ctx.id, force, exc)
+        except Exception:
+            pass
+
+
+def _sampling_worker() -> None:
+    while True:
+        queued_id = _pop_queued_sample()
+        if queued_id:
+            ctx = NODES.get(queued_id)
+            if ctx:
+                _safe_sample_context(ctx, force=True)
+            continue
+        nodes = list(NODES.values())
+        if not nodes:
+            _SAMPLE_WAKE.wait(timeout=SAMPLE_SEC)
+            _SAMPLE_WAKE.clear()
+            continue
+        for ctx in nodes:
+            force = ctx.last_metrics is None
+            _safe_sample_context(ctx, force=force)
+        _SAMPLE_WAKE.wait(timeout=SAMPLE_SEC)
+        _SAMPLE_WAKE.clear()
+
 LOCAL_HEIGHT_METHODS = ["getBlockCount", "getblockcount", "dag_blockNumber", "bdag_blockNumber", "eth_blockNumber"]
 PEER_COUNT_METHODS = ["net_peerCount", "peer_count"]
 
@@ -3702,6 +3832,10 @@ def _fetch_local_height(ctx: NodeContext) -> Optional[int]:
             height = _parse_height_value(result)
             if height is not None:
                 return height
+        except requests.exceptions.RequestException as exc:
+            if exc.response is None:
+                break
+            continue
         except Exception:
             continue
     return None
@@ -4081,6 +4215,7 @@ def refresh_discovered_nodes() -> Tuple[List[str], List[str], List[str]]:
             ctx = NodeContext(entry, auto_discovered=True)
             NODES[ctx.id] = ctx
             added.append(ctx.id)
+            _queue_node_sample(ctx, urgent=True)
 
         for node_id, ctx in list(NODES.items()):
             if ctx.auto_discovered and ctx.container and ctx.container not in seen_containers:
@@ -4122,7 +4257,7 @@ def _fleet_summary(nodes: List[dict]) -> dict:
     summary["wallet_enabled"] = wallet_enabled
     if wallet_enabled:
         try:
-            summary["wallet"] = _get_wallet_overview()
+            summary["wallet"] = _get_wallet_overview(block=False)
         except Exception as exc:
             summary["wallet"] = {"error": str(exc)}
     else:
@@ -4203,12 +4338,10 @@ def node_manager_view():
 def api_node_manager_nodes():
     nodes_payload = []
     settings = get_settings()
+    now = time.time()
     for ctx in NODES.values():
-        if ctx.last_metrics is None:
-            try:
-                ctx.sample(force=True)
-            except Exception:
-                pass
+        if _metrics_stale(ctx, now=now):
+            _queue_node_sample(ctx)
         _apply_node_policies(ctx, settings)
         nodes_payload.append(
             {
@@ -4263,11 +4396,20 @@ def api_node_manager_metrics():
         node_ids = list(NODES.keys())
     response = {}
     settings = get_settings()
+    force_flag = (request.args.get("force") or "").strip().lower()
+    force_refresh = force_flag in {"1", "true", "yes", "on"}
+    now = time.time()
     for node_id in node_ids:
         ctx = NODES.get(node_id)
         if not ctx:
             continue
-        ctx.sample(force=True)
+        if force_refresh:
+            try:
+                ctx.sample(force=True)
+            except Exception:
+                pass
+        elif _metrics_stale(ctx, now=now):
+            _queue_node_sample(ctx)
         _apply_node_policies(ctx, settings)
         response[ctx.id] = ctx.snapshot(include_series=True)
     return jsonify({"nodes": response, "timestamp": time.time()})
@@ -6152,6 +6294,10 @@ try:
 except Exception:
     pass
 
+for _ctx in NODES.values():
+    _queue_node_sample(_ctx, urgent=True)
+_schedule_wallet_refresh(force=True)
+
 _AUTO_SNAPSHOT_THREAD = threading.Thread(target=_auto_snapshot_worker, daemon=True)
 _AUTO_SNAPSHOT_THREAD.start()
 _AUTO_SNAPSHOT_EVENT.set()
@@ -6162,3 +6308,9 @@ _POLICY_EVENT.set()
 
 _MEMORY_RESTART_THREAD = threading.Thread(target=_memory_restart_monitor, daemon=True)
 _MEMORY_RESTART_THREAD.start()
+
+_SAMPLER_THREAD = threading.Thread(target=_sampling_worker, daemon=True)
+_SAMPLER_THREAD.start()
+
+_WALLET_THREAD = threading.Thread(target=_wallet_refresh_worker, daemon=True)
+_WALLET_THREAD.start()

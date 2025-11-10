@@ -1,4 +1,5 @@
 {
+  "_overclock_defaults_migrated": true,
   "auto_restart_enabled": false,
   "auto_restart_hours": 0,
   "auto_restart_mem_enabled": true,
