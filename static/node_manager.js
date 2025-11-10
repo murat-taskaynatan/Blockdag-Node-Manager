@@ -2563,8 +2563,12 @@ function syncCards(nodes) {
 
     const nameEl = details.querySelector('.node-name');
     const metaEl = details.querySelector('.node-meta');
-    nameEl.textContent = node.label || node.id;
-    metaEl.textContent = node.container || '—';
+    if (nameEl) {
+      nameEl.textContent = node.label || node.id || 'Node';
+    }
+    if (metaEl) {
+      metaEl.textContent = node.container || '—';
+    }
 
     const summary = details.querySelector('summary.fleet-summary');
     if (summary) {
@@ -2714,69 +2718,11 @@ function syncCards(nodes) {
 
     entry.state.cardOpen = Boolean(card && card.open);
     entry.state.logsOpen = Boolean(panelEl && !panelEl.hasAttribute('hidden'));
-    const orderingContext = (() => {
-      const keys = Array.from(state.nodes.keys());
-      const infoMap = new Map();
-      const baseWithExplicit = new Set();
-      keys.forEach((key) => {
-        const text = String(key || '').trim();
-        const match = text.match(/^(.*?)-(\d+)$/);
-        if (match) {
-          const base = match[1];
-          const num = Number(match[2]);
-          infoMap.set(key, {
-            base,
-            num,
-            hasExplicit: Number.isFinite(num),
-            raw: text,
-          });
-          if (Number.isFinite(num)) {
-            baseWithExplicit.add(base);
-          }
-        } else {
-          infoMap.set(key, {
-            base: text,
-            num: null,
-            hasExplicit: false,
-            raw: text,
-          });
-        }
-      });
-      const sortedKeys = keys.slice().sort((a, b) => {
-        const infoA = infoMap.get(a) || { base: '', num: null, hasExplicit: false, raw: '' };
-        const infoB = infoMap.get(b) || { base: '', num: null, hasExplicit: false, raw: '' };
-        const aHasNum = infoA.hasExplicit || baseWithExplicit.has(infoA.base);
-        const bHasNum = infoB.hasExplicit || baseWithExplicit.has(infoB.base);
-        const aNum = infoA.hasExplicit ? infoA.num : (aHasNum ? 1 : Number.POSITIVE_INFINITY);
-        const bNum = infoB.hasExplicit ? infoB.num : (bHasNum ? 1 : Number.POSITIVE_INFINITY);
-        if (aHasNum && bHasNum && aNum !== bNum) {
-          return aNum - bNum;
-        }
-        if (aHasNum !== bHasNum) {
-          return aHasNum ? -1 : 1;
-        }
-        return infoA.raw.localeCompare(infoB.raw);
-      });
-      return { infoMap, baseWithExplicit, sortedKeys };
-    })();
-    const workerLabel = (() => {
-      const idText = String(node.id || '').trim();
-      const info = orderingContext.infoMap.get(node.id) || { base: idText, num: null, hasExplicit: false };
-      const hasBaseNumbers = orderingContext.baseWithExplicit.has(info.base);
-      const explicitNum = info.hasExplicit && Number.isFinite(info.num) ? info.num : null;
-      const assignedNum = explicitNum ?? (hasBaseNumbers ? 1 : null);
-      const index = orderingContext.sortedKeys.indexOf(node.id);
-      const ordinal = index >= 0 ? index + 1 : state.nodes.size + 1;
-      const finalNumber = assignedNum ?? ordinal;
-      return `Node Worker - ${finalNumber}`;
-    })();
-    card.querySelector('.node-name').textContent = workerLabel;
-    const metaEl = card.querySelector('.node-meta');
+    if (nameEl) {
+      nameEl.textContent = node.label || node.id || 'Node';
+    }
     if (metaEl) {
-      const info = orderingContext.infoMap.get(node.id);
-      const baseLabel = (node.label && String(node.label).trim()) || (info && info.base) || String(node.id || '').trim();
-      const container = (node.container && String(node.container).trim()) || '';
-      metaEl.textContent = container && container !== baseLabel ? `${container} · ${baseLabel}` : baseLabel;
+      metaEl.textContent = node.container || '—';
     }
 
     const summaryHealthChip = card.querySelector('.summary-health-chip');
