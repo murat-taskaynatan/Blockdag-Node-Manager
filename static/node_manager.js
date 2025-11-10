@@ -2438,6 +2438,26 @@ function syncCards(nodes) {
     updateLaunchpadLaunchState();
   }
 
+  function getLaunchpadFieldValue(field) {
+    if (!field) return '';
+    return field.value?.trim?.() || '';
+  }
+
+  function canAdvanceStep(step) {
+    if (step === 1) {
+      return Boolean(
+        getLaunchpadFieldValue(launchpadFields.label) &&
+          getLaunchpadFieldValue(launchpadFields.installPath)
+      );
+    }
+    if (step === 2) {
+      const data = getLaunchpadData();
+      const manualPortsValid = Number.isFinite(data.p2pPort) && data.p2pPort > 0 && Number.isFinite(data.rpcPort) && data.rpcPort > 0;
+      return Boolean(data.autoPorts || manualPortsValid);
+    }
+    return true;
+  }
+
   function setLaunchpadStep(step) {
     if (!launchpadSections[step]) return;
     state.launchpad.step = step;
@@ -2459,6 +2479,10 @@ function syncCards(nodes) {
   function changeLaunchpadStep(direction) {
     const next = state.launchpad.step + direction;
     if (next < 1 || next > 3) return;
+    if (direction > 0 && !canAdvanceStep(state.launchpad.step)) {
+      renderLaunchpadSummary();
+      return;
+    }
     setLaunchpadStep(next);
   }
 
