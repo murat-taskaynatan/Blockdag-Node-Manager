@@ -2947,7 +2947,7 @@ function syncCards(nodes) {
     setStat(card, '.stat-remote', stats.remote_height);
     setStat(card, '.stat-delta', stats.height_delta, { sign: true });
     setStat(card, '.stat-peers', stats.peers);
-    setPeerId(card, stats.peer_id);
+    setPeerId(card, stats.peer_id, stats.peer_ports);
     updateUptime(card, stats.uptime_seconds);
     updateStartStopButton(card.querySelector('[data-role="toggle"]'), containerRunning, {
       effectiveRunning,
@@ -2978,24 +2978,48 @@ function syncCards(nodes) {
     }
   }
 
-  function setPeerId(card, value) {
+  function setPeerId(card, value, ports) {
     const el = card.querySelector('.stat-peer-id');
     if (!el) return;
+    const internalPort = ports && (Number.isFinite(Number(ports.internal)) ? Number(ports.internal) : null);
+    const externalPort = ports && (ports.external !== undefined && ports.external !== null && ports.external !== ''
+      ? Number(ports.external)
+      : null);
+    el.dataset.peerInternal = internalPort && Number.isFinite(internalPort) ? String(internalPort) : '';
+    el.dataset.peerExternal = Number.isFinite(externalPort) ? String(externalPort) : '';
     const text = typeof value === 'string' ? value.trim() : '';
     if (!text) {
       el.textContent = '—';
-      el.removeAttribute('title');
+      const tooltipParts = [];
+      if (el.dataset.peerInternal) {
+        tooltipParts.push(`Internal peer port: ${el.dataset.peerInternal}`);
+      }
+      if (el.dataset.peerExternal) {
+        tooltipParts.push(`External peer port: ${el.dataset.peerExternal}`);
+      }
+      if (tooltipParts.length) {
+        el.title = tooltipParts.join('\n');
+      } else {
+        el.removeAttribute('title');
+      }
       return;
     }
     const clean = text.replace(/[^0-9a-z]/gi, '').toLowerCase();
+    const tooltipParts = [clean];
+    if (el.dataset.peerInternal) {
+      tooltipParts.push(`Internal peer port: ${el.dataset.peerInternal}`);
+    }
+    if (el.dataset.peerExternal) {
+      tooltipParts.push(`External peer port: ${el.dataset.peerExternal}`);
+    }
     if (clean.length >= 14) {
       el.textContent = `${clean.slice(0, 6)}…${clean.slice(-6)}`;
-      el.title = clean;
+      el.title = tooltipParts.join('\n');
       return;
     }
     const short = text.length > 14 ? `${text.slice(0, 6)}…${text.slice(-6)}` : text;
     el.textContent = short;
-    el.title = text;
+    el.title = tooltipParts.join('\n');
   }
 
   function updateUptime(card, seconds) {
@@ -3688,7 +3712,7 @@ function syncCards(nodes) {
         effectiveRunning,
         forcedOffline: forcedState.forced,
       });
-      setPeerId(card, metrics.peer_id);
+      setPeerId(card, metrics.peer_id, metrics.peer_ports);
       entry.meta.status = {
         ...(entry.meta.status || {}),
         ...metrics,
