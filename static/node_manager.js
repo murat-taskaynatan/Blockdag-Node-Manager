@@ -2439,16 +2439,16 @@ function syncCards(nodes) {
       launchpadSummaryRefs.network.textContent = data.network;
     }
     if (launchpadSummaryRefs.p2pPort) {
-      launchpadSummaryRefs.p2pPort.textContent = data.autoPorts ? 'Auto-managed' : data.p2pPort;
+      launchpadSummaryRefs.p2pPort.textContent = data.p2pPort;
     }
     if (launchpadSummaryRefs.rpcPort) {
-      launchpadSummaryRefs.rpcPort.textContent = data.autoPorts ? 'Auto-managed' : data.rpcPort;
+      launchpadSummaryRefs.rpcPort.textContent = data.rpcPort;
     }
     if (launchpadSummaryRefs.wallet) {
       setSummaryField(launchpadSummaryRefs.wallet, data.walletAddress);
     }
     if (launchpadSummaryRefs.externalP2P) {
-      setSummaryField(launchpadSummaryRefs.externalP2P, data.externalP2PPort || (data.autoPorts ? 'Auto' : '—'));
+      launchpadSummaryRefs.externalP2P.textContent = data.externalP2PPort || (data.autoPorts ? data.p2pPort : '—');
     }
     updateLaunchpadLaunchState();
   }
