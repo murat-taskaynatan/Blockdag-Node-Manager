@@ -15,6 +15,7 @@ import shlex
 import hmac
 import itertools
 import stat
+import stat
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_UP, getcontext
 from collections import OrderedDict, deque
@@ -186,6 +187,9 @@ ANSI_ESCAPE_RE = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
 _LOG_POLICY_LOCK = threading.Lock()
 _LOG_POLICY_STATE: Dict[str, Dict[str, object]] = {}
 _RECENT_LOGS_CACHE: Dict[Tuple[str, int], Dict[str, object]] = {}
+_PEER_PORT_CACHE: Dict[str, Tuple[Optional[int], Optional[int], float]] = {}
+_PEER_PORT_CACHE_LOCK = threading.Lock()
+_PEER_PORT_CACHE_TTL = 60.0
 POLICY_WORKER_INTERVAL_SEC = max(
     5.0, float(os.getenv("BDAG_POLICY_WORKER_INTERVAL_SEC") or LOG_ERROR_CHECK_SEC)
 )
@@ -588,6 +592,16 @@ def _coerce_bool(value, default: bool = False) -> bool:
     return default
 
 
+def _coerce_port(value) -> Optional[int]:
+    if value is None or value == "":
+        return None
+    try:
+        port = int(value)
+        return port if port > 0 else None
+    except Exception:
+        return None
+
+
 
 SETTINGS_PATH = Path(__file__).resolve().parent / "config" / "settings.json"
 SNAPSHOT_MAX_DEFAULT = max(0, int(os.getenv("BDAG_SNAPSHOT_MAX", "0") or 0))
@@ -852,6 +866,56 @@ def _resolve_container_rpc_base(info: dict, env: Dict[str, str]) -> Optional[str
         if preferred in candidates:
             return candidates[preferred]
     return fallback_url
+
+
+def _extract_peer_ports_from_inspect(info: dict) -> Tuple[Optional[int], Optional[int]]:
+    ports = info.get("NetworkSettings", {}).get("Ports") or info.get("HostConfig", {}).get("PortBindings") or {}
+    if not isinstance(ports, dict):
+        return None, None
+    preferred_internal = {"18150"}
+    fallback_internal: Optional[int] = None
+    fallback_external: Optional[int] = None
+    for port_key, bindings in ports.items():
+        if not isinstance(port_key, str) or "/tcp" not in port_key:
+            continue
+        container_port = port_key.split("/")[0]
+        if not container_port.isdigit():
+            continue
+        candidate_internal = int(container_port)
+        binding = bindings[0] if isinstance(bindings, list) and bindings else None
+        host_port = None
+        if isinstance(binding, dict):
+            host_port = binding.get("HostPort")
+        candidate_external = int(host_port) if host_port and str(host_port).isdigit() else None
+        if container_port in preferred_internal:
+            return candidate_internal, candidate_external
+        if fallback_internal is None:
+            fallback_internal = candidate_internal
+            fallback_external = candidate_external
+    return fallback_internal, fallback_external
+
+
+def _lookup_peer_ports_from_container(container: Optional[str]) -> Tuple[Optional[int], Optional[int]]:
+    if not container or not DOCKER_BIN:
+        return None, None
+    now = time.time()
+    with _PEER_PORT_CACHE_LOCK:
+        cached = _PEER_PORT_CACHE.get(container)
+        if cached and (now - cached[2]) < _PEER_PORT_CACHE_TTL:
+            return cached[0], cached[1]
+    try:
+        inspect = subprocess.check_output(
+            [DOCKER_BIN, "inspect", container],
+            text=True,
+            timeout=3,
+        )
+        data = json.loads(inspect)[0]
+    except Exception:
+        return None, None
+    internal, external = _extract_peer_ports_from_inspect(data)
+    with _PEER_PORT_CACHE_LOCK:
+        _PEER_PORT_CACHE[container] = (internal, external, now)
+    return internal, external
 
 
 _BLOCKDAG_DIR_NAME = "blockdag-scripts"
@@ -2958,6 +3022,7 @@ def _discover_docker_nodes() -> List[dict]:
             or data.get("Name", "").lstrip("/")
             or name
         )
+        peer_internal, peer_external = _extract_peer_ports_from_inspect(data)
         nodes.append(
             {
                 "id": _slugify(name),
@@ -2968,6 +3033,8 @@ def _discover_docker_nodes() -> List[dict]:
                 "rpc_pass": rpc_pass,
                 "remote_rpc_bases": remote_bases,
                 "chain_data_dir": chain_data_dir,
+                "peer_port_internal": peer_internal,
+                "peer_port_external": peer_external,
             }
         )
     return nodes
@@ -2989,6 +3056,8 @@ DEFAULT_NODE_SETTINGS = {
     "remote_rpc_timeout": float(os.getenv("BDAG_REMOTE_RPC_TIMEOUT", "2.5") or "2.5"),
     "remote_rpc_verify": _coerce_bool(os.getenv("BDAG_REMOTE_RPC_VERIFY"), False),
     "container": os.getenv("BDAG_NODE_CONTAINER", "").strip(),
+    "peer_port_internal": _coerce_port(os.getenv("BDAG_PEER_PORT_INTERNAL")),
+    "peer_port_external": _coerce_port(os.getenv("BDAG_PEER_PORT_EXTERNAL")),
 }
 
 BALANCE_RPC_BASE = _normalize_rpc_endpoint(
@@ -3221,6 +3290,8 @@ class NodeContext:
         self.remote_rpc_verify = _coerce_bool(
             merged.get("remote_rpc_verify", DEFAULT_NODE_SETTINGS["remote_rpc_verify"])
         )
+        self.peer_port_internal = _coerce_port(merged.get("peer_port_internal"))
+        self.peer_port_external = _coerce_port(merged.get("peer_port_external"))
 
         chain_data_dir = merged.get("chain_data_dir") or merged.get("chaindata_dir")
         self.chain_data_dir: Optional[Path]
@@ -3279,6 +3350,17 @@ class NodeContext:
             if bases and bases != self.remote_rpc_bases:
                 self.remote_rpc_bases = bases
                 changed = True
+        internal_port = meta.get("peer_port_internal")
+        if internal_port is not None:
+            coerced = _coerce_port(internal_port)
+            if coerced != self.peer_port_internal:
+                self.peer_port_internal = coerced
+                changed = True
+        if "peer_port_external" in meta:
+            coerced_ext = _coerce_port(meta.get("peer_port_external"))
+            if coerced_ext != self.peer_port_external:
+                self.peer_port_external = coerced_ext
+                changed = True
         chain_dir = meta.get("chain_data_dir") or meta.get("chaindata_dir")
         if chain_dir:
             normalized = _normalize_path(chain_dir)
@@ -3299,6 +3381,8 @@ class NodeContext:
             "remote_rpc_bases": self.remote_rpc_bases[:],
             "auto_discovered": self.auto_discovered,
             "chain_data_dir": str(self.chain_data_dir) if self.chain_data_dir else None,
+            "peer_port_internal": self.peer_port_internal,
+            "peer_port_external": self.peer_port_external,
         }
 
     def _empty_metrics(self) -> dict:
@@ -3374,6 +3458,14 @@ class NodeContext:
             self.last_metrics = dict(metrics)
             metrics["peer_id"] = self.peer_identity()
             self.last_metrics["peer_id"] = metrics["peer_id"]
+            peer_ports_payload: Dict[str, int] = {}
+            if self.peer_port_internal:
+                peer_ports_payload["internal"] = int(self.peer_port_internal)
+            if self.peer_port_external is not None:
+                peer_ports_payload["external"] = int(self.peer_port_external)
+            if peer_ports_payload:
+                metrics["peer_ports"] = dict(peer_ports_payload)
+                self.last_metrics["peer_ports"] = dict(peer_ports_payload)
             return dict(self.last_metrics)
 
     def snapshot(self, *, include_series: bool = False) -> dict:
@@ -3381,6 +3473,14 @@ class NodeContext:
             metrics = dict(self.last_metrics or self._empty_metrics())
             metrics.setdefault("running", self.running)
             metrics.setdefault("peer_id", self.peer_identity())
+            if "peer_ports" not in metrics:
+                peer_ports_payload: Dict[str, int] = {}
+                if self.peer_port_internal:
+                    peer_ports_payload["internal"] = int(self.peer_port_internal)
+                if self.peer_port_external is not None:
+                    peer_ports_payload["external"] = int(self.peer_port_external)
+                if peer_ports_payload:
+                    metrics["peer_ports"] = peer_ports_payload
             if include_series:
                 labels = [ts for ts, _ in self.height_series]
                 local = [int(val) if val is not None else 0 for _, val in self.height_series]
@@ -4182,6 +4282,15 @@ def _container_state(name: str) -> Tuple[bool, bool, Optional[float]]:
 
 
 def _collect_node_metrics(ctx: NodeContext) -> Tuple[dict, Optional[int]]:
+    if ctx and ctx.container:
+        need_internal = not ctx.peer_port_internal
+        need_external = ctx.peer_port_external is None
+        if need_internal or need_external:
+            internal, external = _lookup_peer_ports_from_container(ctx.container)
+            if need_internal and internal:
+                ctx.peer_port_internal = internal
+            if need_external and external is not None:
+                ctx.peer_port_external = external
     now_ms = int(time.time() * 1000)
     start_local = time.perf_counter()
     try:
