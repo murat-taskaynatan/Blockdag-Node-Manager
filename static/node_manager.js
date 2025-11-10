@@ -137,6 +137,7 @@ const state = {
   const launchpadBackBtn = document.getElementById('launchpadBackBtn');
   const launchpadNextBtn = document.getElementById('launchpadNextBtn');
   const launchpadNextIcon = launchpadNextBtn?.querySelector('[data-launch-icon]') ?? null;
+  const launchpadNextStepIcon = launchpadNextBtn?.querySelector('[data-step-icon]') ?? null;
   const launchpadNextLabel = launchpadNextBtn?.querySelector('[data-launch-label]') ?? null;
   let ocLogPollTimer = null;
   const SYSTEM_POLL_INTERVAL_MS = 10000;
@@ -2403,6 +2404,9 @@ function syncCards(nodes) {
     }
     if (launchpadNextIcon) {
       launchpadNextIcon.hidden = !onFinalStep;
+    }
+    if (launchpadNextStepIcon) {
+      launchpadNextStepIcon.hidden = onFinalStep;
     }
     launchpadNextBtn.disabled = onFinalStep ? !complete : false;
   }
