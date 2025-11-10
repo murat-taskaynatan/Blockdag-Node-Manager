@@ -24,6 +24,7 @@ import psutil
 import requests
 from flask import Flask, abort, jsonify, render_template, request
 from flask import Response, send_from_directory, session, redirect, url_for
+from scripts.launchpad_launcher import LaunchError, launch_node
 
 
 # ---------------------------------------------------------------------------
@@ -4223,6 +4224,20 @@ def api_node_manager_nodes():
     else:
         summary = _fleet_summary([])
     return jsonify({"nodes": nodes_payload, "summary": summary})
+
+
+@app.route("/api/node-manager/launch", methods=["POST"])
+def api_node_manager_launch():
+    payload = request.get_json(force=True, silent=True) or {}
+    try:
+        result = launch_node(payload)
+    except LaunchError as exc:
+        app.logger.warning("Launchpad launch failed: %s", exc)
+        return jsonify(error=str(exc)), 400
+    except Exception as exc:
+        app.logger.exception("Launchpad launch errored")
+        return jsonify(error="Launch failed"), 500
+    return jsonify(result)
 
 
 @app.route("/api/node-manager/metrics")
