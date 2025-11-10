@@ -112,7 +112,7 @@ def _prepare_ports(config: Dict) -> Tuple[int, int, int, int]:
 
 def _render_compose(source: Path, target: Path, label: str, p2p: int, rpc: int, ws: int, peer: int):
     text = source.read_text()
-    text = text.replace("blockdag-testnet-network", f"blockdag-node-{label}")
+    text = text.replace("blockdag-testnet-network", label)
     text = text.replace('- "38131:38131"', f'- "{p2p}:{p2p}"', 1)
     text = text.replace('- "18545:18545"', f'- "{rpc}:{rpc}"', 1)
     text = text.replace('- "18546:18546"', f'- "{ws}:{ws}"', 1)
@@ -161,7 +161,7 @@ def launch_node(payload: Dict) -> Dict:
         raise LaunchError("docker-compose template not found")
     compose_target = scripts_dir / f"docker-compose-{label}.yml"
     _render_compose(compose_src, compose_target, label, p2p_port, rpc_port, ws_port, peer_port)
-    project_name = f"blockdag-node-{label}"
+    project_name = label
     env = {**os.environ, "MINING_ADDRESS": wallet}
     output = _run_command(
         ["docker", "compose", "-p", project_name, "-f", str(compose_target), "up", "-d"],

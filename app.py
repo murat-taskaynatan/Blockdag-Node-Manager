@@ -762,12 +762,12 @@ def _resolve_container_rpc_base(info: dict, env: Dict[str, str]) -> Optional[str
     if not ports:
         ports = info.get("HostConfig", {}).get("PortBindings") or {}
     candidates: Dict[str, str] = {}
+    fallback_url: Optional[str] = None
+    preferred_ports = ("38155", "38131", "18593", "18545", "8545", "4545")
     for port_key, bindings in ports.items():
         if not isinstance(port_key, str) or "/tcp" not in port_key:
             continue
         container_port = port_key.split("/")[0]
-        if container_port not in {"38131", "18545", "8545", "4545"}:
-            continue
         binding = bindings[0] if isinstance(bindings, list) and bindings else None
         if not isinstance(binding, dict):
             continue
@@ -779,12 +779,14 @@ def _resolve_container_rpc_base(info: dict, env: Dict[str, str]) -> Optional[str
             host_ip = "127.0.0.1"
         url = f"http://{host_ip}:{host_port}"
         candidates.setdefault(container_port, url)
-        if container_port == "38131":
+        if fallback_url is None:
+            fallback_url = url
+        if container_port in {"38155", "38131"}:
             return url
-    for preferred in ("18545", "8545", "4545"):
+    for preferred in preferred_ports:
         if preferred in candidates:
             return candidates[preferred]
-    return next(iter(candidates.values()), None)
+    return fallback_url
 
 
 _BLOCKDAG_DIR_NAME = "blockdag-scripts"
