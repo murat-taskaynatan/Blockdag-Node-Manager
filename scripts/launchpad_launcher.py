@@ -76,6 +76,7 @@ def _prepare_ports(config: Dict) -> Tuple[int, int, int, int]:
     base_rpc = int(config.get("rpcPort") or 18545)
     base_ws = base_rpc + 1
     base_peer = 18150
+    external_override = config.get("externalP2PPort")
     used = _collect_used_ports()
     if config.get("autoPorts"):
         existing = _existing_node_ports()
@@ -90,9 +91,10 @@ def _prepare_ports(config: Dict) -> Tuple[int, int, int, int]:
         ws = _find_available_port(used, start_ws)
         peer = _find_available_port(used, start_peer)
     else:
-        if base_p2p in used or base_rpc in used or base_peer in used:
+        override = int(external_override) if external_override and str(external_override).isdigit() else base_p2p
+        if override in used or base_rpc in used or base_peer in used:
             raise LaunchError("Selected ports are already in use")
-        p2p = base_p2p
+        p2p = override
         rpc = base_rpc
         ws = base_ws
         peer = base_peer

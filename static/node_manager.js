@@ -127,6 +127,7 @@ const state = {
     rpcPort: document.getElementById('launchpadRpcPort'),
     autoPorts: document.getElementById('launchpadAutoPorts'),
     walletAddress: document.getElementById('launchpadWalletAddress'),
+    externalP2PPort: document.getElementById('launchpadExternalP2PPort'),
   };
   const launchpadSummaryRefs = {
     label: document.getElementById('launchpadSummaryLabel'),
@@ -135,6 +136,7 @@ const state = {
     p2pPort: document.getElementById('launchpadSummaryP2P'),
     rpcPort: document.getElementById('launchpadSummaryRpc'),
     wallet: document.getElementById('launchpadSummaryWallet'),
+    externalP2P: document.getElementById('launchpadSummaryExternalP2P'),
   };
   const launchpadBackBtn = document.getElementById('launchpadBackBtn');
   const launchpadNextBtn = document.getElementById('launchpadNextBtn');
@@ -2389,12 +2391,14 @@ function syncCards(nodes) {
       rpcPort: Number(launchpadFields.rpcPort?.value) || 18545,
       autoPorts,
       walletAddress: launchpadFields.walletAddress?.value?.trim() || '',
+      externalP2PPort: Number(launchpadFields.externalP2PPort?.value) || null,
     };
   }
 
   function isLaunchpadComplete(data = getLaunchpadData()) {
     const manualPortsValid = Number.isFinite(data.p2pPort) && data.p2pPort > 0 && Number.isFinite(data.rpcPort) && data.rpcPort > 0;
-    return Boolean(data.label && data.installPath && data.walletAddress && (data.autoPorts || manualPortsValid));
+    const externalValid = data.autoPorts || Number.isFinite(data.externalP2PPort) && data.externalP2PPort > 0;
+    return Boolean(data.label && data.installPath && data.walletAddress && manualPortsValid && externalValid);
   }
 
   function updateLaunchpadLaunchState() {
@@ -2413,7 +2417,7 @@ function syncCards(nodes) {
   }
 
   function syncLaunchpadPortInputs(auto = launchpadFields.autoPorts?.checked ?? false) {
-    const manualFields = [launchpadFields.p2pPort, launchpadFields.rpcPort];
+    const manualFields = [launchpadFields.p2pPort, launchpadFields.rpcPort, launchpadFields.externalP2PPort];
     manualFields.forEach((field) => {
       if (!field) return;
       field.disabled = auto;
@@ -2442,6 +2446,9 @@ function syncCards(nodes) {
     }
     if (launchpadSummaryRefs.wallet) {
       setSummaryField(launchpadSummaryRefs.wallet, data.walletAddress);
+    }
+    if (launchpadSummaryRefs.externalP2P) {
+      setSummaryField(launchpadSummaryRefs.externalP2P, data.externalP2PPort || (data.autoPorts ? 'Auto' : '—'));
     }
     updateLaunchpadLaunchState();
   }
@@ -2487,7 +2494,8 @@ function syncCards(nodes) {
       return Boolean(
         getLaunchpadFieldValue(launchpadFields.label) &&
           getLaunchpadFieldValue(launchpadFields.installPath) &&
-          getLaunchpadFieldValue(launchpadFields.walletAddress)
+          getLaunchpadFieldValue(launchpadFields.walletAddress) &&
+          getLaunchpadFieldValue(launchpadFields.externalP2PPort)
       );
     }
     if (step === 2) {

@@ -866,6 +866,10 @@
                 Base P2P port
                 <input type="number" id="launchpadP2PPort" min="10000" value="38130">
               </label>
+              <label>
+                External P2P port
+                <input type="number" id="launchpadExternalP2PPort" min="10000" value="38130">
+              </label>
               <div class="launchpad-port-gap"></div>
               <label>
                 RPC port
@@ -886,6 +890,7 @@
                 <div><strong>P2P port</strong><span id="launchpadSummaryP2P">—</span></div>
                 <div><strong>RPC port</strong><span id="launchpadSummaryRpc">—</span></div>
                 <div><strong>Wallet</strong><span id="launchpadSummaryWallet">—</span></div>
+                <div><strong>External P2P</strong><span id="launchpadSummaryExternalP2P">—</span></div>
               </div>
               <div class="launchpad-status" id="launchpadStatus" aria-live="polite"></div>
               <p style="font-size:12px;color:var(--muted)">Launchpad will generate a unique peer ID and non-conflicting ports for every node.</p>
