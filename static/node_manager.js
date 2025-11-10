@@ -136,7 +136,6 @@ const state = {
   };
   const launchpadBackBtn = document.getElementById('launchpadBackBtn');
   const launchpadNextBtn = document.getElementById('launchpadNextBtn');
-  const launchpadLaunchBtn = document.getElementById('launchpadLaunchBtn');
   let ocLogPollTimer = null;
   const SYSTEM_POLL_INTERVAL_MS = 10000;
   let systemPollTimer = null;
@@ -2393,11 +2392,12 @@ function syncCards(nodes) {
   }
 
   function updateLaunchpadLaunchState() {
-    if (!launchpadLaunchBtn) return;
+    if (!launchpadNextBtn) return;
     const complete = isLaunchpadComplete();
     const onFinalStep = state.launchpad.step === 3;
-    launchpadLaunchBtn.hidden = !onFinalStep;
-    launchpadLaunchBtn.disabled = !complete || !onFinalStep;
+    launchpadNextBtn.dataset.mode = onFinalStep ? 'launch' : 'next';
+    launchpadNextBtn.textContent = onFinalStep ? 'Launch node' : 'Next';
+    launchpadNextBtn.disabled = onFinalStep ? !complete : false;
   }
 
   function syncLaunchpadPortInputs(auto = launchpadFields.autoPorts?.checked ?? false) {
@@ -3586,16 +3586,18 @@ function syncCards(nodes) {
       launchpadBackBtn.addEventListener('click', () => changeLaunchpadStep(-1));
     }
     if (launchpadNextBtn) {
-      launchpadNextBtn.addEventListener('click', () => changeLaunchpadStep(1));
-    }
-    if (launchpadLaunchBtn) {
-      launchpadLaunchBtn.addEventListener('click', () => {
-        if (!isLaunchpadComplete()) {
-          renderLaunchpadSummary();
-          return;
+      launchpadNextBtn.addEventListener('click', () => {
+        const mode = launchpadNextBtn.dataset.mode || 'next';
+        if (mode === 'launch') {
+          if (!isLaunchpadComplete()) {
+            renderLaunchpadSummary();
+            return;
+          }
+          const data = getLaunchpadData();
+          console.log('[launchpad] launch requested', data);
+        } else {
+          changeLaunchpadStep(1);
         }
-        const data = getLaunchpadData();
-        console.log('[launchpad] launch requested', data);
       });
     }
     if (settingsForm) {
