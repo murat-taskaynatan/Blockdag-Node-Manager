@@ -2415,12 +2415,23 @@ function syncCards(nodes) {
     });
   }
 
+  function setSummaryField(ref, value, missingText = 'Missing') {
+    if (!ref) return;
+    const isMissing = !value;
+    ref.textContent = isMissing ? missingText : value;
+    ref.classList.toggle('missing', isMissing);
+  }
+
   function renderLaunchpadSummary(data = getLaunchpadData()) {
     if (!launchpadSummaryRefs.label) return;
-    launchpadSummaryRefs.label.textContent = data.label || 'auto';
-    launchpadSummaryRefs.path.textContent = data.installPath || '/home/node/<auto>';
-    launchpadSummaryRefs.network.textContent = data.network;
-    launchpadSummaryRefs.p2pPort.textContent = data.autoPorts ? 'Auto-managed' : data.p2pPort;
+    setSummaryField(launchpadSummaryRefs.label, data.label);
+    setSummaryField(launchpadSummaryRefs.path, data.installPath);
+    if (launchpadSummaryRefs.network) {
+      launchpadSummaryRefs.network.textContent = data.network;
+    }
+    if (launchpadSummaryRefs.p2pPort) {
+      launchpadSummaryRefs.p2pPort.textContent = data.autoPorts ? 'Auto-managed' : data.p2pPort;
+    }
     if (launchpadSummaryRefs.rpcPort) {
       launchpadSummaryRefs.rpcPort.textContent = data.autoPorts ? 'Auto-managed' : data.rpcPort;
     }
