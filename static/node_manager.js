@@ -2562,12 +2562,8 @@ function syncCards(nodes) {
     details.dataset.nodeId = node.id;
 
     const nameEl = details.querySelector('.node-name');
-    const metaEl = details.querySelector('.node-meta');
     if (nameEl) {
       nameEl.textContent = node.id || 'Node';
-    }
-    if (metaEl) {
-      metaEl.textContent = node.container || '—';
     }
 
     const summary = details.querySelector('summary.fleet-summary');
@@ -2690,7 +2686,6 @@ function syncCards(nodes) {
     const wrapperEl = card?.querySelector?.('.node-logs');
 
     const nameEl = card?.querySelector?.('.node-name');
-    const metaEl = card?.querySelector?.('.node-meta');
 
     if (previousState.cardOpen && card) {
       card.open = true;
@@ -2723,9 +2718,6 @@ function syncCards(nodes) {
     entry.state.logsOpen = Boolean(panelEl && !panelEl.hasAttribute('hidden'));
     if (nameEl) {
       nameEl.textContent = node.id || 'Node';
-    }
-    if (metaEl) {
-      metaEl.textContent = node.container || '—';
     }
 
     const summaryHealthChip = card.querySelector('.summary-health-chip');
