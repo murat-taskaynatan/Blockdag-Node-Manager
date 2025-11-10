@@ -2395,9 +2395,9 @@ function syncCards(nodes) {
   function updateLaunchpadLaunchState() {
     if (!launchpadLaunchBtn) return;
     const complete = isLaunchpadComplete();
-    const show = state.launchpad.step === 3 && complete;
-    launchpadLaunchBtn.hidden = !show;
-    launchpadLaunchBtn.disabled = !complete;
+    const onFinalStep = state.launchpad.step === 3;
+    launchpadLaunchBtn.hidden = !onFinalStep;
+    launchpadLaunchBtn.disabled = !complete || !onFinalStep;
   }
 
   function syncLaunchpadPortInputs(auto = launchpadFields.autoPorts?.checked ?? false) {
