@@ -4605,12 +4605,10 @@ def node_manager_view():
 @app.route("/api/node-manager/nodes")
 def api_node_manager_nodes():
     nodes_payload = []
-    settings = get_settings()
     now = time.time()
     for ctx in NODES.values():
         if _metrics_stale(ctx, now=now):
             _queue_node_sample(ctx)
-        _apply_node_policies(ctx, settings)
         nodes_payload.append(
             {
                 "id": ctx.id,
