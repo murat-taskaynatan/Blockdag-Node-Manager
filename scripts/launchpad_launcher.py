@@ -1,5 +1,7 @@
+import grp
 import json
 import os
+import pwd
 import re
 import subprocess
 from pathlib import Path
@@ -10,6 +12,59 @@ LAUNCHPAD_REPO = "https://github.com/BlockdagNetworkLabs/blockdag-scripts.git"
 
 class LaunchError(RuntimeError):
     """Raised when the launch process fails."""
+
+
+def _current_identity() -> Tuple[Optional[str], Optional[str]]:
+    user = os.getenv("SUDO_USER") or os.getenv("USER")
+    group = os.getenv("SUDO_GID")
+    try:
+        uid = os.getuid()
+        if not user:
+            user = pwd.getpwuid(uid).pw_name
+        gid = os.getgid()
+        if not group:
+            group = grp.getgrgid(gid).gr_name
+    except Exception:
+        pass
+    if isinstance(group, str) and group.isdigit():
+        try:
+            group = grp.getgrgid(int(group)).gr_name
+        except Exception:
+            pass
+    if group is None and user:
+        group = user
+    return user, group
+
+
+def _ensure_install_path_ready(path: Path) -> None:
+    if not path:
+        return
+    resolved = path
+    try:
+        resolved = path.expanduser()
+    except Exception:
+        resolved = path
+    user, group = _current_identity()
+    if not resolved.exists():
+        try:
+            resolved.mkdir(parents=True, exist_ok=True)
+        except PermissionError:
+            try:
+                subprocess.run(["sudo", "mkdir", "-p", str(resolved)], capture_output=True, text=True, check=False)
+            except Exception:
+                pass
+    if not user:
+        return
+    group = group or user
+    try:
+        subprocess.run(
+            ["sudo", "chown", "-R", f"{user}:{group}", str(resolved)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except Exception:
+        pass
 
 
 def _simplify_launch_error(raw: str) -> Optional[str]:
@@ -275,6 +330,7 @@ def launch_node(payload: Dict) -> Dict:
     install_path = Path(payload.get("installPath") or "").expanduser()
     if not install_path:
         raise LaunchError("Installation path is required")
+    _ensure_install_path_ready(install_path)
     install_path.mkdir(parents=True, exist_ok=True)
     scripts_dir = install_path / "blockdag-scripts"
     git_dir = scripts_dir / ".git"
