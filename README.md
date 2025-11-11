@@ -128,11 +128,6 @@ curl -fsSL https://raw.githubusercontent.com/murat-taskaynatan/Blockdag-Node-Man
 The remote installer also inserts the same nginx rate limit by default now, so repeated scans are throttled before they reach the manager—no extra configuration required.
 
 
-To update a remote host directly from GitHub, point the bootstrap script at the tag:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/murat-taskaynatan/Blockdag-Node-Manager/main/install_nm_from_github.sh \
-| sudo REPO_REF=v1.5.1 bash
 ```
 
 ## Uninstall
