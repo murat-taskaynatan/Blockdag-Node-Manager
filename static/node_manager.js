@@ -2015,7 +2015,7 @@ function switchSummaryTab(target) {
       },
       launchpad: {
         title: 'Launchpad',
-        desc: "Launch new nodes with ease and don't let janky scripts ruin your setup. ",
+        desc: "Configure and launch new nodes with guided steps and automatic port assignment. ",
       },
     };
     const next = copy[activeView] || copy.stats;
