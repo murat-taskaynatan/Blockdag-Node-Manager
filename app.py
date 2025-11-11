@@ -3060,11 +3060,30 @@ DEFAULT_NODE_SETTINGS = {
     "peer_port_external": _coerce_port(os.getenv("BDAG_PEER_PORT_EXTERNAL")),
 }
 
-BALANCE_RPC_BASE = _normalize_rpc_endpoint(
-    os.getenv("BDAG_BALANCE_RPC_BASE")
-    or os.getenv("BDAG_RPC_BASE")
-    or PRIMARY_REMOTE_RPC_BASE
-)
+def _balance_rpc_targets() -> List[str]:
+    explicit_raw = os.getenv("BDAG_BALANCE_RPC_BASES", os.getenv("BDAG_BALANCE_RPC_BASE"))
+    explicit = _parse_remote_rpc_bases(explicit_raw) if explicit_raw else []
+    targets: List[str] = []
+
+    def add_candidate(value: Optional[str]) -> None:
+        if not value:
+            return
+        normalized = _normalize_rpc_endpoint(value)
+        if normalized and normalized not in targets:
+            targets.append(normalized)
+
+    for item in explicit:
+        add_candidate(item)
+    add_candidate("https://rpc.awakening.bdagscan.com")
+    add_candidate("https://relay.awakening.bdagscan.com")
+    add_candidate(os.getenv("BDAG_RPC_BASE"))
+    add_candidate(PRIMARY_REMOTE_RPC_BASE)
+    add_candidate(DEFAULT_RPC_FALLBACK)
+    return targets or [DEFAULT_RPC_FALLBACK]
+
+
+BALANCE_RPC_TARGETS = _balance_rpc_targets()
+BALANCE_RPC_BASE = BALANCE_RPC_TARGETS[0]
 BALANCE_RPC_USER = os.getenv("BDAG_BALANCE_RPC_USER", DEFAULT_NODE_SETTINGS["rpc_user"])
 BALANCE_RPC_PASS = os.getenv("BDAG_BALANCE_RPC_PASS", DEFAULT_NODE_SETTINGS["rpc_pass"])
 BALANCE_RPC_TIMEOUT = float(os.getenv("BDAG_BALANCE_RPC_TIMEOUT", "6") or "6")
@@ -3136,10 +3155,7 @@ def _format_balance_decimal(value: Decimal) -> str:
     return f"{normalized:,.2f}"
 
 
-def _fetch_wallet_balance(address: str) -> dict:
-    if not BALANCE_RPC_BASE:
-        raise RuntimeError("RPC endpoint not configured")
-    _collect_cpu_temperature()
+def _request_wallet_balance(endpoint: str, address: str) -> dict:
     payload = {
         "jsonrpc": "2.0",
         "method": "eth_getBalance",
@@ -3150,7 +3166,7 @@ def _fetch_wallet_balance(address: str) -> dict:
     if BALANCE_RPC_USER or BALANCE_RPC_PASS:
         auth = (BALANCE_RPC_USER or "", BALANCE_RPC_PASS or "")
     response = requests.post(
-        BALANCE_RPC_BASE,
+        endpoint,
         json=payload,
         timeout=BALANCE_RPC_TIMEOUT,
         auth=auth,
@@ -3171,8 +3187,22 @@ def _fetch_wallet_balance(address: str) -> dict:
         "balance_wei": balance_wei,
         "balance_bdag": str(balance_decimal),
         "balance_formatted": f"{formatted} BDAG",
-        "rpc": BALANCE_RPC_BASE,
+        "rpc": endpoint,
     }
+
+
+def _fetch_wallet_balance(address: str) -> dict:
+    _collect_cpu_temperature()
+    errors: List[str] = []
+    for endpoint in BALANCE_RPC_TARGETS:
+        try:
+            return _request_wallet_balance(endpoint, address)
+        except Exception as exc:
+            errors.append(f"{endpoint}: {exc}")
+            continue
+    if not errors:
+        raise RuntimeError("RPC endpoint not configured")
+    raise RuntimeError("; ".join(errors))
 
 
 def _refresh_wallet_overview(address: Optional[str] = None, source: Optional[str] = None) -> dict:
