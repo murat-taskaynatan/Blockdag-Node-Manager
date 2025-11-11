@@ -2644,7 +2644,17 @@ function syncCards(nodes) {
       body: JSON.stringify(payload),
     });
     if (!res.ok) {
-      const errText = await res.text();
+      let errText = await res.text();
+      if (errText) {
+        try {
+          const parsed = JSON.parse(errText);
+          if (parsed && parsed.error) {
+            errText = parsed.error;
+          }
+        } catch (err) {
+          // ignore parse errors; fall back to original text
+        }
+      }
       throw new Error(errText || res.statusText);
     }
     return res.json();
