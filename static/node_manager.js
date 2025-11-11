@@ -2358,12 +2358,19 @@ async function saveSettings() {
         } else {
           badgeText = wallet.error;
         }
-      } else if (wallet.balance_formatted) {
-        badgeText = wallet.short || wallet.balance_formatted;
-        badgeTitle = wallet.address || '';
-      } else if (wallet.address) {
-        badgeText = '(fetching…)';
-        badgeTitle = wallet.address;
+      } else {
+        const numericBalance = Number(wallet?.balance);
+        const formattedBalance =
+          wallet?.short ||
+          wallet?.balance_formatted ||
+          (Number.isFinite(numericBalance) ? `${numericBalance.toLocaleString(undefined, { maximumFractionDigits: 4 })} BDAG` : '') ||
+          (wallet?.balance_bdag ? `${wallet.balance_bdag} BDAG` : '');
+        if (formattedBalance) {
+          badgeText = formattedBalance;
+        } else if (wallet?.address) {
+          badgeText = '(fetching…)';
+        }
+        badgeTitle = wallet?.address || '';
       }
     } else {
       badgeText = 'updated';
