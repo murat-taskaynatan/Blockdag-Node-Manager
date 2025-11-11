@@ -27,7 +27,7 @@ from urllib.parse import urlparse
 
 import psutil
 import requests
-from flask import Flask, abort, jsonify, render_template, request
+from flask import Flask, abort, jsonify, render_template, request, g
 from flask import Response, send_from_directory, session, redirect, url_for
 from scripts.launchpad_launcher import LaunchError, launch_node, preview_ports
 
@@ -84,6 +84,35 @@ except Exception:
     pass
 
 getcontext().prec = 50
+
+
+@app.before_request
+def _record_request_start() -> None:
+    g._bdag_request_started = time.time()
+
+
+@app.after_request
+def _log_request_timing(response: Response) -> Response:
+    try:
+        started = getattr(g, "_bdag_request_started", None)
+        path = request.path or ""
+        if started is None or path.startswith("/static/"):
+            return response
+        duration = max(time.time() - started, 0.0)
+        query = request.query_string.decode("utf-8", errors="ignore")
+        remote = request.headers.get("X-Forwarded-For", request.remote_addr or "-")
+        app.logger.info(
+            "HTTP %s %s%s -> %s in %.3fs (remote=%s)",
+            request.method,
+            path,
+            f"?{query}" if query else "",
+            response.status_code,
+            duration,
+            remote,
+        )
+    except Exception:
+        pass
+    return response
 
 
 # ---------------------------------------------------------------------------
@@ -185,6 +214,10 @@ else:
     LOG_CRITICAL_ERROR_PATTERNS = _DEFAULT_LOG_CRITICAL_ERROR_PATTERNS
 
 LOG_CACHE_SEC = max(1.0, float(os.getenv("BDAG_LOG_CACHE_SEC", "2") or "2"))
+LOG_REFRESH_INTERVAL_SEC = max(
+    LOG_CACHE_SEC, float(os.getenv("BDAG_LOG_REFRESH_SEC", "5") or "5")
+)
+LOG_REFRESH_WAIT_SEC = max(0.2, min(LOG_REFRESH_INTERVAL_SEC, 2.0))
 ANSI_ESCAPE_RE = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
 _LOG_POLICY_LOCK = threading.Lock()
 _LOG_POLICY_STATE: Dict[str, Dict[str, object]] = {}
@@ -192,6 +225,7 @@ _RECENT_LOGS_CACHE: Dict[Tuple[str, int], Dict[str, object]] = {}
 _PEER_PORT_CACHE: Dict[str, Tuple[Optional[int], Optional[int], float]] = {}
 _PEER_PORT_CACHE_LOCK = threading.Lock()
 _PEER_PORT_CACHE_TTL = 60.0
+_LOG_REFRESH_EVENT = threading.Event()
 POLICY_WORKER_INTERVAL_SEC = max(
     5.0, float(os.getenv("BDAG_POLICY_WORKER_INTERVAL_SEC") or LOG_ERROR_CHECK_SEC)
 )
@@ -3748,20 +3782,13 @@ def _purge_policy_state(container: Optional[str]) -> None:
             _RECENT_LOGS_CACHE.pop(key, None)
 
 
-def _get_recent_logs(limit: int, container: str) -> List[str]:
+def _refresh_container_logs(container: str, limit: int) -> None:
     if not container or not DOCKER_BIN:
-        return []
+        return
     try:
         limit_int = max(1, min(int(limit), 200))
     except Exception:
         limit_int = LOG_ERROR_TAIL
-    key = (container, limit_int)
-    now = time.time()
-    with _LOG_POLICY_LOCK:
-        cached = _RECENT_LOGS_CACHE.get(key)
-        cached_ts = float(cached.get("ts", 0.0)) if cached else 0.0
-        if cached and now - cached_ts < LOG_CACHE_SEC and isinstance(cached.get("lines"), list):
-            return list(cached["lines"])
     try:
         out = subprocess.check_output(
             [DOCKER_BIN, "logs", "--tail", str(limit_int), "--timestamps", container],
@@ -3773,9 +3800,67 @@ def _get_recent_logs(limit: int, container: str) -> List[str]:
         lines = [ANSI_ESCAPE_RE.sub("", line) for line in raw_lines]
     except Exception:
         lines = []
+    now = time.time()
     with _LOG_POLICY_LOCK:
-        _RECENT_LOGS_CACHE[key] = {"ts": now, "lines": lines}
-    return list(lines)
+        _RECENT_LOGS_CACHE[(container, limit_int)] = {"ts": now, "lines": lines}
+
+
+def _get_recent_logs(limit: int, container: str) -> List[str]:
+    if not container or not DOCKER_BIN:
+        return []
+    try:
+        limit_int = max(1, min(int(limit), 200))
+    except Exception:
+        limit_int = LOG_ERROR_TAIL
+    key = (container, limit_int)
+
+    def _cached() -> Tuple[Optional[List[str]], float]:
+        with _LOG_POLICY_LOCK:
+            cached = _RECENT_LOGS_CACHE.get(key)
+            if not cached:
+                return None, 0.0
+            lines = cached.get("lines")
+            if not isinstance(lines, list):
+                return None, 0.0
+            return list(lines), float(cached.get("ts", 0.0))
+
+    cached_lines, cached_ts = _cached()
+    now = time.time()
+    if cached_lines and now - cached_ts < LOG_CACHE_SEC:
+        return cached_lines
+
+    _LOG_REFRESH_EVENT.set()
+    deadline = time.time() + LOG_REFRESH_WAIT_SEC
+    while time.time() < deadline:
+        time.sleep(0.1)
+        refreshed_lines, refreshed_ts = _cached()
+        if refreshed_lines and time.time() - refreshed_ts < LOG_CACHE_SEC:
+            return refreshed_lines
+
+    _refresh_container_logs(container, limit_int)
+    fallback_lines, _ = _cached()
+    if fallback_lines:
+        return fallback_lines
+    return []
+
+
+def _log_refresh_worker() -> None:
+    while True:
+        triggered = _LOG_REFRESH_EVENT.wait(timeout=LOG_REFRESH_INTERVAL_SEC)
+        _LOG_REFRESH_EVENT.clear()
+        now = time.time()
+        targets: List[Tuple[str, int]] = []
+        with _LOG_POLICY_LOCK:
+            for (container, limit), cached in _RECENT_LOGS_CACHE.items():
+                if not container:
+                    continue
+                ts = float(cached.get("ts", 0.0)) if cached else 0.0
+                if triggered or now - ts >= LOG_CACHE_SEC:
+                    targets.append((container, limit))
+        if not targets:
+            continue
+        for container, limit in targets:
+            _refresh_container_logs(container, limit)
 
 
 def _restart_container_for_policy(ctx: "NodeContext", reason: str, *, source: str = "policy") -> bool:
@@ -6691,6 +6776,10 @@ except Exception:
 for _ctx in NODES.values():
     _queue_node_sample(_ctx, urgent=True)
 _schedule_wallet_refresh(force=True)
+
+_LOG_REFRESH_THREAD = threading.Thread(target=_log_refresh_worker, daemon=True)
+_LOG_REFRESH_THREAD.start()
+_LOG_REFRESH_EVENT.set()
 
 _AUTO_SNAPSHOT_THREAD = threading.Thread(target=_auto_snapshot_worker, daemon=True)
 _AUTO_SNAPSHOT_THREAD.start()
