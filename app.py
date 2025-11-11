@@ -1138,6 +1138,26 @@ def _ensure_directory_rw(path: Optional[Path], *, create: bool) -> None:
         except Exception:
             pass
     if not os.access(normalized, os.R_OK | os.W_OK | os.X_OK):
+        user = _service_username()
+        try:
+            group = grp.getgrgid(os.getegid()).gr_name
+        except Exception:
+            group = user
+        chown_cmd = ["chown", "-R", f"{user}:{group}", str(normalized)]
+        if os.geteuid() != 0:
+            chown_cmd = ["sudo", "-n", *chown_cmd]
+        try:
+            subprocess.run(
+                chown_cmd,
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except Exception:
+            pass
+        if os.access(normalized, os.R_OK | os.W_OK | os.X_OK):
+            return
+    if not os.access(normalized, os.R_OK | os.W_OK | os.X_OK):
         try:
             app.logger.warning(
                 "Insufficient permissions on %s for user %s; snapshot and restore operations may fail",
