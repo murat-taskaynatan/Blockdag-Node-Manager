@@ -1137,6 +1137,8 @@ def _ensure_directory_rw(path: Optional[Path], *, create: bool) -> None:
             os.chmod(normalized, current_mode | 0o770)
         except Exception:
             pass
+    chown_hint = None
+    chown_error = None
     if not os.access(normalized, os.R_OK | os.W_OK | os.X_OK):
         user = _service_username()
         try:
@@ -1147,12 +1149,16 @@ def _ensure_directory_rw(path: Optional[Path], *, create: bool) -> None:
         if os.geteuid() != 0:
             chown_cmd = ["sudo", "-n", *chown_cmd]
         try:
-            subprocess.run(
+            result = subprocess.run(
                 chown_cmd,
                 check=False,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
             )
+            if result.returncode != 0 and os.geteuid() != 0:
+                chown_hint = f"sudo chown -R {user}:{group} {normalized}"
+                chown_error = (result.stderr or result.stdout or "").strip()
         except Exception:
             pass
         if os.access(normalized, os.R_OK | os.W_OK | os.X_OK):
@@ -1160,9 +1166,11 @@ def _ensure_directory_rw(path: Optional[Path], *, create: bool) -> None:
     if not os.access(normalized, os.R_OK | os.W_OK | os.X_OK):
         try:
             app.logger.warning(
-                "Insufficient permissions on %s for user %s; snapshot and restore operations may fail",
+                "Insufficient permissions on %s for user %s; snapshot and restore operations may fail%s%s",
                 normalized,
-                user,
+                _service_username(),
+                f". Try {chown_hint}" if chown_hint else "",
+                f" (detail: {chown_error})" if chown_error else "",
             )
         except Exception:
             pass
