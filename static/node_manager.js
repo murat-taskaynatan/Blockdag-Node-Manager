@@ -1994,7 +1994,7 @@ function switchSummaryTab(target) {
       },
       launchpad: {
         title: 'Launchpad',
-        desc: 'Launch new nodes with guided steps and automatic port assignment.',
+        desc: "Launch new nodes with ease and don't let janky scripts ruin your setup. ",
       },
     };
     const next = copy[activeView] || copy.stats;
