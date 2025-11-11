@@ -81,8 +81,11 @@ Waitress concurrency is tunable through `/etc/blockdag-node-manager/node-manager
 SSL is handled by nginx on the host. The installer drops a node_manager vhost in /etc/nginx/sites-available/ (symlinked into sites-enabled). To serve the login page over HTTPS:
 
 1. Provision a cert (e.g., via Let’s Encrypt certbot certonly --nginx -d your.domain or copy an existing fullchain.pem/privkey.pem pair into /etc/letsencrypt/live/...).
+   
 2. Edit /etc/nginx/sites-available/node_manager so it has a server block listening on 443 with ssl_certificate / ssl_certificate_key pointing at the cert files. Keep the existing proxy_pass http://node_manager_backend stanza so nginx still forwards to Waitress on port 8081.
+   
 3. Optionally add an HTTP → HTTPS redirect block (listen 80; return 301 https://$host$request_uri;) so users always land on TLS.
+   
 4. Run sudo nginx -t and sudo systemctl reload nginx.
    
 Once nginx terminates TLS, the Node Manager login page (and all other routes) are served at your domain. Because the app doesn’t need to know about TLS, no extra Flask settings are required—the cookie/session code works the same whether nginx connects via plain HTTP or HTTPS on the front end.
