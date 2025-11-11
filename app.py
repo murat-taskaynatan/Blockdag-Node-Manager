@@ -16,6 +16,8 @@ import hmac
 import itertools
 import stat
 import stat
+import multiprocessing
+import queue
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_UP, getcontext
 from collections import OrderedDict, deque
@@ -1244,6 +1246,15 @@ _SNAPSHOT_JOB_STATE: Dict[str, object] = {
     "started": None,
     "ended": None,
 }
+_SNAPSHOT_LOCATIONS_CACHE: Dict[str, object] = {"items": [], "updated": 0.0}
+_SNAPSHOT_LOCATIONS_CACHE_LOCK = threading.Lock()
+_SNAPSHOT_LOCATIONS_TIMEOUT_SEC = max(
+    1.0, float(os.getenv("BDAG_SNAPSHOT_LOCATIONS_TIMEOUT_SEC", "6") or "6")
+)
+_SNAPSHOT_LOCATIONS_CACHE_TTL_SEC = max(
+    _SNAPSHOT_LOCATIONS_TIMEOUT_SEC,
+    float(os.getenv("BDAG_SNAPSHOT_LOCATIONS_TTL_SEC", "45") or "45"),
+)
 
 
 def _estimate_dir_size_bytes(directory: Optional[Path]) -> int:
@@ -1946,7 +1957,7 @@ def _prune_snapshots() -> None:
             app.logger.warning("Failed to prune snapshot %s", name, exc_info=True)
 
 
-def _scan_snapshot_locations() -> List[dict]:
+def _scan_snapshot_locations_impl() -> List[dict]:
     results: List[dict] = []
     patterns = _snapshot_patterns()
     for directory in _candidate_snapshot_dirs():
@@ -1994,6 +2005,48 @@ def _scan_snapshot_locations() -> List[dict]:
     for item in results:
         item.pop("latest_ts", None)
     return results
+
+
+def _snapshot_locations_worker(result_queue: "multiprocessing.Queue") -> None:
+    try:
+        result_queue.put((_scan_snapshot_locations_impl(), None))
+    except Exception as exc:
+        result_queue.put(([], str(exc)))
+
+
+def _scan_snapshot_locations(timeout: Optional[float] = None, *, force: bool = False) -> Tuple[List[dict], Optional[str]]:
+    timeout = timeout or _SNAPSHOT_LOCATIONS_TIMEOUT_SEC
+    now = time.time()
+    with _SNAPSHOT_LOCATIONS_CACHE_LOCK:
+        cached_items = list(_SNAPSHOT_LOCATIONS_CACHE.get("items", []))
+        updated = float(_SNAPSHOT_LOCATIONS_CACHE.get("updated") or 0.0)
+    if cached_items and not force and (now - updated) < _SNAPSHOT_LOCATIONS_CACHE_TTL_SEC:
+        return cached_items, None
+    result_queue: "multiprocessing.Queue" = multiprocessing.Queue()
+    proc = multiprocessing.Process(target=_snapshot_locations_worker, args=(result_queue,))
+    proc.start()
+    proc.join(timeout)
+    if proc.is_alive():
+        proc.terminate()
+        proc.join(1)
+        warning = "Snapshot location scan is taking longer than expected; showing cached results."
+        if force:
+            raise TimeoutError(warning)
+        app.logger.warning("%s (timeout %.1fs)", warning, timeout)
+        return cached_items, warning
+    try:
+        locations, error = result_queue.get_nowait()
+    except queue.Empty:
+        locations, error = [], "Snapshot location scan returned no data."
+    if error:
+        if force:
+            raise RuntimeError(error)
+        app.logger.warning("Snapshot location scan failed: %s", error)
+        return cached_items, f"Snapshot location scan failed; showing cached results. ({error})"
+    with _SNAPSHOT_LOCATIONS_CACHE_LOCK:
+        _SNAPSHOT_LOCATIONS_CACHE["items"] = locations
+        _SNAPSHOT_LOCATIONS_CACHE["updated"] = time.time()
+    return locations, None
 
 
 def _snapshot_job_snapshot() -> Dict[str, object]:
@@ -2331,7 +2384,7 @@ def _run_snapshot_job(details: Dict[str, object]) -> None:
     quiesce_overlay = bool(details.get("quiesce_overlay", True)) if details else True
     restart_required = False
     try:
-        locations = _scan_snapshot_locations()
+        locations, _ = _scan_snapshot_locations(timeout=_SNAPSHOT_LOCATIONS_TIMEOUT_SEC, force=True)
         if locations:
             primary_path = locations[0].get("path")
             if primary_path:
@@ -6261,7 +6314,7 @@ def api_overclock_logs():
 def api_snapshots():
     snapshots = list_snapshots()
     job = _snapshot_job_snapshot()
-    locations = _scan_snapshot_locations()
+    locations, location_warning = _scan_snapshot_locations()
     with _AUTO_SNAPSHOT_LOCK:
         interval_sec = float(_AUTO_SNAPSHOT_STATE.get("interval") or 0.0)
         next_run = float(_AUTO_SNAPSHOT_STATE.get("next_run") or 0.0)
@@ -6280,6 +6333,8 @@ def api_snapshots():
         "locations": locations,
         "automation": {"auto_snapshot": auto_snapshot_state},
     }
+    if location_warning:
+        response["locationWarning"] = location_warning
     message = job.get("message") if isinstance(job, dict) else None
     if message:
         status = job.get("status") if isinstance(job, dict) else None
@@ -6293,6 +6348,8 @@ def api_snapshots():
         else:
             level = "warn"
         response["status"] = {"text": message, "level": level}
+    elif location_warning:
+        response["status"] = {"text": location_warning, "level": "warn"}
     return jsonify(response)
 
 
@@ -6324,7 +6381,12 @@ def api_snapshots_create():
 
 @app.route("/api/snapshots/scan", methods=["POST"])
 def api_snapshots_scan():
-    locations = _scan_snapshot_locations()
+    try:
+        locations, _ = _scan_snapshot_locations(timeout=_SNAPSHOT_LOCATIONS_TIMEOUT_SEC * 2, force=True)
+    except TimeoutError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 504
+    except RuntimeError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
     message: str
     if locations:
         selected_path = locations[0].get("path")
