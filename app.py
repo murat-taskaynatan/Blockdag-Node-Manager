@@ -477,12 +477,7 @@ _REMOTE_RPC_OVERRIDE_DEFINED = (
 ENV_REMOTE_RPC_BASES = _parse_remote_rpc_bases(
     os.getenv("BDAG_REMOTE_RPC_BASES", os.getenv("BDAG_REMOTE_RPC_BASE"))
 )
-if ENV_REMOTE_RPC_BASES:
-    DEFAULT_REMOTE_BASES = ENV_REMOTE_RPC_BASES[:]
-elif _REMOTE_RPC_OVERRIDE_DEFINED:
-    DEFAULT_REMOTE_BASES = []
-else:
-    DEFAULT_REMOTE_BASES = DEFAULT_REMOTE_RPC_BASES[:]
+DEFAULT_REMOTE_BASES = ENV_REMOTE_RPC_BASES or DEFAULT_REMOTE_RPC_BASES[:]
 
 WEI_PER_BDAG = Decimal("1000000000000000000")
 WALLET_BALANCE_CACHE_SEC = max(0.0, float(os.getenv("BDAG_BALANCE_CACHE_SEC", "120") or "120"))
@@ -4608,7 +4603,10 @@ def api_node_manager_nodes():
     now = time.time()
     for ctx in NODES.values():
         if _metrics_stale(ctx, now=now):
-            _queue_node_sample(ctx)
+            try:
+                ctx.sample(force=True)
+            except Exception:
+                _queue_node_sample(ctx, urgent=True)
         nodes_payload.append(
             {
                 "id": ctx.id,
@@ -4672,9 +4670,12 @@ def api_node_manager_metrics():
             try:
                 ctx.sample(force=True)
             except Exception:
-                pass
+                _queue_node_sample(ctx, urgent=True)
         elif _metrics_stale(ctx, now=now):
-            _queue_node_sample(ctx)
+            try:
+                ctx.sample(force=True)
+            except Exception:
+                _queue_node_sample(ctx, urgent=True)
         response[ctx.id] = ctx.snapshot(include_series=True)
     return jsonify({"nodes": response, "timestamp": time.time()})
 
