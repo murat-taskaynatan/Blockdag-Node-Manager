@@ -18,6 +18,9 @@ def _simplify_launch_error(raw: str) -> Optional[str]:
     text = raw.strip()
     if not text:
         return None
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines:
+        return None
     conflict = re.search(r'container name "([^"]+)" is already in use', text, re.IGNORECASE)
     if conflict:
         name = conflict.group(1)
@@ -29,9 +32,19 @@ def _simplify_launch_error(raw: str) -> Optional[str]:
             "Git needs to trust the scripts directory. "
             f"Run `git config --global --add safe.directory {repo_path}` once and retry."
         )
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
-    if not lines:
-        return None
+    busy_line = next(
+        (line for line in lines if re.search(r"(address already in use|port is already allocated)", line, re.IGNORECASE)),
+        None,
+    )
+    if busy_line:
+        port_match = re.search(r":(\d{2,5})\b", busy_line)
+        if not port_match:
+            port_match = re.search(r"\bport\s+(\d{2,5})\b", busy_line, re.IGNORECASE)
+        port_detail = f"Port {port_match.group(1)} " if port_match else "One of the requested ports "
+        return (
+            f"{port_detail}is already in use. "
+            "Adjust the Launch Pad port settings or let the manager auto-calculate ports."
+        )
     return lines[-1]
 
 
