@@ -2239,41 +2239,44 @@ async function saveSettings() {
       const res = await fetch('/api/node-manager/nodes', { cache: 'no-store' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const payload = await res.json();
+      const nodesList = Array.isArray(payload.nodes) ? payload.nodes : [];
       // Auto-fill Overclock data path from first discovered node with chain_data_dir
       try {
-        const nodes = payload.nodes || [];
-        const withData = nodes.find((n) => n && n.status && n.status.chain_data_dir);
+        const withData = nodesList.find((n) => n && n.status && n.status.chain_data_dir);
         if (withData && withData.status && withData.status.chain_data_dir && ocDataPath && (!ocDataPath.value || ocDataPath.value === '/home/node/blockdag')) {
           ocDataPath.value = withData.status.chain_data_dir;
         }
-        if (launchpadFields.peerPort && !launchpadFields.peerPort.dataset?.userSet) {
-          const seededInternal = nodes.find((n) => Number.isFinite(Number(n?.status?.peer_port_internal)));
+        const autoChecked = launchpadFields.autoPorts?.checked ?? false;
+        if (launchpadFields.peerPort) {
+          const seededInternalNode = nodesList.find((n) => Number.isFinite(Number(n?.status?.peer_port_internal)));
+          const seededInternal = Number(seededInternalNode?.status?.peer_port_internal);
           const defaultPeer = Number(launchpadFields.peerPort.dataset?.defaultValue ?? 18150);
-          const currentPeer = Number(launchpadFields.peerPort.value);
-          if (
-            seededInternal &&
-            Number(seededInternal.status.peer_port_internal) > 0 &&
-            (!Number.isFinite(currentPeer) || currentPeer === defaultPeer)
-          ) {
-            launchpadFields.peerPort.value = Number(seededInternal.status.peer_port_internal);
+          if (Number.isFinite(seededInternal) && seededInternal > 0) {
+            launchpadFields.peerPort.dataset.peerBaseline = String(seededInternal);
+            if (autoChecked || !launchpadFields.peerPort.dataset?.userSet) {
+              launchpadFields.peerPort.value = seededInternal;
+            }
+          } else if (autoChecked && Number.isFinite(defaultPeer) && defaultPeer > 0) {
+            launchpadFields.peerPort.value = defaultPeer;
           }
         }
-        if (launchpadFields.externalPeerPort && !launchpadFields.externalPeerPort.dataset?.userSet) {
-          const seededExternal = nodes.find((n) => Number.isFinite(Number(n?.status?.peer_port_external)));
+        if (launchpadFields.externalPeerPort) {
+          const seededExternalNode = nodesList.find((n) => Number.isFinite(Number(n?.status?.peer_port_external)));
+          const seededExternal = Number(seededExternalNode?.status?.peer_port_external);
           const defaultExternal = Number(launchpadFields.externalPeerPort.dataset?.defaultValue ?? 18150);
-          const currentExternal = Number(launchpadFields.externalPeerPort.value);
-          if (
-            seededExternal &&
-            Number(seededExternal.status.peer_port_external) > 0 &&
-            (!Number.isFinite(currentExternal) || currentExternal === defaultExternal)
-          ) {
-            launchpadFields.externalPeerPort.value = Number(seededExternal.status.peer_port_external);
+          if (Number.isFinite(seededExternal) && seededExternal > 0) {
+            launchpadFields.externalPeerPort.dataset.peerBaseline = String(seededExternal);
+            if (autoChecked || !launchpadFields.externalPeerPort.dataset?.userSet) {
+              launchpadFields.externalPeerPort.value = seededExternal;
+            }
+          } else if (autoChecked && Number.isFinite(defaultExternal) && defaultExternal > 0) {
+            launchpadFields.externalPeerPort.value = defaultExternal;
           }
         }
       } catch (e) {
         // ignore
       }
-      const nodes = Array.isArray(payload.nodes) ? payload.nodes : [];
+      const nodes = nodesList;
       const stalled = nodes.reduce((count, node) => {
         if (!node || !node.id) return count;
         const stats = node.status || {};
@@ -2285,6 +2288,7 @@ async function saveSettings() {
       renderSummary(summary);
       syncCards(nodes);
       toggleEmptyState();
+      syncLaunchpadPortInputs();
     } catch (err) {
       console.error('[fleet] failed to load nodes', err);
       renderSummary({ error: err.message });
@@ -2509,6 +2513,25 @@ function syncCards(nodes) {
       if (!field) return;
       field.disabled = auto;
     });
+    const peerField = launchpadFields.peerPort;
+    if (peerField) {
+      const hasExistingNodes = state.nodes.size > 0;
+      const disablePeer = auto && hasExistingNodes;
+      peerField.disabled = disablePeer;
+      if (auto) {
+        if (disablePeer) {
+          const baseline = peerField.dataset?.peerBaseline;
+          if (baseline && peerField.value !== baseline) {
+            peerField.value = baseline;
+          }
+        } else if (!hasExistingNodes) {
+          const defaultPeer = peerField.dataset?.defaultValue || '18150';
+          if (!peerField.dataset?.userSet && defaultPeer && peerField.value !== defaultPeer) {
+            peerField.value = defaultPeer;
+          }
+        }
+      }
+    }
   }
 
   function setSummaryField(ref, value, missingText = 'Missing') {
