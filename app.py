@@ -2881,26 +2881,49 @@ def _run_restore_job(details: Dict[str, object]) -> None:
         backup_name = f"{data_dir.name}.pre-restore.{timestamp}"
         can_write_parent = os.access(parent_dir, os.W_OK | os.X_OK)
         can_write_existing = not data_dir.exists() or os.access(data_dir, os.W_OK | os.X_OK)
+        fallback_to_docker = False
+        host_extract_error: Optional[Exception] = None
         if can_write_parent and can_write_existing:
-            if data_dir.exists():
-                backup_dir = parent_dir / backup_name
-                shutil.move(str(data_dir), str(backup_dir))
-            data_dir.mkdir(parents=True, exist_ok=True)
-            _extract_snapshot_contents(snapshot_path, data_dir, total_bytes=expected_total, started=started)
-            # Flatten nested restores that wrapped contents in an extra directory (e.g., data/data/testnet).
-            nested_candidate = data_dir / "data"
-            nested_testnet = nested_candidate / "testnet"
-            if nested_candidate.is_dir() and nested_testnet.exists() and not (data_dir / "testnet").exists():
-                for child in nested_candidate.iterdir():
-                    target_path = data_dir / child.name
-                    if target_path.exists():
-                        if target_path.is_dir():
-                            shutil.rmtree(target_path, ignore_errors=True)
-                        else:
-                            target_path.unlink(missing_ok=True)
-                    shutil.move(str(child), str(target_path))
-                shutil.rmtree(nested_candidate, ignore_errors=True)
-        else:
+            try:
+                if data_dir.exists():
+                    backup_dir = parent_dir / backup_name
+                    shutil.move(str(data_dir), str(backup_dir))
+                data_dir.mkdir(parents=True, exist_ok=True)
+                _extract_snapshot_contents(snapshot_path, data_dir, total_bytes=expected_total, started=started)
+                # Flatten nested restores that wrapped contents in an extra directory (e.g., data/data/testnet).
+                nested_candidate = data_dir / "data"
+                nested_testnet = nested_candidate / "testnet"
+                if nested_candidate.is_dir() and nested_testnet.exists() and not (data_dir / "testnet").exists():
+                    for child in nested_candidate.iterdir():
+                        target_path = data_dir / child.name
+                        if target_path.exists():
+                            if target_path.is_dir():
+                                shutil.rmtree(target_path, ignore_errors=True)
+                            else:
+                                target_path.unlink(missing_ok=True)
+                        shutil.move(str(child), str(target_path))
+                    shutil.rmtree(nested_candidate, ignore_errors=True)
+            except PermissionError as exc:
+                host_extract_error = exc
+                fallback_to_docker = True
+                job_warnings.append(
+                    f"Host restore lacked permission ({exc}); retrying via Docker to finish extraction."
+                )
+                try:
+                    shutil.rmtree(data_dir, ignore_errors=True)
+                except Exception:
+                    pass
+                if backup_dir and backup_dir.exists():
+                    try:
+                        target_restore = parent_dir / data_dir.name
+                        if target_restore.exists():
+                            shutil.rmtree(target_restore, ignore_errors=True)
+                        shutil.move(str(backup_dir), str(target_restore))
+                    except Exception as move_exc:
+                        job_warnings.append(f"Failed to restore original data directory after host error: {move_exc}")
+                    finally:
+                        backup_dir = None
+        if not can_write_parent or not can_write_existing or fallback_to_docker:
             _restore_via_docker(
                 snapshot_path,
                 data_dir,
