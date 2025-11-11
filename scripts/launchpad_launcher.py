@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import subprocess
@@ -80,6 +81,16 @@ def _sanitize_label(label: str) -> str:
     return slug or "node"
 
 
+def _coerce_port(value, default: int) -> int:
+    try:
+        port = int(str(value).strip())
+        if port > 0:
+            return port
+    except (TypeError, ValueError, AttributeError):
+        pass
+    return default
+
+
 def _collect_used_ports() -> set[int]:
     ports = set()
     try:
@@ -110,33 +121,86 @@ def _find_available_port(used: set[int], start: int) -> int:
     return port
 
 
-def _existing_node_ports() -> Dict[str, List[int]]:
+def _existing_node_ports(peer_internal_hint: Optional[int]) -> Tuple[Dict[str, List[int]], Optional[int]]:
     ports = {"p2p": [], "rpc": [], "ws": [], "peer": []}
+    detected_peer_internal: Optional[int] = None
+    fallback_candidates: List[Tuple[int, int]] = []
     try:
         names = _run_command(["docker", "ps", "--format", "{{.Names}}"])
     except LaunchError:
-        return ports
+        return ports, None
     for name in names.splitlines():
-        for target, key in ((38131, "p2p"), (18545, "rpc"), (18546, "ws"), (18150, "peer")):
-            try:
-                mapping = _run_command(["docker", "port", name, f"{target}/tcp"])
-            except LaunchError:
+        name = name.strip()
+        if not name:
+            continue
+        try:
+            inspect_raw = _run_command(["docker", "inspect", name])
+        except LaunchError:
+            continue
+        try:
+            info = json.loads(inspect_raw)[0]
+        except Exception:
+            continue
+        port_map = (
+            info.get("NetworkSettings", {}).get("Ports")
+            or info.get("HostConfig", {}).get("PortBindings")
+            or {}
+        )
+        if not isinstance(port_map, dict):
+            continue
+        container_fallbacks: List[Tuple[int, int]] = []
+        matched_hint = False
+        looks_like_blockdag = False
+        for port_key, bindings in port_map.items():
+            if not isinstance(port_key, str) or "/tcp" not in port_key:
                 continue
-            host = mapping.split(":")[-1].split("/")[0].strip()
-            if host.isdigit():
-                ports[key].append(int(host))
-    return ports
+            container_port_raw = port_key.split("/")[0]
+            if not container_port_raw.isdigit():
+                continue
+            container_port = int(container_port_raw)
+            binding = bindings[0] if isinstance(bindings, list) and bindings else None
+            host_port = None
+            if isinstance(binding, dict):
+                host_raw = binding.get("HostPort")
+                if host_raw and str(host_raw).isdigit():
+                    host_port = int(host_raw)
+            if host_port is None:
+                continue
+            if container_port == 38131:
+                ports["p2p"].append(host_port)
+                looks_like_blockdag = True
+                continue
+            if container_port == 18545:
+                ports["rpc"].append(host_port)
+                looks_like_blockdag = True
+                continue
+            if container_port == 18546:
+                ports["ws"].append(host_port)
+                looks_like_blockdag = True
+                continue
+            if peer_internal_hint and container_port == peer_internal_hint:
+                ports["peer"].append(host_port)
+                matched_hint = True
+                detected_peer_internal = container_port
+            else:
+                container_fallbacks.append((container_port, host_port))
+        if not matched_hint and looks_like_blockdag and container_fallbacks:
+            fallback_candidates.extend(container_fallbacks)
+    if not ports["peer"] and fallback_candidates:
+        fallback_candidates.sort(key=lambda item: item[0])
+        detected_peer_internal = fallback_candidates[0][0]
+        ports["peer"] = [host for port, host in fallback_candidates if port == detected_peer_internal]
+    return ports, detected_peer_internal
 
 
-def _prepare_ports(config: Dict) -> Tuple[int, int, int, int]:
-    base_p2p = int(config.get("p2pPort") or 38130)
-    base_rpc = int(config.get("rpcPort") or 18545)
-    base_ws = int(config.get("wsPort") or base_rpc + 1)
-    existing = _existing_node_ports()
-    if existing["peer"]:
-        base_peer = min(existing["peer"])
-    else:
-        base_peer = int(config.get("peerPort") or 18150)
+def _prepare_ports(config: Dict) -> Tuple[int, int, int, int, int]:
+    base_p2p = _coerce_port(config.get("p2pPort"), 38130)
+    base_rpc = _coerce_port(config.get("rpcPort"), 18545)
+    base_ws = _coerce_port(config.get("wsPort"), base_rpc + 1)
+    peer_internal_hint = _coerce_port(config.get("peerPort"), 18150)
+    existing, detected_peer_internal = _existing_node_ports(peer_internal_hint)
+    peer_internal = detected_peer_internal or peer_internal_hint or 18150
+    base_peer = min(existing["peer"]) if existing["peer"] else peer_internal
     external_override = config.get("externalP2PPort")
     peer_external_override = config.get("externalPeerPort")
     used = _collect_used_ports()
@@ -152,31 +216,25 @@ def _prepare_ports(config: Dict) -> Tuple[int, int, int, int]:
         ws = _find_available_port(used, start_ws)
         peer = _find_available_port(used, start_peer)
     else:
-        override = int(external_override) if external_override and str(external_override).isdigit() else base_p2p
-        manual_ws = base_ws
-        manual_peer = base_peer
-        if str(config.get("wsPort")) and str(config.get("wsPort")).isdigit():
-            manual_ws = int(config.get("wsPort"))
-        if peer_external_override and str(peer_external_override).isdigit():
-            manual_peer = int(peer_external_override)
-        elif str(config.get("peerPort")) and str(config.get("peerPort")).isdigit():
-            manual_peer = int(config.get("peerPort"))
+        override = _coerce_port(external_override, base_p2p)
+        manual_ws = _coerce_port(config.get("wsPort"), base_ws)
+        manual_peer = _coerce_port(peer_external_override, base_peer)
         if override in used or base_rpc in used or manual_ws in used or manual_peer in used:
             raise LaunchError("Selected ports are already in use")
         p2p = override
         rpc = base_rpc
         ws = manual_ws
         peer = manual_peer
-    return p2p, rpc, ws, peer
+    return p2p, rpc, ws, peer, peer_internal
 
 
-def _render_compose(source: Path, target: Path, label: str, p2p: int, rpc: int, ws: int, peer: int):
+def _render_compose(source: Path, target: Path, label: str, p2p: int, rpc: int, ws: int, peer: int, peer_internal: int):
     text = source.read_text()
     text = text.replace("blockdag-testnet-network", label)
     text = text.replace('- "38131:38131"', f'- "{p2p}:{p2p}"', 1)
     text = text.replace('- "18545:18545"', f'- "{rpc}:{rpc}"', 1)
     text = text.replace('- "18546:18546"', f'- "{ws}:{ws}"', 1)
-    text = text.replace('- "18150:18150"', f'- "{peer}:18150"', 1)
+    text = text.replace('- "18150:18150"', f'- "{peer}:{peer_internal}"', 1)
     text = text.replace("--rpclisten=0.0.0.0:38131", f"--rpclisten=0.0.0.0:{p2p}")
     text = text.replace("--http.port=18545", f"--http.port={rpc}")
     text = text.replace("--ws.port=18546", f"--ws.port={ws}")
@@ -186,12 +244,13 @@ def _render_compose(source: Path, target: Path, label: str, p2p: int, rpc: int, 
 
 def preview_ports(payload: Dict) -> Dict[str, int]:
     """Return the resolved port mappings without starting any containers."""
-    p2p_port, rpc_port, ws_port, peer_port = _prepare_ports(payload)
+    p2p_port, rpc_port, ws_port, peer_port, peer_internal = _prepare_ports(payload)
     return {
         "p2pPort": p2p_port,
         "rpcPort": rpc_port,
         "wsPort": ws_port,
         "peerPort": peer_port,
+        "peerPortInternal": peer_internal,
     }
 
 
@@ -217,12 +276,12 @@ def launch_node(payload: Dict) -> Dict:
     env_path = scripts_dir / ".env"
     env_path.write_text(f"PUB_ETH_ADDR={wallet}\n", encoding="utf-8")
     (scripts_dir / "wallet.txt").write_text(wallet + "\n", encoding="utf-8")
-    p2p_port, rpc_port, ws_port, peer_port = _prepare_ports(payload)
+    p2p_port, rpc_port, ws_port, peer_port, peer_internal = _prepare_ports(payload)
     compose_src = scripts_dir / "docker-compose.yml"
     if not compose_src.exists():
         raise LaunchError("docker-compose template not found")
     compose_target = scripts_dir / f"docker-compose-{label}.yml"
-    _render_compose(compose_src, compose_target, label, p2p_port, rpc_port, ws_port, peer_port)
+    _render_compose(compose_src, compose_target, label, p2p_port, rpc_port, ws_port, peer_port, peer_internal)
     project_name = label
     env = {**os.environ, "MINING_ADDRESS": wallet}
     output = _run_command(
@@ -236,5 +295,6 @@ def launch_node(payload: Dict) -> Dict:
         "rpcPort": rpc_port,
         "wsPort": ws_port,
         "peerPort": peer_port,
+        "peerPortInternal": peer_internal,
         "dockerOutput": output,
     }
