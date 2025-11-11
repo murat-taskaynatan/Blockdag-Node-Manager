@@ -164,6 +164,7 @@ const state = {
   const launchpadNextIcon = launchpadNextBtn?.querySelector('[data-launch-icon]') ?? null;
   const launchpadNextLabel = launchpadNextBtn?.querySelector('[data-launch-label]') ?? null;
   const launchpadStatus = document.getElementById('launchpadStatus');
+  const launchpadAutoNote = document.getElementById('launchpadAutoNote');
   let ocLogPollTimer = null;
   const SYSTEM_POLL_INTERVAL_MS = 10000;
   let systemPollTimer = null;
@@ -2568,6 +2569,15 @@ function syncCards(nodes) {
     state.launchpad.previewRequestId = 0;
   }
 
+  function updateLaunchpadAutoNote(data = null) {
+    if (!launchpadAutoNote) return;
+    const autoSelected =
+      (data && typeof data.autoPorts === 'boolean')
+        ? data.autoPorts
+        : (launchpadFields.autoPorts?.checked ?? false);
+    launchpadAutoNote.hidden = !autoSelected;
+  }
+
   function renderLaunchpadSummary(data = getLaunchpadData()) {
     if (!launchpadSummaryRefs.label) return;
     const onReviewStep = state.launchpad?.step === 3;
@@ -2611,6 +2621,7 @@ function syncCards(nodes) {
     if (launchpadSummaryRefs.externalPeer) {
       launchpadSummaryRefs.externalPeer.textContent = resolvedExternalPeer;
     }
+    updateLaunchpadAutoNote(data);
     updateLaunchpadLaunchState();
   }
 
@@ -3901,6 +3912,7 @@ function syncCards(nodes) {
       events.forEach((eventName) => field.addEventListener(eventName, handler));
     });
     syncLaunchpadPortInputs();
+    updateLaunchpadAutoNote();
     if (launchpadBackBtn) {
       launchpadBackBtn.addEventListener('click', () => changeLaunchpadStep(-1));
     }
