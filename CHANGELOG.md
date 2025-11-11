@@ -11,7 +11,7 @@
 ### Enhancements
 - Memory-pressure settings now show a bold `%` prefix, matching toggle sizing, and descriptions that call out the threshold percentage.
 - The version badge, installer defaults, and docs now point at `v1.4.9`, keeping `/opt/blockdag-node-manager` and the remote bootstrap helpers aligned with the latest release artifacts.
-- Fresh installs now seed `BDAG_LIVENESS_RECOVER_COOLDOWN_SEC=240` and `BDAG_LIVENESS_MAX_RESTARTS=3` in `/etc/blockdag-node-manager/node-manager.env`, so liveness auto-recover reacts within four minutes and escalates to a snapshot restore after three failed restarts.
+- Fresh installs now seed `BDAG_LIVENESS_RECOVER_COOLDOWN_SEC=240` and `BDAG_LIVENESS_MAX_RESTARTS=2` in `/etc/blockdag-node-manager/node-manager.env`, so liveness auto-recover reacts within four minutes and escalates to a snapshot restore after two failed restarts.
 - Added an Automation Logs panel under Settings that streams recent auto restarts, liveness restores, and auto snapshots so operators can audit recovery activity without leaving the UI.
 - `/api/node-manager/nodes` now returns cached NodeContext snapshots (background sampling honors `BDAG_SAMPLE_SEC`, seeded to 30 seconds for new installs) instead of forcing fresh samples on every request.
 

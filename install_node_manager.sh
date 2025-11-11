@@ -178,7 +178,7 @@ EOF
 fi
 if ! sudo grep -q "^BDAG_LIVENESS_MAX_RESTARTS=" "$ENV_FILE" 2>/dev/null; then
   sudo tee -a "$ENV_FILE" >/dev/null <<'EOF'
-BDAG_LIVENESS_MAX_RESTARTS=3
+BDAG_LIVENESS_MAX_RESTARTS=2
 EOF
 fi
 sudo chown "$SERVICE_USER":"$SERVICE_GROUP" "$ENV_FILE"

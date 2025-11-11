@@ -4424,7 +4424,7 @@ def _detect_stalled_reason(ctx: "NodeContext", metrics: dict, previous: Optional
         return "Container restarted but local chain data reset to zero."
     stall_uptime = 180
     if local_height <= 0 and peers <= 0 and uptime >= stall_uptime:
-        return "Container has been running with zero height and no peers after several restarts."
+        return "Container has been running with zero height and no peers after a restart."
     if not recent_progress and block_rate <= 0 and peers <= 0:
         stagnant_ms = 120_000
         if now_ms and recent_ts:
