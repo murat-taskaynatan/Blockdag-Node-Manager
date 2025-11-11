@@ -119,7 +119,7 @@ Liveness auto-recovery now seeds two env overrides on fresh installs: `BDAG_LIVE
 
 The settings form also exposes a memory-pressure auto-restart: enable the toggle and enter a percent value (e.g., `90`) so the manager will restart every discovered node sequentially (60 s between restarts) when host memory usage climbs above that threshold. Use it as a safety valve when the OS starts to swap.
 
-Need a zero-touch install on a fresh host? Use the remote installer:
+Need a zero-touch install on a fresh host or update to the latest version? Use the remote installer:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/murat-taskaynatan/Blockdag-Node-Manager/main/install_nm_from_github.sh \ | sudo bash
