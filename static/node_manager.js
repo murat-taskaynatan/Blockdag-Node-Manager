@@ -1609,6 +1609,11 @@ const state = {
         job: payload.job || null,
         automation: payload.automation || null,
       };
+      if (payload.locationWarning) {
+        state.snapshots.locationWarning = payload.locationWarning;
+      } else if (state.snapshots) {
+        delete state.snapshots.locationWarning;
+      }
       if (!preserveStatus && payload.status && payload.status.text) {
         state.snapshotStatus = {
           text: payload.status.text,
@@ -1618,9 +1623,26 @@ const state = {
       } else if (!silent && !preserveStatus) {
         state.snapshotStatus = { text: 'Snapshots refreshed.', level: 'ok', manual: false };
       }
+      if (payload.locationWarning) {
+        const warning = payload.locationWarning.trim();
+        if (warning) {
+          const current = state.snapshotStatus && state.snapshotStatus.text ? state.snapshotStatus.text : '';
+          if (!current) {
+            state.snapshotStatus = { text: warning, level: 'warn', manual: false };
+          } else if (!current.includes(warning)) {
+            const combined = `${current}\n${warning}`.trim();
+            const level = (state.snapshotStatus && state.snapshotStatus.level === 'error') ? 'error' : 'warn';
+            state.snapshotStatus = {
+              text: combined,
+              level,
+              manual: state.snapshotStatus ? state.snapshotStatus.manual : false,
+            };
+          }
+        }
+      }
       state.snapshotsLoaded = true;
       renderSnapshots();
-      if (!silent && state.snapshotStatus.text) {
+      if (!silent && state.snapshotStatus && state.snapshotStatus.text) {
         setSnapshotStatus(state.snapshotStatus.text, { level: state.snapshotStatus.level });
       }
     } catch (err) {
