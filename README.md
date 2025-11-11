@@ -88,7 +88,7 @@ SSL is handled by nginx on the host. The installer drops a node_manager vhost in
    
 4. Run sudo nginx -t and sudo systemctl reload nginx.
    
-Once nginx terminates TLS, the Node Manager login page (and all other routes) are served at your domain. Because the app doesn’t need to know about TLS, no extra Flask settings are required—the cookie/session code works the same whether nginx connects via plain HTTP or HTTPS on the front end.
+Once nginx terminates TLS, the Node Manager login page (and all other routes) are served at your domain. Because the app doesn’t need to know about TLS, no extra Flask settings are required the cookie/session code works the same whether nginx connects via plain HTTP or HTTPS on the front end.
 
 ## Production Install
 Use the bundled helper to deploy under `/opt/blockdag-node-manager` with systemd integration:
