@@ -2511,7 +2511,7 @@ function syncCards(nodes) {
     const waitingForPreview = onFinalStep && data.autoPorts && state.launchpad.previewLoading;
     launchpadNextBtn.dataset.mode = onFinalStep ? 'launch' : 'next';
     if (launchpadNextLabel) {
-      launchpadNextLabel.textContent = onFinalStep ? 'Launch node' : 'Next';
+      launchpadNextLabel.textContent = onFinalStep ? 'Launch' : 'Next';
     }
     if (launchpadNextIcon) {
       launchpadNextIcon.hidden = !onFinalStep;
