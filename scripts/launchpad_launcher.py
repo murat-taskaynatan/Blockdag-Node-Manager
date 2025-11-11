@@ -3,6 +3,7 @@ import json
 import os
 import pwd
 import re
+import socket
 import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -67,6 +68,45 @@ def _ensure_install_path_ready(path: Path) -> None:
         pass
 
 
+def _list_blockdag_networks() -> List[str]:
+    try:
+        output = _run_command(["docker", "network", "ls", "--format", "{{.Name}}"])
+    except LaunchError:
+        return []
+    names = []
+    for line in output.splitlines():
+        name = line.strip()
+        if not name:
+            continue
+        if "blockdag" not in name.lower():
+            continue
+        names.append(name)
+    return names
+
+
+def _prune_orphan_blockdag_networks() -> List[str]:
+    removed: List[str] = []
+    for name in _list_blockdag_networks():
+        try:
+            inspect_raw = _run_command(["docker", "network", "inspect", name])
+        except LaunchError:
+            continue
+        try:
+            info = json.loads(inspect_raw)
+        except json.JSONDecodeError:
+            continue
+        details = info[0] if info else {}
+        containers = details.get("Containers") or {}
+        if containers:
+            continue
+        try:
+            _run_command(["docker", "network", "rm", name])
+            removed.append(name)
+        except LaunchError:
+            continue
+    return removed
+
+
 def _simplify_launch_error(raw: str) -> Optional[str]:
     if not raw:
         return None
@@ -99,6 +139,20 @@ def _simplify_launch_error(raw: str) -> Optional[str]:
         return (
             f"{port_detail}is already in use. "
             "Adjust the Launch Pad port settings or let the manager auto-calculate ports."
+        )
+    subnet_error = next(
+        (
+            line
+            for line in lines
+            if "predefined address pools" in line.lower() and "fully subnetted" in line.lower()
+        ),
+        None,
+    )
+    if subnet_error:
+        return (
+            "Docker cannot allocate another network for Launch Pad (all predefined address pools are exhausted). "
+            "Remove unused Docker networks (for example, run `docker network prune` or delete old blockdag-testnet-network-* networks) "
+            "and retry the launch."
         )
     return lines[-1]
 
@@ -181,9 +235,24 @@ def _collect_used_ports() -> set[int]:
     return ports
 
 
+def _port_in_use(port: int) -> bool:
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(("", port))
+    except OSError:
+        return True
+    finally:
+        try:
+            sock.close()
+        except Exception:
+            pass
+    return False
+
+
 def _find_available_port(used: set[int], start: int) -> int:
     port = start
-    while port in used:
+    while port in used or _port_in_use(port):
         port += 1
     used.add(port)
     return port
@@ -287,7 +356,12 @@ def _prepare_ports(config: Dict) -> Tuple[int, int, int, int, int]:
         override = _coerce_port(external_override, base_p2p)
         manual_ws = _coerce_port(config.get("wsPort"), base_ws)
         manual_peer = _coerce_port(peer_external_override, base_peer)
-        if override in used or base_rpc in used or manual_ws in used or manual_peer in used:
+        conflict_ports = [
+            port
+            for port in (override, base_rpc, manual_ws, manual_peer)
+            if port in used or _port_in_use(port)
+        ]
+        if conflict_ports:
             raise LaunchError("Selected ports are already in use")
         p2p = override
         rpc = base_rpc
@@ -334,6 +408,7 @@ def launch_node(payload: Dict) -> Dict:
     install_path.mkdir(parents=True, exist_ok=True)
     scripts_dir = install_path / "blockdag-scripts"
     git_dir = scripts_dir / ".git"
+    pruned_networks = _prune_orphan_blockdag_networks()
     if scripts_dir.exists():
         if not git_dir.exists():
             raise LaunchError("Existing blockdag-scripts directory is not a git repo; remove it and retry")
@@ -366,4 +441,5 @@ def launch_node(payload: Dict) -> Dict:
         "peerPort": peer_port,
         "peerPortInternal": peer_internal,
         "dockerOutput": output,
+        "prunedNetworks": pruned_networks,
     }

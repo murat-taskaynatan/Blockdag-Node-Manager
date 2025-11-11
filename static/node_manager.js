@@ -2704,11 +2704,13 @@ function syncCards(nodes) {
     if (!launchpadNextBtn) return;
     if (!launchpadStatus) return;
     launchpadStatus.classList.remove('error');
-    launchpadStatus.textContent = 'Launching node…';
+    launchpadStatus.textContent = 'Cleaning up unused Docker networks…';
     launchpadNextBtn.disabled = true;
     try {
       const data = await requestLaunch(getLaunchpadData());
-      launchpadStatus.textContent = `Started ${data.label} (P2P ${data.p2pPort}, RPC ${data.rpcPort}).`;
+      const pruned = Array.isArray(data.prunedNetworks) ? data.prunedNetworks.length : 0;
+      const cleanupMsg = pruned ? ` Removed ${pruned} unused Docker network${pruned === 1 ? '' : 's'}.` : '';
+      launchpadStatus.textContent = `Started ${data.label} (P2P ${data.p2pPort}, RPC ${data.rpcPort}).${cleanupMsg}`;
       const updateField = (field, value) => {
         if (field && Number.isFinite(+value)) {
           field.value = value;
