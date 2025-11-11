@@ -109,7 +109,7 @@ The installer also seeds the liveness watchdog to act faster by default:
 
 ```
 BDAG_LIVENESS_RECOVER_COOLDOWN_SEC=240
-BDAG_LIVENESS_MAX_RESTARTS=3
+BDAG_LIVENESS_MAX_RESTARTS=2
 ```
 
 Change those values if your nodes need a longer (or shorter) window between restart attempts before the manager escalates to a snapshot restore.
