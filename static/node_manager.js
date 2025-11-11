@@ -136,6 +136,18 @@ const state = {
     peerPort: document.getElementById('launchpadPeerPort'),
     externalPeerPort: document.getElementById('launchpadExternalPeerPort'),
   };
+  if (launchpadFields.peerPort) {
+    launchpadFields.peerPort.dataset.defaultValue = launchpadFields.peerPort.value || '';
+    launchpadFields.peerPort.addEventListener('input', () => {
+      launchpadFields.peerPort.dataset.userSet = '1';
+    });
+  }
+  if (launchpadFields.externalPeerPort) {
+    launchpadFields.externalPeerPort.dataset.defaultValue = launchpadFields.externalPeerPort.value || '';
+    launchpadFields.externalPeerPort.addEventListener('input', () => {
+      launchpadFields.externalPeerPort.dataset.userSet = '1';
+    });
+  }
   const launchpadSummaryRefs = {
     label: document.getElementById('launchpadSummaryLabel'),
     path: document.getElementById('launchpadSummaryPath'),
@@ -2234,6 +2246,30 @@ async function saveSettings() {
         if (withData && withData.status && withData.status.chain_data_dir && ocDataPath && (!ocDataPath.value || ocDataPath.value === '/home/node/blockdag')) {
           ocDataPath.value = withData.status.chain_data_dir;
         }
+        if (launchpadFields.peerPort && !launchpadFields.peerPort.dataset?.userSet) {
+          const seededInternal = nodes.find((n) => Number.isFinite(Number(n?.status?.peer_port_internal)));
+          const defaultPeer = Number(launchpadFields.peerPort.dataset?.defaultValue ?? 18150);
+          const currentPeer = Number(launchpadFields.peerPort.value);
+          if (
+            seededInternal &&
+            Number(seededInternal.status.peer_port_internal) > 0 &&
+            (!Number.isFinite(currentPeer) || currentPeer === defaultPeer)
+          ) {
+            launchpadFields.peerPort.value = Number(seededInternal.status.peer_port_internal);
+          }
+        }
+        if (launchpadFields.externalPeerPort && !launchpadFields.externalPeerPort.dataset?.userSet) {
+          const seededExternal = nodes.find((n) => Number.isFinite(Number(n?.status?.peer_port_external)));
+          const defaultExternal = Number(launchpadFields.externalPeerPort.dataset?.defaultValue ?? 18150);
+          const currentExternal = Number(launchpadFields.externalPeerPort.value);
+          if (
+            seededExternal &&
+            Number(seededExternal.status.peer_port_external) > 0 &&
+            (!Number.isFinite(currentExternal) || currentExternal === defaultExternal)
+          ) {
+            launchpadFields.externalPeerPort.value = Number(seededExternal.status.peer_port_external);
+          }
+        }
       } catch (e) {
         // ignore
       }
@@ -2286,7 +2322,26 @@ async function saveSettings() {
     maxRemoteEl.textContent = summary.max_remote_height !== undefined ? fmt.format(summary.max_remote_height) : '—';
 
     const walletEnabled = !!summary.wallet_enabled;
-    const wallet = walletEnabled ? summary.wallet || {} : null;
+    const rawWallet = walletEnabled ? summary.wallet || null : null;
+    const cachedWallet = state.lastWalletSnapshot?.wallet || null;
+    const normalizeAddress = (addr) => (typeof addr === 'string' ? addr.toLowerCase() : '');
+    let wallet = rawWallet ? { ...rawWallet } : rawWallet;
+    if (walletEnabled) {
+      const hasBalance =
+        wallet &&
+        (Boolean(wallet.balance_formatted) ||
+          Boolean(wallet.short) ||
+          Boolean(wallet.balance_bdag) ||
+          Number.isFinite(Number(wallet.balance)));
+      const addressesMatch =
+        cachedWallet &&
+        (!wallet?.address || normalizeAddress(wallet.address) === normalizeAddress(cachedWallet.address));
+      if ((!wallet || (!wallet.error && !hasBalance)) && cachedWallet && addressesMatch) {
+        wallet = { ...cachedWallet, stale: true };
+      }
+    } else {
+      wallet = null;
+    }
     const ts = summary.timestamp ? new Date(summary.timestamp * 1000) : null;
     updateWalletPane(wallet, { enabled: walletEnabled, timestamp: summary.timestamp });
     let badgeText = '';
@@ -2448,7 +2503,6 @@ function syncCards(nodes) {
       launchpadFields.rpcPort,
       launchpadFields.externalP2PPort,
       launchpadFields.wsPort,
-      launchpadFields.peerPort,
       launchpadFields.externalPeerPort,
     ];
     manualFields.forEach((field) => {
@@ -2483,12 +2537,14 @@ function syncCards(nodes) {
     const resolvedP2P = usePreview ? preview?.p2pPort ?? (pendingText || data.p2pPort) : data.p2pPort;
     const resolvedRpc = usePreview ? preview?.rpcPort ?? (pendingText || data.rpcPort) : data.rpcPort;
     const resolvedWs = usePreview ? preview?.wsPort ?? (pendingText || data.wsPort) : data.wsPort;
-    const resolvedPeer = usePreview ? preview?.peerPort ?? (pendingText || data.peerPort) : data.peerPort;
+    const resolvedPeer = usePreview
+      ? preview?.peerPortInternal ?? (pendingText || data.peerPort)
+      : data.peerPort;
     const resolvedExternalP2P = data.autoPorts
       ? (usePreview ? preview?.p2pPort ?? (pendingText || data.p2pPort) : data.p2pPort)
       : data.externalP2PPort || '—';
     const resolvedExternalPeer = data.autoPorts
-      ? (usePreview ? preview?.peerPort ?? (pendingText || data.peerPort) : data.peerPort)
+      ? (usePreview ? preview?.peerPort ?? (pendingText || '—') : '—')
       : data.externalPeerPort || '—';
     setSummaryField(launchpadSummaryRefs.label, data.label);
     setSummaryField(launchpadSummaryRefs.path, data.installPath);
@@ -2609,10 +2665,7 @@ function syncCards(nodes) {
       updateField(launchpadFields.p2pPort, data.p2pPort);
       updateField(launchpadFields.rpcPort, data.rpcPort);
       updateField(launchpadFields.wsPort, data.wsPort);
-      updateField(launchpadFields.peerPort, data.peerPort);
-      if (launchpadFields.externalP2PPort && launchpadFields.autoPorts?.checked) {
-        launchpadFields.externalP2PPort.value = data.p2pPort;
-      }
+      updateField(launchpadFields.peerPort, data.peerPortInternal ?? data.peerPort);
       if (launchpadFields.externalP2PPort && launchpadFields.autoPorts?.checked) {
         launchpadFields.externalP2PPort.value = data.p2pPort;
       }
