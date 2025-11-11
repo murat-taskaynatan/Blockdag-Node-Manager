@@ -84,7 +84,7 @@ SSL is handled by nginx on the host. The installer drops a node_manager vhost in
    
 2. Edit /etc/nginx/sites-available/node_manager so it has a server block listening on 443 with ssl_certificate / ssl_certificate_key pointing at the cert files. Keep the existing proxy_pass http://node_manager_backend stanza so nginx still forwards to Waitress on port 8081.
    
-3. Optionally add an HTTP → HTTPS redirect block (listen 80; return 301 https://$host$request_uri;) so users always land on TLS.
+3. Optionally add an HTTP > HTTPS redirect block (listen 80; return 301 https://$host$request_uri;) so users always land on TLS.
    
 4. Run sudo nginx -t and sudo systemctl reload nginx.
    
