@@ -1281,11 +1281,20 @@ const state = {
       }
     }
 
-    state.lastWalletSnapshot = {
-      wallet: wallet ? JSON.parse(JSON.stringify(wallet)) : null,
-      enabled,
-      timestamp,
-    };
+    const shouldPersistSnapshot = enabled && wallet && wallet.address;
+    if (shouldPersistSnapshot) {
+      state.lastWalletSnapshot = {
+        wallet: JSON.parse(JSON.stringify(wallet)),
+        enabled,
+        timestamp,
+      };
+    } else if (!state.lastWalletSnapshot && wallet) {
+      state.lastWalletSnapshot = {
+        wallet: JSON.parse(JSON.stringify(wallet)),
+        enabled,
+        timestamp,
+      };
+    }
   }
 
   function updateSnapshotButtons() {
@@ -2331,8 +2340,10 @@ async function saveSettings() {
     const normalizeAddress = (addr) => (typeof addr === 'string' ? addr.toLowerCase() : '');
     let wallet = rawWallet ? { ...rawWallet } : rawWallet;
     if (walletEnabled) {
+      const isPending = Boolean(wallet?.pending);
       const hasBalance =
         wallet &&
+        !isPending &&
         (Boolean(wallet.balance_formatted) ||
           Boolean(wallet.short) ||
           Boolean(wallet.balance_bdag) ||
@@ -2340,14 +2351,15 @@ async function saveSettings() {
       const addressesMatch =
         cachedWallet &&
         (!wallet?.address || normalizeAddress(wallet.address) === normalizeAddress(cachedWallet.address));
-      if ((!wallet || (!wallet.error && !hasBalance)) && cachedWallet && addressesMatch) {
+      if ((!wallet || (!wallet.error && (isPending || !hasBalance))) && cachedWallet && addressesMatch) {
         wallet = { ...cachedWallet, stale: true };
       }
     } else {
       wallet = null;
     }
-    const ts = summary.timestamp ? new Date(summary.timestamp * 1000) : null;
-    updateWalletPane(wallet, { enabled: walletEnabled, timestamp: summary.timestamp });
+    const timestampSeconds = Number.isFinite(wallet?.timestamp) ? wallet.timestamp : summary.timestamp;
+    const ts = timestampSeconds ? new Date(timestampSeconds * 1000) : null;
+    updateWalletPane(wallet, { enabled: walletEnabled, timestamp: timestampSeconds });
     let badgeText = '';
     let badgeTitle = '';
     let hideBadge = false;
