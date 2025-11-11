@@ -16,8 +16,8 @@ import hmac
 import itertools
 import stat
 import stat
-import multiprocessing
 import queue
+import threading
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_UP, getcontext
 from collections import OrderedDict, deque
@@ -1276,6 +1276,7 @@ _SNAPSHOT_JOB_STATE: Dict[str, object] = {
 }
 _SNAPSHOT_LOCATIONS_CACHE: Dict[str, object] = {"items": [], "updated": 0.0}
 _SNAPSHOT_LOCATIONS_CACHE_LOCK = threading.Lock()
+_SNAPSHOT_LOCATIONS_SCAN_LOCK = threading.Lock()
 _SNAPSHOT_LOCATIONS_TIMEOUT_SEC = max(
     1.0, float(os.getenv("BDAG_SNAPSHOT_LOCATIONS_TIMEOUT_SEC", "6") or "6")
 )
@@ -2035,46 +2036,55 @@ def _scan_snapshot_locations_impl() -> List[dict]:
     return results
 
 
-def _snapshot_locations_worker(result_queue: "multiprocessing.Queue") -> None:
-    try:
-        result_queue.put((_scan_snapshot_locations_impl(), None))
-    except Exception as exc:
-        result_queue.put(([], str(exc)))
-
-
 def _scan_snapshot_locations(timeout: Optional[float] = None, *, force: bool = False) -> Tuple[List[dict], Optional[str]]:
     timeout = timeout or _SNAPSHOT_LOCATIONS_TIMEOUT_SEC
     now = time.time()
     with _SNAPSHOT_LOCATIONS_CACHE_LOCK:
         cached_items = list(_SNAPSHOT_LOCATIONS_CACHE.get("items", []))
         updated = float(_SNAPSHOT_LOCATIONS_CACHE.get("updated") or 0.0)
-    if cached_items and not force and (now - updated) < _SNAPSHOT_LOCATIONS_CACHE_TTL_SEC:
+    cache_age = now - updated
+    if cached_items and not force and cache_age < _SNAPSHOT_LOCATIONS_CACHE_TTL_SEC:
         return cached_items, None
-    result_queue: "multiprocessing.Queue" = multiprocessing.Queue()
-    proc = multiprocessing.Process(target=_snapshot_locations_worker, args=(result_queue,))
-    proc.start()
-    proc.join(timeout)
-    if proc.is_alive():
-        proc.terminate()
-        proc.join(1)
-        warning = "Snapshot location scan is taking longer than expected; showing cached results."
-        if force:
+
+    result_holder: Dict[str, object] = {"items": None, "error": None}
+    done_event = threading.Event()
+
+    def worker():
+        try:
+            items = _scan_snapshot_locations_impl()
+        except Exception as exc:  # pragma: no cover
+            result_holder["error"] = str(exc)
+        else:
+            result_holder["items"] = items
+            with _SNAPSHOT_LOCATIONS_CACHE_LOCK:
+                _SNAPSHOT_LOCATIONS_CACHE["items"] = items
+                _SNAPSHOT_LOCATIONS_CACHE["updated"] = time.time()
+        finally:
+            done_event.set()
+
+    # Prevent multiple expensive scans from running simultaneously.
+    with _SNAPSHOT_LOCATIONS_SCAN_LOCK:
+        thread = threading.Thread(target=worker, daemon=True)
+        thread.start()
+    finished = done_event.wait(timeout)
+    if not finished:
+        warning = "Snapshot location scan is still running; showing cached results."
+        if force and not cached_items:
             raise TimeoutError(warning)
+        if not cached_items:
+            return [], warning
         app.logger.warning("%s (timeout %.1fs)", warning, timeout)
         return cached_items, warning
-    try:
-        locations, error = result_queue.get_nowait()
-    except queue.Empty:
-        locations, error = [], "Snapshot location scan returned no data."
+    error = result_holder.get("error")
     if error:
         if force:
             raise RuntimeError(error)
         app.logger.warning("Snapshot location scan failed: %s", error)
-        return cached_items, f"Snapshot location scan failed; showing cached results. ({error})"
-    with _SNAPSHOT_LOCATIONS_CACHE_LOCK:
-        _SNAPSHOT_LOCATIONS_CACHE["items"] = locations
-        _SNAPSHOT_LOCATIONS_CACHE["updated"] = time.time()
-    return locations, None
+        if cached_items:
+            return cached_items, f"Snapshot location scan failed; showing cached results. ({error})"
+        return [], f"Snapshot location scan failed: {error}"
+    items = result_holder.get("items") or []
+    return list(items), None
 
 
 def _snapshot_job_snapshot() -> Dict[str, object]:
