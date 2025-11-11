@@ -443,7 +443,7 @@ def _normalize_remote_url(url: Optional[str]) -> str:
     return text.rstrip("/")
 
 
-PRIMARY_REMOTE_RPC_BASE = _normalize_remote_url("http://13.245.135.249:18545")
+PRIMARY_REMOTE_RPC_BASE = _normalize_remote_url("https://13.245.135.249:18545")
 LEGACY_REMOTE_RPC_BASES = [
     _normalize_remote_url("https://relay.awakening.bdagscan.com"),
     _normalize_remote_url("https://rpc.awakening.bdagscan.com"),
@@ -4661,7 +4661,6 @@ def api_node_manager_metrics():
     else:
         node_ids = list(NODES.keys())
     response = {}
-    settings = get_settings()
     force_flag = (request.args.get("force") or "").strip().lower()
     force_refresh = force_flag in {"1", "true", "yes", "on"}
     now = time.time()
@@ -4676,7 +4675,6 @@ def api_node_manager_metrics():
                 pass
         elif _metrics_stale(ctx, now=now):
             _queue_node_sample(ctx)
-        _apply_node_policies(ctx, settings)
         response[ctx.id] = ctx.snapshot(include_series=True)
     return jsonify({"nodes": response, "timestamp": time.time()})
 
