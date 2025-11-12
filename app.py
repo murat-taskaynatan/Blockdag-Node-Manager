@@ -1296,6 +1296,7 @@ if _SNAPSHOT_STAGE_PARENT:
         _SNAPSHOT_STAGE_PARENT.mkdir(parents=True, exist_ok=True)
     except Exception:
         pass
+SNAPSHOT_LIGHT_MODE = _coerce_bool(os.getenv("BDAG_SNAPSHOT_LIGHT_MODE"), False)
 SNAPSHOT_HEALTH_ENABLED = _coerce_bool(os.getenv("BDAG_SNAPSHOT_HEALTH_ENABLED", "1"), True)
 SNAPSHOT_HEALTH_MAX_HEIGHT_DELTA = max(
     0, int(os.getenv("BDAG_SNAPSHOT_MAX_HEIGHT_DELTA", os.getenv("BDAG_SNAPSHOT_MAX_DELTA", "3")) or "3")
@@ -2629,24 +2630,25 @@ def _run_snapshot_job(details: Dict[str, object]) -> None:
                     pass
         overlay_targets: Set[str] = set()
         flushed_overlays: List[str] = []
-        try:
-            overlay_targets = _overlay_targets_for_path(data_dir)
-        except Exception as exc:
-            _oc_log(f"Snapshot guard: failed to enumerate overlays: {exc}")
-            overlay_targets = set()
-        if overlay_targets:
+        if not SNAPSHOT_LIGHT_MODE:
             try:
-                flushed_overlays = _overlay_flush_to_disk(overlay_targets)
-                if flushed_overlays:
-                    labs = ", ".join(sorted(flushed_overlays))
-                    _oc_log(f"Snapshot guard: overlays flushed to disk [{labs}]")
+                overlay_targets = _overlay_targets_for_path(data_dir)
             except Exception as exc:
-                _oc_log(f"Snapshot guard: overlay flush failed: {exc}")
-                raise RuntimeError(str(exc)) from exc
-        if flushed_overlays:
-            details.setdefault("overlays", sorted(flushed_overlays))
+                _oc_log(f"Snapshot guard: failed to enumerate overlays: {exc}")
+                overlay_targets = set()
+            if overlay_targets:
+                try:
+                    flushed_overlays = _overlay_flush_to_disk(overlay_targets)
+                    if flushed_overlays:
+                        labs = ", ".join(sorted(flushed_overlays))
+                        _oc_log(f"Snapshot guard: overlays flushed to disk [{labs}]")
+                except Exception as exc:
+                    _oc_log(f"Snapshot guard: overlay flush failed: {exc}")
+                    raise RuntimeError(str(exc)) from exc
+            if flushed_overlays:
+                details.setdefault("overlays", sorted(flushed_overlays))
         source_dir = data_dir
-        if SNAPSHOT_STAGE_COPY:
+        if SNAPSHOT_STAGE_COPY and not SNAPSHOT_LIGHT_MODE:
             try:
                 staging_dir = _stage_snapshot_source(data_dir, directory)
                 source_dir = staging_dir
@@ -3154,7 +3156,7 @@ def _run_restore_job(details: Dict[str, object]) -> None:
         can_write_existing = not data_dir.exists() or os.access(data_dir, os.W_OK | os.X_OK)
         fallback_to_docker = False
         host_extract_error: Optional[Exception] = None
-        if can_write_parent and can_write_existing:
+        if can_write_parent and can_write_existing and not SNAPSHOT_LIGHT_MODE:
             try:
                 if data_dir.exists():
                     backup_dir = parent_dir / backup_name
@@ -3194,7 +3196,7 @@ def _run_restore_job(details: Dict[str, object]) -> None:
                         job_warnings.append(f"Failed to restore original data directory after host error: {move_exc}")
                     finally:
                         backup_dir = None
-        if not can_write_parent or not can_write_existing or fallback_to_docker:
+        if not can_write_parent or not can_write_existing or fallback_to_docker or SNAPSHOT_LIGHT_MODE:
             _restore_via_docker(
                 snapshot_path,
                 data_dir,
