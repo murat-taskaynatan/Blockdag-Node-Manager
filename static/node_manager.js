@@ -440,14 +440,35 @@ const state = {
     return kind === filter;
   }
 
+  function isAutomationEntryVisible(entry) {
+    if (!entry) return false;
+    const kind = String(entry.kind || '').toLowerCase();
+    const meta = entry.meta && typeof entry.meta === 'object' ? entry.meta : {};
+    if (kind === 'chain_restore') {
+      const trigger = String(meta.trigger || '').toLowerCase();
+      if (trigger && trigger !== 'liveness') {
+        return false;
+      }
+    }
+    if (kind === 'auto_restart') {
+      const source = String(meta.source || '').toLowerCase();
+      const allowedSources = new Set(['policy', 'liveness', 'error_monitor', 'memory']);
+      if (source && !allowedSources.has(source)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   function getFilteredAutomationLogs(items) {
     if (!Array.isArray(items)) {
       return [];
     }
+    const visibleItems = items.filter((entry) => isAutomationEntryVisible(entry));
     if (!state.automationLogs || !state.automationLogs.filter) {
-      return items;
+      return visibleItems;
     }
-    return items.filter((entry) => automationLogMatchesFilter(entry));
+    return visibleItems.filter((entry) => automationLogMatchesFilter(entry));
   }
 
   function formatAutomationTimestamp(entry) {
