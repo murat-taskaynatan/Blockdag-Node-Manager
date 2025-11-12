@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 LAUNCHPAD_REPO = "https://github.com/BlockdagNetworkLabs/blockdag-scripts.git"
+HELPER_TEMPLATE = Path(__file__).resolve().parent / "launchpad_entrypoint.sh"
 
 
 class LaunchError(RuntimeError):
@@ -370,7 +371,30 @@ def _prepare_ports(config: Dict) -> Tuple[int, int, int, int, int]:
     return p2p, rpc, ws, peer, peer_internal
 
 
-def _render_compose(source: Path, target: Path, label: str, p2p: int, rpc: int, ws: int, peer: int, peer_internal: int):
+def _deploy_helper_entrypoint(scripts_dir: Path, label: str) -> Path:
+    if not HELPER_TEMPLATE.exists():
+        raise LaunchError("Launchpad helper entrypoint template is missing; reinstall the node manager.")
+    helper_name = f"entrypoint-{label}.sh"
+    target = scripts_dir / helper_name
+    target.write_text(HELPER_TEMPLATE.read_text(), encoding="utf-8")
+    try:
+        target.chmod(0o755)
+    except Exception:
+        pass
+    return target
+
+
+def _render_compose(
+    source: Path,
+    target: Path,
+    label: str,
+    p2p: int,
+    rpc: int,
+    ws: int,
+    peer: int,
+    peer_internal: int,
+    helper_mount: Optional[str] = None,
+):
     text = source.read_text()
     text = text.replace("blockdag-testnet-network", label)
     text = text.replace('- "38131:38131"', f'- "{p2p}:{p2p}"', 1)
@@ -381,6 +405,16 @@ def _render_compose(source: Path, target: Path, label: str, p2p: int, rpc: int, 
     text = text.replace("--http.port=18545", f"--http.port={rpc}")
     text = text.replace("--ws.port=18546", f"--ws.port={ws}")
     text = text.replace("ws://127.0.0.1:18546", f"ws://127.0.0.1:{ws}")
+    if helper_mount:
+        container_line = f"    container_name: {label}\n"
+        replacement = container_line + '    entrypoint: ["/custom-entrypoint.sh"]\n'
+        if container_line not in text:
+            raise LaunchError("Failed to inject helper entrypoint into docker-compose template")
+        text = text.replace(container_line, replacement, 1)
+        volume_anchor = "      - ./bin/bdag/logs:/bdag/logs"
+        if volume_anchor not in text:
+            raise LaunchError("Failed to inject helper entrypoint mount into docker-compose template")
+        text = text.replace(volume_anchor, volume_anchor + f"\n      - {helper_mount}", 1)
     target.write_text(text)
 
 
@@ -425,7 +459,19 @@ def launch_node(payload: Dict) -> Dict:
     if not compose_src.exists():
         raise LaunchError("docker-compose template not found")
     compose_target = scripts_dir / f"docker-compose-{label}.yml"
-    _render_compose(compose_src, compose_target, label, p2p_port, rpc_port, ws_port, peer_port, peer_internal)
+    helper_script = _deploy_helper_entrypoint(scripts_dir, label)
+    helper_mount = f"./{helper_script.name}:/custom-entrypoint.sh:ro"
+    _render_compose(
+        compose_src,
+        compose_target,
+        label,
+        p2p_port,
+        rpc_port,
+        ws_port,
+        peer_port,
+        peer_internal,
+        helper_mount,
+    )
     project_name = label
     env = {**os.environ, "MINING_ADDRESS": wallet}
     output = _run_command(
