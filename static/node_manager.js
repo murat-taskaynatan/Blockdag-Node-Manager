@@ -2390,43 +2390,21 @@ async function saveSettings() {
     let badgeText = '';
     let badgeTitle = '';
     let hideBadge = false;
-    if (walletEnabled) {
-      if (wallet.error) {
-        if (typeof wallet.error === 'string' && wallet.error.toLowerCase().includes('wallet not found')) {
-          hideBadge = true;
-        } else {
-          badgeText = wallet.error;
-        }
-      } else {
-        const numericBalance = Number(wallet?.balance);
-        const formattedBalance =
-          wallet?.short ||
-          wallet?.balance_formatted ||
-          (Number.isFinite(numericBalance) ? `${numericBalance.toLocaleString(undefined, { maximumFractionDigits: 4 })} BDAG` : '') ||
-          (wallet?.balance_bdag ? `${wallet.balance_bdag} BDAG` : '');
-        if (formattedBalance) {
-          badgeText = formattedBalance;
-        } else if (wallet?.address) {
-          badgeText = '(fetching…)';
-        }
-        badgeTitle = wallet?.address || '';
-      }
+    if (hostName) {
+      badgeText = hostIp ? `${hostName} · ${hostIp}` : hostName;
+    } else if (hostIp) {
+      badgeText = hostIp;
+    } else if (ts) {
+      badgeText = fmtTime.format(ts);
     } else {
-      badgeText = 'updated';
+      badgeText = 'Host';
     }
-    if (!hideBadge && !badgeText) {
-      badgeText = 'updated';
-    }
-    if (!hideBadge) {
-      if (hostIp) {
-        badgeText = badgeText ? `${badgeText} · ${hostIp}` : hostIp;
-        if (!badgeTitle && hostName) {
-          badgeTitle = hostName;
-        }
-      } else if (ts) {
-        const timeText = fmtTime.format(ts);
-        badgeText = badgeText ? `${badgeText} · ${timeText}` : timeText;
-      }
+    if (walletEnabled && wallet?.address) {
+      badgeTitle = wallet.address;
+    } else if (hostName) {
+      badgeTitle = hostName;
+    } else if (hostIp) {
+      badgeTitle = hostIp;
     }
     if (summaryBadge) {
       summaryBadge.hidden = hideBadge;
