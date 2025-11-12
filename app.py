@@ -6,6 +6,7 @@ import secrets
 import shutil
 import subprocess
 import tarfile
+import tempfile
 import threading
 import time
 import pwd
@@ -1259,6 +1260,17 @@ _SENSOR_PACKAGES = ("lm-sensors",)
 _CUSTOM_TEMP_PATH = _normalize_path(os.getenv("BDAG_CPU_TEMP_PATH") or "")
 SNAPSHOT_PREFIX = (os.getenv("BDAG_SNAPSHOT_PREFIX", "bdag.chaindata") or "bdag.chaindata").strip() or "bdag.chaindata"
 SNAPSHOT_SUFFIX = (os.getenv("BDAG_SNAPSHOT_SUFFIX", ".tar") or ".tar").strip()
+_snapshot_stage_env = _parse_bool_env(os.getenv("BDAG_SNAPSHOT_STAGE_COPY"))
+if _snapshot_stage_env is None:
+    SNAPSHOT_STAGE_COPY = True
+else:
+    SNAPSHOT_STAGE_COPY = _snapshot_stage_env
+_SNAPSHOT_STAGE_PARENT = _normalize_path(os.getenv("BDAG_SNAPSHOT_STAGE_PARENT") or "")
+if _SNAPSHOT_STAGE_PARENT:
+    try:
+        _SNAPSHOT_STAGE_PARENT.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
 SNAPSHOT_HEALTH_ENABLED = _coerce_bool(os.getenv("BDAG_SNAPSHOT_HEALTH_ENABLED", "1"), True)
 SNAPSHOT_HEALTH_MAX_HEIGHT_DELTA = max(
     0, int(os.getenv("BDAG_SNAPSHOT_MAX_HEIGHT_DELTA", os.getenv("BDAG_SNAPSHOT_MAX_DELTA", "3")) or "3")
@@ -2023,6 +2035,51 @@ def _prune_snapshots() -> None:
             app.logger.warning("Failed to prune snapshot %s", name, exc_info=True)
 
 
+def _stage_snapshot_source(data_dir: Path, snapshot_dir: Path) -> Path:
+    base_dir = _SNAPSHOT_STAGE_PARENT or snapshot_dir
+    staging_root = base_dir / ".staging"
+    staging_root.mkdir(parents=True, exist_ok=True)
+    staging_dir = Path(tempfile.mkdtemp(prefix="stage-", dir=str(staging_root)))
+    source = str(data_dir)
+    target = str(staging_dir)
+    if not source.endswith("/"):
+        source = source + "/"
+    if not target.endswith("/"):
+        target = target + "/"
+    rsync_cmd = [
+        "rsync",
+        "-a",
+        "--delete",
+        "--numeric-ids",
+        "--inplace",
+        "--exclude",
+        "overlay-backup",
+        "--exclude",
+        "overlay-backup/*",
+        source,
+        target,
+    ]
+    result = subprocess.run(
+        rsync_cmd,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if result.returncode != 0:
+        try:
+            shutil.rmtree(staging_dir, ignore_errors=True)
+        except Exception:
+            pass
+        message = result.stderr or result.stdout or f"rsync exited with status {result.returncode}"
+        raise RuntimeError(message)
+    try:
+        app.logger.info("Snapshot staging complete at %s", staging_dir)
+    except Exception:
+        pass
+    return staging_dir
+
+
 def _scan_snapshot_locations_impl() -> List[dict]:
     results: List[dict] = []
     patterns = _snapshot_patterns()
@@ -2458,6 +2515,7 @@ def _run_snapshot_job(details: Dict[str, object]) -> None:
     container = (details or {}).get("container") if details else None
     quiesce_overlay = bool(details.get("quiesce_overlay", True)) if details else True
     restart_required = False
+    staging_dir: Optional[Path] = None
     try:
         locations, _ = _scan_snapshot_locations(timeout=_SNAPSHOT_LOCATIONS_TIMEOUT_SEC, force=True)
         if locations:
@@ -2498,7 +2556,14 @@ def _run_snapshot_job(details: Dict[str, object]) -> None:
                 raise RuntimeError(str(exc)) from exc
         if flushed_overlays:
             details.setdefault("overlays", sorted(flushed_overlays))
-        total_bytes = _estimate_dir_size_bytes(data_dir)
+        source_dir = data_dir
+        if SNAPSHOT_STAGE_COPY:
+            try:
+                staging_dir = _stage_snapshot_source(data_dir, directory)
+                source_dir = staging_dir
+            except Exception as exc:
+                raise RuntimeError(f"Snapshot staging failed: {exc}")
+        total_bytes = _estimate_dir_size_bytes(source_dir)
         details.setdefault("total_bytes", total_bytes)
         start_time = time.time()
         timestamp = datetime.utcnow().strftime("%Y%m%d.%H%M%S")
@@ -2526,7 +2591,7 @@ def _run_snapshot_job(details: Dict[str, object]) -> None:
                 "-u",
                 "0",
                 "-v",
-                f"{data_dir}:/data:ro",
+                f"{source_dir}:/data:ro",
                 "-v",
                 f"{directory}:/backup",
                 "busybox",
@@ -2544,8 +2609,8 @@ def _run_snapshot_job(details: Dict[str, object]) -> None:
             except RuntimeError as exc:
                 raise RuntimeError(str(exc))
         else:
-            parent = data_dir.parent
-            arcname = data_dir.name
+            parent = source_dir.parent
+            arcname = source_dir.name
             command = [
                 "tar",
                 "--warning=no-file-changed",
@@ -2624,6 +2689,11 @@ def _run_snapshot_job(details: Dict[str, object]) -> None:
                     _SNAPSHOT_JOB_STATE.setdefault("warnings", []).append(str(exc))
         elif container:
             details.setdefault("restart", False)
+        if staging_dir:
+            try:
+                shutil.rmtree(staging_dir, ignore_errors=True)
+            except Exception:
+                pass
         _snapshot_progress_update(None)
         with _SNAPSHOT_JOB_LOCK:
             _SNAPSHOT_JOB_STATE.update(
