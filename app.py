@@ -1832,6 +1832,7 @@ def _prune_pre_restore_backups(data_dir: Path, retain: Optional[int] = None) -> 
         except Exception as exc:
             app.logger.warning("Failed to prune pre-restore backup %s: %s", path, exc)
 
+
 def _parse_snapshot_height(name: str) -> Optional[int]:
     if not name:
         return None
@@ -2912,9 +2913,22 @@ def _reapply_peer_identity_from_backup(
     destination = _snapshot_identity_destination(data_dir, relative)
     if not destination:
         return None
+    copied = False
     try:
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source_path, destination)
+        copied = True
+    except PermissionError as exc:
+        if _copy_identity_via_docker(source_path, destination):
+            copied = True
+        else:
+            app.logger.warning(
+                "Failed to preserve peer identity from %s to %s: %s",
+                source_path,
+                destination,
+                exc,
+            )
+            return None
     except Exception as exc:
         app.logger.warning(
             "Failed to preserve peer identity from %s to %s: %s",
@@ -2922,6 +2936,8 @@ def _reapply_peer_identity_from_backup(
             destination,
             exc,
         )
+        return None
+    if not copied:
         return None
     app.logger.info("Restored local peer identity from %s to %s", source_path, destination)
     return f"Preserved peer identity by restoring {destination}."
@@ -2948,6 +2964,56 @@ def _ensure_peer_identity(
         return None
     app.logger.info("Generated new peer identity at %s", destination)
     return f"Generated new peer identity at {destination}."
+
+
+def _copy_identity_via_docker(source: Path, destination: Path) -> bool:
+    if not DOCKER_BIN:
+        return False
+    source_parent = source.parent
+    dest_parent = destination.parent
+    if not source_parent.exists() or not dest_parent.exists():
+        return False
+    try:
+        uid = os.getuid()
+        gid = os.getgid()
+    except Exception:
+        uid = -1
+        gid = -1
+    if uid < 0 or gid < 0:
+        return False
+    src_rel = shlex.quote(f"/src/{source.name}")
+    dst_rel = shlex.quote(f"/dst/{destination.name}")
+    script = (
+        "set -e\n"
+        f"install -D -m 600 {src_rel} {dst_rel}\n"
+        f"chown {uid}:{gid} {dst_rel}\n"
+    )
+    try:
+        result = subprocess.run(
+            [
+                DOCKER_BIN,
+                "run",
+                "--rm",
+                "--init",
+                "-u",
+                "0",
+                "-v",
+                f"{source_parent}:/src:ro",
+                "-v",
+                f"{dest_parent}:/dst",
+                "busybox",
+                "sh",
+                "-c",
+                script,
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+    except Exception:
+        return False
+    return result.returncode == 0
 
 
 def _start_snapshot_job(
@@ -4995,7 +5061,7 @@ def _resolve_node(node_id: Optional[str]) -> NodeContext:
 # ---------------------------------------------------------------------------
 # API endpoints
 # ---------------------------------------------------------------------------
-APP_VERSION = os.getenv("BDAG_MANAGER_VERSION", "v1.5.2").strip() or "v1.5.2"
+APP_VERSION = os.getenv("BDAG_MANAGER_VERSION", "v1.5.3").strip() or "v1.5.3"
 
 
 @app.route("/healthz")
