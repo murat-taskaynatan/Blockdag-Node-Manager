@@ -172,6 +172,12 @@ WAITRESS_BACKLOG=256
 WAITRESS_CONNECTION_LIMIT=0
 EOF
 fi
+if ! sudo grep -q "^BDAG_SNAPSHOT_LIGHT_MODE=" "$ENV_FILE" 2>/dev/null; then
+  sudo tee -a "$ENV_FILE" >/dev/null <<'EOF'
+# Snapshot/restore tuning
+BDAG_SNAPSHOT_LIGHT_MODE=1
+EOF
+fi
 if ! sudo grep -q "^BDAG_LIVENESS_RECOVER_COOLDOWN_SEC=" "$ENV_FILE" 2>/dev/null; then
   sudo tee -a "$ENV_FILE" >/dev/null <<'EOF'
 # Liveness auto-recover tuning
