@@ -3112,9 +3112,6 @@ def _list_docker_containers() -> List[str]:
     if not DOCKER_BIN:
         _docker_health_record(False, "docker binary not available")
         return []
-    container = (details or {}).get("container") if details else None
-    if container:
-        _suspend_liveness(container, LIVENESS_SNAPSHOT_GRACE_SEC)
     try:
         out = subprocess.check_output(
             [DOCKER_BIN, "ps", "-a", "--format", "{{.Names}}"],
