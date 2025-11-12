@@ -76,7 +76,19 @@ BDAG_LOGIN_PASS=changeme
 
 `BDAG_LOGIN_ENABLED=0` or missing credentials keeps the login page hidden, which matches the experience after a clean remote install.
 
-Waitress concurrency is tunable through `/etc/blockdag-node-manager/node-manager.env` via `WAITRESS_THREADS`, `WAITRESS_BACKLOG`, and `WAITRESS_CONNECTION_LIMIT`, which default to `12`, `256`, and `0` (unlimited) so the proxy can hold more simultaneous connections without overflowing the queue.
+Waitress concurrency is tunable through `/etc/blockdag-node-manager/node-manager.env` via `WAITRESS_THREADS`, `WAITRESS_BACKLOG`, and `WAITRESS_CONNECTION_LIMIT`, which default to `24`, `256`, and `0` (unlimited) so the proxy can hold more simultaneous connections without overflowing the queue.
+
+### CPU affinity / scheduling
+
+Beginning with v1.5.2 the installer drops a `cpu.conf` systemd override that pins the manager to CPU `0` and raises its `CPUWeight` so the monitoring UI stays responsive even while the BlockDAG containers are under heavy load. Override those defaults by exporting `SERVICE_CPU_AFFINITY` (space separated core list) and `SERVICE_CPU_WEIGHT` before running `install_node_manager.sh`.
+
+If Docker is managing the node containers via systemd, lower its CPU share to keep the manager snappy:
+
+```bash
+sudo systemctl set-property docker.service CPUWeight=50
+```
+
+Hosts running cgroups v2 can also drop the weight directly under `/sys/fs/cgroup/system.slice/docker.service/cpu.weight`.
 
 SSL is handled by nginx on the host. The installer drops a node_manager vhost in /etc/nginx/sites-available/ (symlinked into sites-enabled). To serve the login page over HTTPS:
 

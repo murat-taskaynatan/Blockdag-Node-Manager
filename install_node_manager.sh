@@ -15,6 +15,8 @@ ENV_DIR="${ENV_DIR:-/etc/blockdag-node-manager}"
 ENV_FILE="${ENV_FILE:-$ENV_DIR/node-manager.env}"
 HOST_DEFAULT="${HOST:-0.0.0.0}"
 PORT_DEFAULT="${PORT:-8081}"
+SERVICE_CPU_AFFINITY="${SERVICE_CPU_AFFINITY:-0}"
+SERVICE_CPU_WEIGHT="${SERVICE_CPU_WEIGHT:-900}"
 
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || { echo "Error: required command '$1' not found." >&2; exit 1; }
@@ -94,12 +96,12 @@ if [[ ! -f "$SOURCE_DIR/app.py" ]]; then
   need_cmd git
   TEMP_DIR="$(mktemp -d)"
   trap cleanup EXIT
-  echo "[0/9] Source tree missing; cloning $REPO_URL (ref $REPO_REF)"
+echo "[0/10] Source tree missing; cloning $REPO_URL (ref $REPO_REF)"
   git clone --depth 1 --branch "$REPO_REF" --single-branch "$REPO_URL" "$TEMP_DIR/repo"
   SOURCE_DIR="$TEMP_DIR/repo"
 fi
 
-echo "[1/9] Removing any existing installation of $SERVICE_NAME (if present)"
+echo "[1/10] Removing any existing installation of $SERVICE_NAME (if present)"
 if systemctl list-unit-files --type=service 2>/dev/null | grep -q "^${SERVICE_NAME}"; then
   sudo systemctl disable --now "$SERVICE_NAME" >/dev/null 2>&1 || true
 fi
@@ -110,7 +112,7 @@ if [[ -d "$INSTALL_DIR" ]]; then
 fi
 sudo systemctl daemon-reload
 
-echo "[2/9] Syncing files to $INSTALL_DIR"
+echo "[2/10] Syncing files to $INSTALL_DIR"
 sudo mkdir -p "$INSTALL_DIR"
 sudo chown "$SERVICE_USER":"$SERVICE_GROUP" "$INSTALL_DIR"
 rsync -a --delete \
@@ -123,7 +125,7 @@ sudo chown -R "$SERVICE_USER":"$SERVICE_GROUP" "$INSTALL_DIR"
 sudo mkdir -p "$INSTALL_DIR/data"
 sudo chown "$SERVICE_USER":"$SERVICE_GROUP" "$INSTALL_DIR/data"
 
-echo "[3/9] Preparing Python environment"
+echo "[3/10] Preparing Python environment"
 "$PYTHON_BIN" -m venv "$INSTALL_DIR/.venv"
 source "$INSTALL_DIR/.venv/bin/activate"
 pip install --upgrade pip >/dev/null
@@ -134,7 +136,7 @@ else
 fi
 deactivate
 
-echo "[4/9] Writing environment file $ENV_FILE"
+echo "[4/10] Writing environment file $ENV_FILE"
 sudo mkdir -p "$ENV_DIR"
 if [[ ! -f "$ENV_FILE" ]]; then
   sudo tee "$ENV_FILE" >/dev/null <<EOF
@@ -165,7 +167,7 @@ fi
 if ! sudo grep -q "^WAITRESS_THREADS=" "$ENV_FILE" 2>/dev/null; then
   sudo tee -a "$ENV_FILE" >/dev/null <<'EOF'
 # Waitress tuning
-WAITRESS_THREADS=12
+WAITRESS_THREADS=24
 WAITRESS_BACKLOG=256
 WAITRESS_CONNECTION_LIMIT=0
 EOF
@@ -184,8 +186,22 @@ fi
 sudo chown "$SERVICE_USER":"$SERVICE_GROUP" "$ENV_FILE"
 sudo chmod 640 "$ENV_FILE"
 
+CPU_DROPIN_DIR="$SYSTEMD_DIR/${SERVICE_NAME}.d"
+CPU_OVERRIDE="$CPU_DROPIN_DIR/cpu.conf"
+echo "[5/10] Writing CPU affinity/weight override at $CPU_OVERRIDE"
+sudo mkdir -p "$CPU_DROPIN_DIR"
+if [[ ! -f "$CPU_OVERRIDE" ]]; then
+  sudo tee "$CPU_OVERRIDE" >/dev/null <<EOF
+[Service]
+CPUAffinity=$SERVICE_CPU_AFFINITY
+CPUWeight=$SERVICE_CPU_WEIGHT
+EOF
+else
+  echo " - existing override detected; leaving $CPU_OVERRIDE unchanged"
+fi
+
 DOCKER_GROUP_NOTICE=0
-echo "[5/9] Ensuring Docker access for service user $SERVICE_USER"
+echo "[6/10] Ensuring Docker access for service user $SERVICE_USER"
 if command -v docker >/dev/null 2>&1; then
   if id -nG "$SERVICE_USER" 2>/dev/null | tr ' ' '\n' | grep -qx "docker"; then
     echo " - $SERVICE_USER already belongs to docker group"
@@ -203,7 +219,7 @@ else
   echo " - Docker binary not found; skipping access check"
 fi
 
-echo "[6/9] Writing launch helper $INSTALL_DIR/run_node_manager.sh"
+echo "[7/10] Writing launch helper $INSTALL_DIR/run_node_manager.sh"
 RUNNER="$INSTALL_DIR/run_node_manager.sh"
 sudo tee "$RUNNER" >/dev/null <<'EOF'
 #!/usr/bin/env bash
@@ -238,7 +254,7 @@ sudo sed -i \
 sudo chown "$SERVICE_USER":"$SERVICE_GROUP" "$RUNNER"
 sudo chmod 750 "$RUNNER"
 
-echo "[7/9] Installing systemd unit $SERVICE_NAME"
+echo "[8/10] Installing systemd unit $SERVICE_NAME"
 sudo tee "$SYSTEMD_DIR/$SERVICE_NAME" >/dev/null <<EOF
 [Unit]
 Description=BlockDAG Node Manager
@@ -260,7 +276,7 @@ RestartSec=2
 WantedBy=multi-user.target
 EOF
 
-echo "[8/9] Reloading systemd and starting service"
+echo "[9/10] Reloading systemd and starting service"
 sudo systemctl daemon-reload
 sudo systemctl enable --now "$SERVICE_NAME"
 
@@ -277,7 +293,7 @@ if [[ "$DISPLAY_HOST" == *:* && "$DISPLAY_HOST" != \[* ]]; then
   DISPLAY_HOST="[$DISPLAY_HOST]"
 fi
 
-echo "[9/9] Installation summary"
+echo "[10/10] Installation summary"
 cat <<EOF
 BlockDAG Node Manager installation complete.
   - Service name: $SERVICE_NAME
