@@ -4972,18 +4972,19 @@ def api_node_manager_nodes():
     nodes_payload = []
     now = time.time()
     for ctx in NODES.values():
-        if _metrics_stale(ctx, now=now):
-            try:
-                ctx.sample(force=True)
-            except Exception:
-                _queue_node_sample(ctx, urgent=True)
+        stale = _metrics_stale(ctx, now=now)
+        if stale:
+            _queue_node_sample(ctx, urgent=True)
         nodes_payload.append(
             {
                 "id": ctx.id,
                 "label": ctx.label,
                 "container": ctx.container,
                 "auto_discovered": bool(ctx.auto_discovered),
-                "status": ctx.snapshot(include_series=False),
+                "status": {
+                    **ctx.snapshot(include_series=False),
+                    **({"pending_sample": True} if stale else {}),
+                },
             }
         )
     if nodes_payload:
@@ -5036,17 +5037,13 @@ def api_node_manager_metrics():
         ctx = NODES.get(node_id)
         if not ctx:
             continue
-        if force_refresh:
-            try:
-                ctx.sample(force=True)
-            except Exception:
-                _queue_node_sample(ctx, urgent=True)
-        elif _metrics_stale(ctx, now=now):
-            try:
-                ctx.sample(force=True)
-            except Exception:
-                _queue_node_sample(ctx, urgent=True)
-        response[ctx.id] = ctx.snapshot(include_series=True)
+        stale = _metrics_stale(ctx, now=now)
+        if force_refresh or stale:
+            _queue_node_sample(ctx, urgent=True)
+        payload = ctx.snapshot(include_series=True)
+        if force_refresh or stale:
+            payload["pending_sample"] = True
+        response[ctx.id] = payload
     return jsonify({"nodes": response, "timestamp": time.time()})
 
 
