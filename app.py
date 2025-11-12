@@ -2630,7 +2630,7 @@ def _run_snapshot_job(details: Dict[str, object]) -> None:
                     pass
         overlay_targets: Set[str] = set()
         flushed_overlays: List[str] = []
-        if not SNAPSHOT_LIGHT_MODE:
+        if _overclock_overlay_enabled():
             try:
                 overlay_targets = _overlay_targets_for_path(data_dir)
             except Exception as exc:
@@ -5982,6 +5982,14 @@ def _overlay_mapping_path() -> Path:
 
 def _overlay_state_path() -> Path:
     return Path("/var/lib/overlay-commit-state.json")
+
+
+def _overclock_overlay_enabled() -> bool:
+    try:
+        settings = get_settings()
+    except Exception:
+        settings = {}
+    return bool(settings.get("overclock_overlay_bdagchain")) or bool(settings.get("overclock_overlay_bdageth"))
 
 
 def _overlay_read_mappings() -> Dict[str, Dict[str, object]]:
