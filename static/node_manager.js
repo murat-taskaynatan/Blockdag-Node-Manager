@@ -2383,6 +2383,9 @@ async function saveSettings() {
     }
     const timestampSeconds = Number.isFinite(wallet?.timestamp) ? wallet.timestamp : summary.timestamp;
     const ts = timestampSeconds ? new Date(timestampSeconds * 1000) : null;
+    const hostInfo = summary.host || {};
+    const hostIp = hostInfo.ip || summary.host_ip || summary.hostIp || '';
+    const hostName = hostInfo.hostname || summary.host_name || summary.hostName || '';
     updateWalletPane(wallet, { enabled: walletEnabled, timestamp: timestampSeconds });
     let badgeText = '';
     let badgeTitle = '';
@@ -2414,9 +2417,16 @@ async function saveSettings() {
     if (!hideBadge && !badgeText) {
       badgeText = 'updated';
     }
-    if (!hideBadge && ts) {
-      const timeText = fmtTime.format(ts);
-      badgeText = badgeText ? `${badgeText} · ${timeText}` : timeText;
+    if (!hideBadge) {
+      if (hostIp) {
+        badgeText = badgeText ? `${badgeText} · ${hostIp}` : hostIp;
+        if (!badgeTitle && hostName) {
+          badgeTitle = hostName;
+        }
+      } else if (ts) {
+        const timeText = fmtTime.format(ts);
+        badgeText = badgeText ? `${badgeText} · ${timeText}` : timeText;
+      }
     }
     if (summaryBadge) {
       summaryBadge.hidden = hideBadge;

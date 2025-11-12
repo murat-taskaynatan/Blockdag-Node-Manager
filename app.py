@@ -19,6 +19,7 @@ import stat
 import stat
 import queue
 import threading
+import socket
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_UP, getcontext
 from collections import OrderedDict, deque
@@ -640,6 +641,26 @@ def _coerce_port(value) -> Optional[int]:
     except Exception:
         return None
 
+
+
+def _detect_primary_ip() -> Optional[str]:
+    targets = [("8.8.8.8", 80), ("1.1.1.1", 80)]
+    for host, port in targets:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+                sock.connect((host, port))
+                addr = sock.getsockname()[0]
+                if addr:
+                    return addr
+        except Exception:
+            continue
+    try:
+        hostname = socket.gethostname()
+        if hostname:
+            return socket.gethostbyname(hostname)
+    except Exception:
+        pass
+    return None
 
 
 SETTINGS_PATH = Path(__file__).resolve().parent / "config" / "settings.json"
@@ -4890,6 +4911,14 @@ def _fleet_summary(nodes: List[dict]) -> dict:
             summary["wallet"] = {"error": str(exc)}
     else:
         summary["wallet"] = None
+    try:
+        hostname = socket.gethostname()
+    except Exception:
+        hostname = None
+    summary["host"] = {
+        "hostname": hostname,
+        "ip": _detect_primary_ip(),
+    }
     return summary
 
 
