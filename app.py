@@ -172,6 +172,9 @@ LIVENESS_MAX_RESTARTS = max(1, int(os.getenv("BDAG_LIVENESS_MAX_RESTARTS", "2") 
 LIVENESS_SNAPSHOT_GRACE_SEC = max(
     0.0, float(os.getenv("BDAG_LIVENESS_SNAPSHOT_GRACE_SEC", "900") or "900")
 )
+LIVENESS_RESUME_MAX_DELTA = max(
+    0.0, float(os.getenv("BDAG_LIVENESS_RESUME_MAX_DELTA", "25") or "25")
+)
 _liveness_patterns_raw = [
     part.strip().lower()
     for part in str(os.getenv("BDAG_LIVENESS_RECOVER_PATTERNS", "") or "").split(",")
@@ -3162,6 +3165,10 @@ def _start_restore_job(node_id: Optional[str], *, trigger: Optional[str] = None)
     details["mode"] = "restore"
     if preflight_warnings:
         details["preflight_warnings"] = preflight_warnings
+    container = details.get("container")
+    if container:
+        suspend_window = max(LIVENESS_SNAPSHOT_GRACE_SEC, 60.0)
+        _suspend_liveness(container, suspend_window, resume_on_healthy=True)
     with _SNAPSHOT_JOB_LOCK:
         if _SNAPSHOT_JOB_STATE.get("active"):
             return False, "Snapshot already in progress", _snapshot_job_snapshot()
@@ -3861,7 +3868,7 @@ def _purge_policy_state(container: Optional[str]) -> None:
             _RECENT_LOGS_CACHE.pop(key, None)
 
 
-def _suspend_liveness(container: Optional[str], seconds: float) -> None:
+def _suspend_liveness(container: Optional[str], seconds: float, *, resume_on_healthy: bool = False) -> None:
     if not container or seconds <= 0:
         return
     now = time.time()
@@ -3876,14 +3883,50 @@ def _suspend_liveness(container: Optional[str], seconds: float) -> None:
                 "liveness_restarts": 0,
             },
         )
-        current_until = float(state.get("liveness_suspended_until", 0.0))
-        state["liveness_suspended_until"] = max(current_until, now + seconds)
+        record = state.get("liveness_suspend") or {}
+        until = record.get("until")
+        if seconds == float("inf"):
+            effective_until = float("inf")
+        else:
+            effective_until = now + seconds
+        if isinstance(until, (int, float)) and until > effective_until:
+            effective_until = until
+        state["liveness_suspend"] = {
+            "until": effective_until,
+            "resume_on_healthy": bool(record.get("resume_on_healthy")) or resume_on_healthy,
+        }
     try:
         app.logger.info(
-            "Suspended liveness auto-recover for %s for %.0fs", container, seconds
+            "Suspended liveness auto-recover for %s for %s",
+            container,
+            "health readiness" if resume_on_healthy else f"{seconds:.0f}s",
         )
     except Exception:
         pass
+
+
+def _liveness_resume_ready(metrics: Optional[dict]) -> bool:
+    if not isinstance(metrics, dict):
+        return False
+    if metrics.get("stalled"):
+        return False
+    if not metrics.get("running"):
+        return False
+    delta = metrics.get("height_delta")
+    try:
+        delta = float(delta)
+    except Exception:
+        delta = None
+    if delta is not None and delta > LIVENESS_RESUME_MAX_DELTA:
+        return False
+    sync_pct = metrics.get("sync_percent") or metrics.get("sync_progress")
+    try:
+        sync_pct = float(sync_pct)
+    except Exception:
+        sync_pct = None
+    if sync_pct is not None and sync_pct < 95.0:
+        return False
+    return True
 
 
 def _refresh_container_logs(container: str, limit: int) -> None:
@@ -4138,13 +4181,27 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
         state["last_check"] = now
     metrics = getattr(ctx, "last_metrics", None) or {}
     liveness_suspended = False
+    suspension: Optional[Dict[str, object]] = None
     if enable_liveness:
-        suspended_until = float(state.get("liveness_suspended_until", 0.0))
-        if suspended_until > now:
-            liveness_suspended = True
-        elif suspended_until:
-            with _LOG_POLICY_LOCK:
-                state.pop("liveness_suspended_until", None)
+        with _LOG_POLICY_LOCK:
+            suspension = state.get("liveness_suspend")
+        if suspension:
+            resume_on_healthy = bool(suspension.get("resume_on_healthy"))
+            until_raw = suspension.get("until")
+            until = float(until_raw) if isinstance(until_raw, (int, float)) else float("inf")
+            if resume_on_healthy:
+                if _liveness_resume_ready(metrics):
+                    with _LOG_POLICY_LOCK:
+                        state.pop("liveness_suspend", None)
+                        state["liveness_restarts"] = 0
+                else:
+                    liveness_suspended = True
+            else:
+                if until != float("inf") and now >= until:
+                    with _LOG_POLICY_LOCK:
+                        state.pop("liveness_suspend", None)
+                else:
+                    liveness_suspended = True
 
     if enable_liveness and not liveness_suspended:
         stalled_flag = bool(metrics.get("stalled"))
