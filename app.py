@@ -168,6 +168,9 @@ LIVENESS_RECOVER_COOLDOWN_SEC = max(
     60.0, float(os.getenv("BDAG_LIVENESS_RECOVER_COOLDOWN_SEC", "900") or "900")
 )
 LIVENESS_MAX_RESTARTS = max(1, int(os.getenv("BDAG_LIVENESS_MAX_RESTARTS", "2") or "2"))
+LIVENESS_SNAPSHOT_GRACE_SEC = max(
+    0.0, float(os.getenv("BDAG_LIVENESS_SNAPSHOT_GRACE_SEC", "900") or "900")
+)
 _liveness_patterns_raw = [
     part.strip().lower()
     for part in str(os.getenv("BDAG_LIVENESS_RECOVER_PATTERNS", "") or "").split(",")
@@ -3109,6 +3112,9 @@ def _list_docker_containers() -> List[str]:
     if not DOCKER_BIN:
         _docker_health_record(False, "docker binary not available")
         return []
+    container = (details or {}).get("container") if details else None
+    if container:
+        _suspend_liveness(container, LIVENESS_SNAPSHOT_GRACE_SEC)
     try:
         out = subprocess.check_output(
             [DOCKER_BIN, "ps", "-a", "--format", "{{.Names}}"],
@@ -3782,6 +3788,31 @@ def _purge_policy_state(container: Optional[str]) -> None:
             _RECENT_LOGS_CACHE.pop(key, None)
 
 
+def _suspend_liveness(container: Optional[str], seconds: float) -> None:
+    if not container or seconds <= 0:
+        return
+    now = time.time()
+    with _LOG_POLICY_LOCK:
+        state = _LOG_POLICY_STATE.setdefault(
+            container,
+            {
+                "last_check": 0.0,
+                "error_streak": 0,
+                "last_restart": 0.0,
+                "last_liveness": 0.0,
+                "liveness_restarts": 0,
+            },
+        )
+        current_until = float(state.get("liveness_suspended_until", 0.0))
+        state["liveness_suspended_until"] = max(current_until, now + seconds)
+    try:
+        app.logger.info(
+            "Suspended liveness auto-recover for %s for %.0fs", container, seconds
+        )
+    except Exception:
+        pass
+
+
 def _refresh_container_logs(container: str, limit: int) -> None:
     if not container or not DOCKER_BIN:
         return
@@ -4033,7 +4064,16 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
             return
         state["last_check"] = now
     metrics = getattr(ctx, "last_metrics", None) or {}
+    liveness_suspended = False
     if enable_liveness:
+        suspended_until = float(state.get("liveness_suspended_until", 0.0))
+        if suspended_until > now:
+            liveness_suspended = True
+        elif suspended_until:
+            with _LOG_POLICY_LOCK:
+                state.pop("liveness_suspended_until", None)
+
+    if enable_liveness and not liveness_suspended:
         stalled_flag = bool(metrics.get("stalled"))
         if not stalled_flag:
             with _LOG_POLICY_LOCK:
