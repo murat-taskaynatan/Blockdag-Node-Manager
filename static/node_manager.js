@@ -46,6 +46,7 @@ const state = {
       previewLoading: false,
       previewError: null,
       previewRequestId: 0,
+      lastLaunchSignature: null,
     },
   };
 
@@ -2526,12 +2527,29 @@ function syncCards(nodes) {
     return Boolean(data.label && data.installPath && data.walletAddress && manualPortsValid && externalValid && externalPeerValid);
   }
 
+  function buildLaunchpadSignature(data = getLaunchpadData()) {
+    const snapshot = {
+      label: data.label || '',
+      installPath: data.installPath || '',
+      walletAddress: data.walletAddress || '',
+      autoPorts: Boolean(data.autoPorts),
+      p2pPort: Number(data.p2pPort) || 0,
+      rpcPort: Number(data.rpcPort) || 0,
+      wsPort: Number(data.wsPort) || 0,
+      peerPort: Number(data.peerPort) || 0,
+      externalP2PPort: Number(data.externalP2PPort) || 0,
+      externalPeerPort: Number(data.externalPeerPort) || 0,
+    };
+    return JSON.stringify(snapshot);
+  }
+
   function updateLaunchpadLaunchState() {
     if (!launchpadNextBtn) return;
     const data = getLaunchpadData();
     const complete = isLaunchpadComplete();
     const onFinalStep = state.launchpad.step === 3;
     const waitingForPreview = onFinalStep && data.autoPorts && state.launchpad.previewLoading;
+    const alreadyLaunched = onFinalStep && state.launchpad.lastLaunchSignature && state.launchpad.lastLaunchSignature === buildLaunchpadSignature(data);
     launchpadNextBtn.dataset.mode = onFinalStep ? 'launch' : 'next';
     if (launchpadNextLabel) {
       launchpadNextLabel.textContent = onFinalStep ? 'Launch' : 'Next';
@@ -2540,7 +2558,7 @@ function syncCards(nodes) {
       launchpadNextIcon.hidden = !onFinalStep;
     }
     launchpadNextBtn.classList.toggle('launch-mode', onFinalStep);
-    launchpadNextBtn.disabled = onFinalStep ? !complete || waitingForPreview : false;
+    launchpadNextBtn.disabled = onFinalStep ? !complete || waitingForPreview || alreadyLaunched : false;
   }
 
   function syncLaunchpadPortInputs(auto = launchpadFields.autoPorts?.checked ?? false) {
@@ -2760,6 +2778,7 @@ function syncCards(nodes) {
         launchpadFields.externalPeerPort.value = data.peerPort;
       }
       await discoverNodes({ auto: true });
+      state.launchpad.lastLaunchSignature = buildLaunchpadSignature();
     } catch (err) {
       launchpadStatus.classList.add('error');
       launchpadStatus.textContent = err?.message || 'Launch failed';
