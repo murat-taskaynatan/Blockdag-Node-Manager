@@ -149,6 +149,7 @@ LOG_ERROR_RESTART_COOLDOWN_SEC = max(
 )
 AUTO_RESTART_INTERVAL_SEC = LOG_ERROR_RESTART_COOLDOWN_SEC
 LOG_ERROR_TAIL = max(10, min(int(os.getenv("BDAG_LOG_ERROR_TAIL", "80") or "80"), 200))
+PRE_RESTORE_BACKUP_RETENTION = max(0, int(os.getenv("BDAG_PRE_RESTORE_BACKUPS", "0") or "0"))
 
 AUTO_SNAPSHOT_MIN_INTERVAL_SEC = max(
     900.0, float(os.getenv("BDAG_AUTO_SNAPSHOT_MIN_SEC", "3600") or 3600.0)
@@ -1774,6 +1775,63 @@ def _restore_via_docker(
         }
     )
 
+
+def _prune_pre_restore_backups(data_dir: Path, retain: Optional[int] = None) -> None:
+    """Limit the number of pre-restore directories kept next to the live data."""
+    if not data_dir:
+        return
+    try:
+        parent_dir = data_dir.parent
+    except Exception:
+        return
+    if not parent_dir or not parent_dir.exists():
+        return
+    if retain is None:
+        retain = PRE_RESTORE_BACKUP_RETENTION
+    if retain < 0:
+        retain = 0
+    prefix = f"{data_dir.name}.pre-restore."
+    pattern = re.compile(rf"^{re.escape(data_dir.name)}\.pre-restore\.(\d{{8}}\.\d{{6}})$")
+    candidates: List[Tuple[float, Path]] = []
+    try:
+        for child in parent_dir.iterdir():
+            if not child.is_dir():
+                continue
+            name = child.name
+            if not name.startswith(prefix):
+                continue
+            score = 0.0
+            match = pattern.match(name)
+            if match:
+                try:
+                    score = datetime.strptime(match.group(1), "%Y%m%d.%H%M%S").timestamp()
+                except ValueError:
+                    score = 0.0
+            if not score:
+                try:
+                    score = child.stat().st_mtime
+                except OSError:
+                    score = 0.0
+            candidates.append((score, child))
+    except Exception as exc:
+        app.logger.warning("Failed to enumerate pre-restore backups in %s: %s", parent_dir, exc)
+        return
+    if not candidates:
+        return
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    keep: Set[Path] = set()
+    for _, path in candidates[:retain]:
+        keep.add(path)
+    for _, path in candidates[retain:]:
+        if path in keep:
+            continue
+        try:
+            shutil.rmtree(path, ignore_errors=False)
+        except FileNotFoundError:
+            continue
+        except Exception as exc:
+            app.logger.warning("Failed to prune pre-restore backup %s: %s", path, exc)
+
 def _parse_snapshot_height(name: str) -> Optional[int]:
     if not name:
         return None
@@ -3097,6 +3155,7 @@ def _run_restore_job(details: Dict[str, object]) -> None:
             details["post_restore_warnings"] = sanity_warnings
             job_warnings.extend(sanity_warnings)
         status = "completed"
+        _prune_pre_restore_backups(data_dir)
     except Exception as exc:
         status = "error"
         message = f"Snapshot restore failed: {exc}"
