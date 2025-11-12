@@ -2066,13 +2066,19 @@ def _stage_snapshot_source(data_dir: Path, snapshot_dir: Path) -> Path:
         stderr=subprocess.PIPE,
         check=False,
     )
-    if result.returncode != 0:
+    if result.returncode not in (0, 24):
         try:
             shutil.rmtree(staging_dir, ignore_errors=True)
         except Exception:
             pass
         message = result.stderr or result.stdout or f"rsync exited with status {result.returncode}"
         raise RuntimeError(message)
+    if result.returncode == 24:
+        warning = result.stderr or result.stdout or "rsync reported vanished files during snapshot staging"
+        try:
+            app.logger.warning(warning.strip())
+        except Exception:
+            pass
     try:
         app.logger.info("Snapshot staging complete at %s", staging_dir)
     except Exception:
