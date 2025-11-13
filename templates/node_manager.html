@@ -175,6 +175,7 @@
   .setting-control input[type="text"]{width:179.88px;max-width:100%;min-width:179.99px;padding:6px 10px;border:1px solid rgba(255,255,255,.15);border-radius:10px;background:rgba(255,255,255,.08);color:var(--text);font-size:13px;font-weight:600;box-sizing:border-box}
   #settingWalletAddress{width:330px;margin-left:20px;position:relative;left:10px}
   #settingCpuTempPath{width:330px;transform:translateX(-5px);position:relative;left:6px}
+  #settingSnapshotDir{width:330px;position:relative;left:6px}
   #settingLoginUser{position:relative;left:-8px}
   .setting-control input[type="text"]:focus{outline:none;border-color:rgba(255,255,255,.35);background:rgba(255,255,255,.12)}
   .setting-control select,
@@ -642,6 +643,23 @@
                   placeholder="/mnt/hgfs/vmshared/cpu_temp.txt"
                   data-setting-key="cpu_temp_path"
                   data-setting-type="text"
+                >
+              </div>
+            </label>
+            <label class="setting-row">
+              <div class="setting-text">
+                <span class="setting-title">Snapshot directory</span>
+                <span class="setting-desc">Path where snapshot archives are stored. Updates trigger a new directory scan.</span>
+              </div>
+              <div class="setting-control">
+                <input
+                  type="text"
+                  class="setting-input"
+                  id="settingSnapshotDir"
+                  placeholder="/blockdag-scripts/backups"
+                  data-setting-key="snapshot_dir"
+                  data-setting-type="text"
+                  spellcheck="false"
                 >
               </div>
             </label>
@@ -1133,4 +1151,4 @@
 
 <script src="{{ url_for('static', filename='chart.umd.min.js') }}"></script>
 <script src="{{ url_for('static', filename='node_manager.js') }}?v={{ app_version }}-{{ cache_buster }}"></script>
-        <div class="version-badge"><strong>{{ app_version_display or 'v1.5.4' }}</strong></div>
+        <div class="version-badge"><strong>{{ app_version_display or 'v1.5.5' }}</strong></div>

@@ -683,6 +683,7 @@ def _detect_primary_ip() -> Optional[str]:
 SETTINGS_PATH = Path(__file__).resolve().parent / "config" / "settings.json"
 SNAPSHOT_MAX_DEFAULT = max(0, int(os.getenv("BDAG_SNAPSHOT_MAX", "0") or 0))
 SNAPSHOT_MAX = SNAPSHOT_MAX_DEFAULT
+SNAPSHOT_DIR_DEFAULT_PATH = "/blockdag-scripts/backups"
 
 DEFAULT_SETTINGS: Dict[str, object] = {
     "liveness_auto_recover": False,
@@ -695,6 +696,7 @@ DEFAULT_SETTINGS: Dict[str, object] = {
     "auto_snapshot_hours": 0,
     "display_wallet_balance": _coerce_bool(os.getenv("BDAG_WALLET_DISPLAY", "0"), False),
     "snapshot_max": SNAPSHOT_MAX_DEFAULT,
+    "snapshot_dir": os.getenv("BDAG_SNAPSHOT_DIR", SNAPSHOT_DIR_DEFAULT_PATH),
     "cpu_temp_path": "/mnt/hgfs/vmshared/cpu_temp.txt",
     "wallet_address": "",
     # Overclock preferences (persist UI selections)
@@ -733,6 +735,7 @@ def _apply_runtime_settings(settings: Dict[str, object]) -> None:
     global SNAPSHOT_MAX
     global AUTO_RESTART_INTERVAL_SEC
     global _CUSTOM_TEMP_PATH
+    global SNAPSHOT_DIR
     global LOGIN_USER
     global LOGIN_PASS
     global LOGIN_ENABLED
@@ -759,6 +762,23 @@ def _apply_runtime_settings(settings: Dict[str, object]) -> None:
     if not path_value:
         path_value = str(DEFAULT_SETTINGS.get("cpu_temp_path", "")).strip()
     _CUSTOM_TEMP_PATH = _normalize_path(path_value)
+
+    previous_snapshot_dir = str(SNAPSHOT_DIR)
+    requested_snapshot_dir = str(settings.get("snapshot_dir") or "").strip()
+    env_snapshot_dir = os.getenv("BDAG_SNAPSHOT_DIR", "").strip()
+    effective_snapshot_dir = requested_snapshot_dir or env_snapshot_dir or SNAPSHOT_DIR_DEFAULT_PATH
+    SNAPSHOT_DIR = _expanded_path(effective_snapshot_dir, _SNAPSHOT_DIR_FALLBACK)
+    try:
+        _ensure_directory_rw(SNAPSHOT_DIR, create=True)
+    except Exception:
+        pass
+    if previous_snapshot_dir != str(SNAPSHOT_DIR):
+        with _SNAPSHOT_LOCATIONS_CACHE_LOCK:
+            _SNAPSHOT_LOCATIONS_CACHE.clear()
+        try:
+            _schedule_snapshot_location_scan(force=True)
+        except Exception:
+            pass
 
     login_user = str(settings.get("login_user") or "").strip() or _ENV_LOGIN_USER
     login_pass = str(settings.get("login_pass") or "").strip() or _ENV_LOGIN_PASS
@@ -1292,14 +1312,7 @@ _SNAPSHOT_DATA_FALLBACK = _preferred_path(
     "/home/node/blockdag/blockdag-scripts/bin/bdag/data",
 )
 SNAPSHOT_DATA_DIR = _expanded_path(os.getenv("BDAG_SNAPSHOT_DATA_DIR"), _SNAPSHOT_DATA_FALLBACK)
-_SNAPSHOT_DIR_FALLBACK = _preferred_path(
-    [
-        str(Path.home() / "blockdag-scripts" / "backups"),
-        "/home/node/blockdag-scripts/backups",
-        "/home/node/backups",
-    ],
-    str(Path.home() / "blockdag-scripts" / "backups"),
-)
+_SNAPSHOT_DIR_FALLBACK = SNAPSHOT_DIR_DEFAULT_PATH
 SNAPSHOT_DIR = _expanded_path(os.getenv("BDAG_SNAPSHOT_DIR"), _SNAPSHOT_DIR_FALLBACK)
 try:
     _ensure_directory_rw(SNAPSHOT_DIR, create=True)
@@ -2043,31 +2056,6 @@ def _candidate_snapshot_dirs() -> List[Path]:
         candidates.append(normalized)
 
     enqueue(SNAPSHOT_DIR)
-    enqueue(SNAPSHOT_DIR.parent if SNAPSHOT_DIR else None)
-    home_dirs = _collect_home_dirs(Path.home())
-    for home_dir in home_dirs:
-        enqueue(home_dir / "backups")
-        enqueue(home_dir / "blockdag-scripts" / "backups")
-        enqueue(home_dir / "blockdag" / "backups")
-    media_root = Path("/media")
-    try:
-        if media_root.exists():
-            enqueue(media_root / "backups")
-            for entry in media_root.iterdir():
-                if not entry.is_dir():
-                    continue
-                enqueue(entry / "backups")
-                enqueue(entry / "blockdag" / "backups")
-                enqueue(entry / "blockdag-scripts" / "backups")
-                try:
-                    for sub in entry.iterdir():
-                        if not sub.is_dir():
-                            continue
-                        enqueue(sub / "backups")
-                except Exception:
-                    continue
-    except Exception:
-        pass
     return candidates
 
 
@@ -3352,21 +3340,53 @@ def _run_restore_job(details: Dict[str, object]) -> None:
             except Exception:
                 pass
     finally:
-        if status != "error" and container and DOCKER_BIN:
-            try:
-                _start_container(container)
-                details.setdefault("restart", True)
-            except Exception as exc:
-                with _SNAPSHOT_JOB_LOCK:
-                    _SNAPSHOT_JOB_STATE.setdefault("warnings", []).append(str(exc))
-        elif status != "error" and container:
-            try:
-                docker_action(container, "start")
-                details.setdefault("restart", True)
-            except Exception:
-                details.setdefault("restart", False)
+        restart_attempted = False
+        restart_error: Optional[str] = None
+        if status != "error" and container:
+            restart_attempted = True
+            if DOCKER_BIN:
+                try:
+                    _start_container(container)
+                    details.setdefault("restart", True)
+                except Exception as exc:
+                    restart_error = str(exc)
+                    with _SNAPSHOT_JOB_LOCK:
+                        _SNAPSHOT_JOB_STATE.setdefault("warnings", []).append(str(exc))
+            else:
+                try:
+                    result = docker_action(container, "start")
+                    if result.get("ok"):
+                        details.setdefault("restart", True)
+                    else:
+                        restart_error = result.get("error") or result.get("output") or "docker start failed"
+                        details.setdefault("restart", False)
+                except Exception as exc:
+                    restart_error = str(exc)
+                    details.setdefault("restart", False)
         elif container and "restart" not in details:
             details.setdefault("restart", False)
+
+        if (
+            status != "error"
+            and restart_attempted
+            and not details.get("restart")
+        ):
+            warning_msg = (
+                f"Snapshot restore completed but failed to restart container {container}: {restart_error or 'unknown error'}"
+            )
+            job_warnings.append(warning_msg)
+            try:
+                app.logger.warning(warning_msg)
+            except Exception:
+                pass
+            _automation_event(
+                "chain_restore",
+                warning_msg,
+                node=details.get("node"),
+                container=container,
+                status="failed",
+                metadata={"reason": "restart_failed", "error": restart_error},
+            )
         _snapshot_progress_update(None)
         with _SNAPSHOT_JOB_LOCK:
             _SNAPSHOT_JOB_STATE.update(
@@ -5207,7 +5227,7 @@ def _resolve_node(node_id: Optional[str]) -> NodeContext:
 # ---------------------------------------------------------------------------
 # API endpoints
 # ---------------------------------------------------------------------------
-APP_VERSION = os.getenv("BDAG_MANAGER_VERSION", "v1.5.4").strip() or "v1.5.4"
+APP_VERSION = os.getenv("BDAG_MANAGER_VERSION", "v1.5.5").strip() or "v1.5.5"
 
 
 @app.route("/healthz")
