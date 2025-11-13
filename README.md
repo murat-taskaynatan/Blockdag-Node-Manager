@@ -66,7 +66,7 @@ Environment variables (`BDAG_RPC_BASE`, `BDAG_REMOTE_RPC_BASES`, etc.) are honou
 
 ### Remote login toggle
 
-Authentication is disabled unless you explicitly set it in `/etc/blockdag-node-manager/node-manager.env` (the installer now writes `BDAG_LOGIN_ENABLED=0` by default). To require login, update the file so the gate is enabled and include credentials:
+Authentication is disabled unless you turn it on. Use **Settings → Require login** inside the dashboard to toggle the gate and edit the username/password (values are persisted to `config/settings.json`). If you prefer to manage it outside the UI, you can still edit `/etc/blockdag-node-manager/node-manager.env` (the installer writes `BDAG_LOGIN_ENABLED=0` by default) and set:
 
 ```ini
 BDAG_LOGIN_ENABLED=1

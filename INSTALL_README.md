@@ -116,7 +116,7 @@ Change those values if your nodes need a longer (or shorter) window between rest
 
 ### Remote login toggle
 
-The installer now seeds `BDAG_LOGIN_ENABLED=0` so the login gate is off by default (matching the remote bootstrap experience). To require authentication, flip the flag and supply credentials:
+You can enable/disable authentication directly from the dashboard via **Settings → Require login**, which also lets you edit the username and password stored in `config/settings.json`. The installer still seeds `BDAG_LOGIN_ENABLED=0` inside `/etc/blockdag-node-manager/node-manager.env` so the gate is off by default; if you prefer to manage it by hand, flip the flag and supply credentials:
 
 ```
 BDAG_LOGIN_ENABLED=1

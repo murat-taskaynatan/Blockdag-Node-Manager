@@ -59,14 +59,19 @@ def _parse_bool_env(value: Optional[str]) -> Optional[bool]:
     return None
 
 
-LOGIN_USER = os.getenv("BDAG_LOGIN_USER", "").strip()
-LOGIN_PASS = os.getenv("BDAG_LOGIN_PASS", "").strip()
+_ENV_LOGIN_USER = os.getenv("BDAG_LOGIN_USER", "").strip()
+_ENV_LOGIN_PASS = os.getenv("BDAG_LOGIN_PASS", "").strip()
 _login_override = _parse_bool_env(os.getenv("BDAG_LOGIN_ENABLED"))
-_default_login_enabled = bool(LOGIN_USER and LOGIN_PASS)
+_default_login_enabled = bool(_ENV_LOGIN_USER and _ENV_LOGIN_PASS)
 if _login_override is None:
-    LOGIN_ENABLED = _default_login_enabled
+    _initial_login_enabled = _default_login_enabled
 else:
-    LOGIN_ENABLED = _default_login_enabled and _login_override
+    _initial_login_enabled = _default_login_enabled and _login_override
+
+# Runtime login state (may be overridden via settings)
+LOGIN_USER = _ENV_LOGIN_USER
+LOGIN_PASS = _ENV_LOGIN_PASS
+LOGIN_ENABLED = _initial_login_enabled
 SESSION_SECRET = os.getenv("BDAG_SESSION_SECRET")
 if not SESSION_SECRET:
     SESSION_SECRET = os.urandom(32).hex()
@@ -701,6 +706,9 @@ DEFAULT_SETTINGS: Dict[str, object] = {
     "overclock_vm_mode": False,
     "overclock_overlay_bdagchain": False,
     "overclock_overlay_bdageth": False,
+    "login_gate_enabled": _initial_login_enabled,
+    "login_user": _ENV_LOGIN_USER,
+    "login_pass": _ENV_LOGIN_PASS,
 }
 _SETTINGS_LOCK = threading.Lock()
 _SETTINGS_CACHE: Dict[str, object] = {}
@@ -725,6 +733,9 @@ def _apply_runtime_settings(settings: Dict[str, object]) -> None:
     global SNAPSHOT_MAX
     global AUTO_RESTART_INTERVAL_SEC
     global _CUSTOM_TEMP_PATH
+    global LOGIN_USER
+    global LOGIN_PASS
+    global LOGIN_ENABLED
     snapshot_limit = settings.get("snapshot_max")
     if isinstance(snapshot_limit, int) and snapshot_limit >= 0:
         SNAPSHOT_MAX = snapshot_limit
@@ -748,6 +759,13 @@ def _apply_runtime_settings(settings: Dict[str, object]) -> None:
     if not path_value:
         path_value = str(DEFAULT_SETTINGS.get("cpu_temp_path", "")).strip()
     _CUSTOM_TEMP_PATH = _normalize_path(path_value)
+
+    login_user = str(settings.get("login_user") or "").strip() or _ENV_LOGIN_USER
+    login_pass = str(settings.get("login_pass") or "").strip() or _ENV_LOGIN_PASS
+    gate_enabled = bool(settings.get("login_gate_enabled"))
+    LOGIN_USER = login_user
+    LOGIN_PASS = login_pass
+    LOGIN_ENABLED = bool(gate_enabled and login_user and login_pass)
 
 
 def _load_settings_file() -> Dict[str, bool]:

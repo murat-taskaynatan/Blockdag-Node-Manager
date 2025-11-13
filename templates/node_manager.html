@@ -520,6 +520,56 @@
             </label>
             <label class="setting-row">
               <div class="setting-text">
+                <span class="setting-title">Require login</span>
+                <span class="setting-desc">Gate the dashboard behind a username and password for remote access.</span>
+              </div>
+              <div class="setting-control">
+                <label class="toggle" title="Toggle login requirement">
+                  <input type="checkbox" class="toggle-input" id="settingLoginGate" name="login_gate_enabled" data-setting-key="login_gate_enabled">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </label>
+            <label class="setting-row">
+              <div class="setting-text">
+                <span class="setting-title">Login username</span>
+                <span class="setting-desc">Choose the username required when login is enabled.</span>
+              </div>
+              <div class="setting-control">
+                <input
+                  type="text"
+                  class="setting-input"
+                  id="settingLoginUser"
+                  name="login_user"
+                  placeholder="manager"
+                  data-setting-key="login_user"
+                  data-setting-type="text"
+                  autocomplete="off"
+                  spellcheck="false"
+                >
+              </div>
+            </label>
+            <label class="setting-row">
+              <div class="setting-text">
+                <span class="setting-title">Login password</span>
+                <span class="setting-desc">Set the password used for dashboard sign-in (stored locally in settings.json).</span>
+              </div>
+              <div class="setting-control">
+                <input
+                  type="password"
+                  class="setting-input"
+                  id="settingLoginPass"
+                  name="login_pass"
+                  placeholder="••••••••"
+                  data-setting-key="login_pass"
+                  data-setting-type="password"
+                  autocomplete="new-password"
+                  spellcheck="false"
+                >
+              </div>
+            </label>
+            <label class="setting-row">
+              <div class="setting-text">
                 <span class="setting-title">Auto-restart on error</span>
                 <span class="setting-desc">Restart the container automatically when the node health becomes stalled or offline.</span>
               </div>

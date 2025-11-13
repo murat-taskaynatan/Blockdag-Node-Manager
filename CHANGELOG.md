@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.5.4 - 2025-11-12
+- Settings now expose a “Require login” toggle plus username/password fields, so enabling the dashboard gate and rotating credentials no longer requires editing `/etc/blockdag-node-manager/node-manager.env`.
+- Liveness auto-recover defaults to off again; operators can re-enable it from Settings once their nodes are healthy, which prevents surprise auto-restores on fresh deployments.
+
 ## v1.5.0 - 2025-11-10
 - Launchpad now calls the backend to preview auto-selected ports before you reach the Review step, so the UI shows the exact external bindings and blocks launch until the preview succeeds.
 - The `/api/node-manager/launch/preview` endpoint reuses the launch logic to expose the resolved P2P/RPC/WS/peer mappings without starting a container.
