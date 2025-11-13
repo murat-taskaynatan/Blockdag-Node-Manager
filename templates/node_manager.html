@@ -147,9 +147,6 @@
   .login-settings-row .setting-text{max-width:480px}
   .login-settings-row .setting-control{justify-content:flex-end;flex:0 0 auto}
   .login-settings-row .setting-control.login-password-control{border:none;background:transparent;padding:0}
-  .form-control-stack{flex-direction:column;align-items:flex-start;width:100%;gap:8px}
-  .form-control-stack input[type="text"],
-  .form-control-stack input[type="password"]{width:100%;max-width:360px;min-width:220px}
   .login-password-control{background:rgba(0,0,0,0);border:1px solid rgb(231,234,246);border-radius:0;padding:0}
   .login-password-control input{
     width:179px;
@@ -171,7 +168,7 @@
   .setting-control[data-tooltip]:hover::after,
   .setting-control[data-tooltip]:hover::before{opacity:1}
   .setting-control input[type="checkbox"]{width:17px;height:17px;cursor:pointer;accent-color:#44f2a8}
-  .setting-control input[type="text"]{width:48ch;max-width:100%;min-width:320px;padding:6px 10px;border:1px solid rgba(255,255,255,.15);border-radius:10px;background:rgba(255,255,255,.08);color:var(--text);font-size:13px;font-weight:600;box-sizing:border-box}
+  .setting-control input[type="text"]{width:179.88px;max-width:100%;min-width:179.99px;padding:6px 10px;border:1px solid rgba(255,255,255,.15);border-radius:10px;background:rgba(255,255,255,.08);color:var(--text);font-size:13px;font-weight:600;box-sizing:border-box}
   .setting-control input[type="text"]:focus{outline:none;border-color:rgba(255,255,255,.35);background:rgba(255,255,255,.12)}
   .setting-control select,
   .setting-control select,
@@ -531,7 +528,7 @@
                 <span class="setting-title">Liveness auto-recover</span>
                 <span class="setting-desc">Attempt to recover chain data when health checks fail repeatedly.</span>
               </div>
-              <div class="setting-control form-control-stack">
+              <div class="setting-control">
                 <label class="toggle">
                   <input type="checkbox" class="toggle-input" id="settingLiveness" name="liveness_auto_recover" data-setting-key="liveness_auto_recover">
                   <span class="toggle-slider"></span>
@@ -543,7 +540,7 @@
                 <span class="setting-title">Auto-restart on error</span>
                 <span class="setting-desc">Restart the container automatically when the node health becomes stalled or offline.</span>
               </div>
-              <div class="setting-control form-control-stack">
+              <div class="setting-control">
                 <label class="toggle" title="Toggle auto restart on error">
                   <input type="checkbox" class="toggle-input" id="settingAutoRestart" name="auto_restart_on_error" data-setting-key="auto_restart_on_error">
                   <span class="toggle-slider"></span>
@@ -647,7 +644,7 @@
                     <span class="setting-title">Require login</span>
                     <span class="setting-desc">Gate the dashboard behind a username and password for remote access.</span>
                   </div>
-                  <div class="setting-control form-control-stack">
+                  <div class="setting-control">
                     <label class="toggle" title="Toggle login requirement">
                       <input type="checkbox" class="toggle-input" id="settingLoginGate" name="login_gate_enabled" data-setting-key="login_gate_enabled">
                       <span class="toggle-slider"></span>
@@ -678,7 +675,7 @@
                     <span class="setting-title">Login password</span>
                     <span class="setting-desc">Set the password used for dashboard sign-in (stored locally in settings.json).</span>
                   </div>
-                  <div class="setting-control form-control-stack login-password-control">
+                  <div class="setting-control login-password-control">
                     <input
                       type="password"
                       class="setting-input"
