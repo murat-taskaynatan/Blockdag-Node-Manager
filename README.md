@@ -75,6 +75,7 @@ BDAG_LOGIN_PASS=changeme
 ```
 
 `BDAG_LOGIN_ENABLED=0` or missing credentials keeps the login page hidden, which matches the experience after a clean remote install.
+<img width="422" height="244" alt="image" src="https://github.com/user-attachments/assets/b9dfa629-d517-45cc-a5eb-d2a678638ded" />
 
 Waitress concurrency is tunable through `/etc/blockdag-node-manager/node-manager.env` via `WAITRESS_THREADS`, `WAITRESS_BACKLOG`, and `WAITRESS_CONNECTION_LIMIT`, which default to `24`, `256`, and `0` (unlimited) so the proxy can hold more simultaneous connections without overflowing the queue.
 
