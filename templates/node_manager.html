@@ -141,7 +141,9 @@
   .setting-desc{color:var(--muted);font-size:13px;line-height:1.4}
   .setting-hint{color:var(--muted);font-size:12px;line-height:1.4}
   .setting-control{display:flex;align-items:center;gap:10px;position:relative}
-  .login-settings-text{gap:8px}
+  .login-settings-text{gap:12px}
+  .login-inline-heading{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .login-inline-heading .setting-desc{margin:0}
   .login-settings-toggle{display:inline-flex;align-items:center;gap:10px}
   .login-settings-toggle .toggle-hint{font-size:12px;color:var(--muted);text-transform:none}
   .login-settings-fields{display:flex;gap:10px;width:100%;flex-wrap:wrap}
@@ -525,8 +527,10 @@
             </label>
             <label class="setting-row">
               <div class="setting-text login-settings-text">
-                <span class="setting-title">Dashboard login</span>
-                <span class="setting-desc">Require a username/password for remote access and manage the credentials in one place.</span>
+                <div class="login-inline-heading">
+                  <span class="setting-title">Dashboard login</span>
+                  <span class="setting-desc">Require a username/password for remote access.</span>
+                </div>
                 <label class="toggle login-settings-toggle" title="Toggle login requirement">
                   <input type="checkbox" class="toggle-input" id="settingLoginGate" name="login_gate_enabled" data-setting-key="login_gate_enabled">
                   <span class="toggle-slider"></span>
