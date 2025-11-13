@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.5.5 - 2025-11-13
+
+- Version badge, installer defaults, and runtime reporting now point to `v1.5.5` so the dashboard matches the released artifacts.
+
 ## v1.5.4 - 2025-11-13
 
 ### Dashboard & Settings
