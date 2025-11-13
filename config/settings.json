@@ -9,7 +9,7 @@
   "auto_snapshot_hours": 0,
   "cpu_temp_path": "/mnt/hgfs/vmshared/cpu_temp.txt",
   "display_wallet_balance": true,
-  "liveness_auto_recover": true,
+  "liveness_auto_recover": false,
   "overclock_cpu": false,
   "overclock_data_path": "/home/node/blockdag",
   "overclock_nvme_latency": false,

@@ -291,7 +291,7 @@ const state = {
   let settingsStatusTimer = null;
   let snapshotPollTimer = null;
   const defaultSettings = {
-    liveness_auto_recover: true,
+    liveness_auto_recover: false,
     auto_restart_on_error: false,
     auto_restart_enabled: false,
     auto_restart_hours: 0,
