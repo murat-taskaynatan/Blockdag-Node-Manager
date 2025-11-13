@@ -14,17 +14,48 @@ request() {
   curl -sS -X "$method" "$BASE_URL$path" -H "content-type: application/json" -d "$data" || return $?
 }
 
-nodes_json=$(curl -sS "$BASE_URL/api/node-manager/nodes")
-offline_ids=$(printf '%s\n' "$nodes_json" | jq -r '.nodes[] | select(.status.running==false or .status.stalled==true or .status.forced_offline==true) | .id')
+ensure_clean_node() {
+  local container="$1"
+  if [[ -z "$container" || "$container" == "null" || "$container" == "none" ]]; then
+    return 0
+  fi
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "  Docker CLI not available; skipping cleanup for ${container}"
+    return 0
+  fi
+  local ids
+  if ! ids=$(docker ps -aq -f "name=${container}" 2>/dev/null); then
+    echo "  Unable to inspect docker for ${container}; skipping cleanup"
+    return 0
+  fi
+  if [[ -z "$ids" ]]; then
+    return 0
+  fi
+  echo "  Stopping existing container(s) for ${container}..."
+  docker stop $ids >/dev/null 2>&1 || true
+  echo "  Removing existing container(s) for ${container}..."
+  docker rm $ids >/dev/null 2>&1 || true
+}
 
-if [[ -z "$offline_ids" ]]; then
+nodes_json=$(curl -sS "$BASE_URL/api/node-manager/nodes")
+mapfile -t offline_nodes < <(
+  printf '%s\n' "$nodes_json" | jq -r '
+    .nodes[]
+    | select(.status.running==false or .status.stalled==true or .status.forced_offline==true)
+    | [.id, (.container // .id // "")]
+    | @tsv'
+)
+
+if [[ ${#offline_nodes[@]} -eq 0 ]]; then
   echo "No offline/on-stall nodes detected."
   exit 0
 fi
 
 echo "Restoring offline nodes:"
-for node in $offline_ids; do
+for entry in "${offline_nodes[@]}"; do
+  IFS=$'\t' read -r node container <<< "$entry"
   echo "- Starting restore for node ${node}"
+  ensure_clean_node "$container"
   payload="{\"node\":\"${node}\"}"
   response=$(request POST /api/snapshots/restore "$payload")
   brief=$(echo "$response" | jq -r '.message // .error // "restore submitted"' 2>/dev/null || echo "restore submitted")
