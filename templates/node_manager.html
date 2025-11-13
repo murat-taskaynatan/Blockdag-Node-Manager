@@ -146,6 +146,16 @@
   .login-settings-row{display:flex;align-items:center;justify-content:space-between;gap:16px}
   .login-settings-row .setting-text{max-width:480px}
   .login-settings-row .setting-control{justify-content:flex-end;flex:0 0 auto}
+  .login-password-control{background:rgba(0,0,0,0);border:1px solid rgb(231,234,246);border-radius:0;padding:0}
+  .login-password-control input{
+    width:179px;
+    min-width:179px;
+    height:28px;
+    background:rgba(255,255,255,.08);
+    border:1px solid rgba(255,255,255,.15);
+    border-radius:10px;
+    color:rgb(231,234,246);
+  }
   .automation-log-card{margin-top:16px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:16px}
   .setting-control input[type="number"]{margin-right:auto}
   #settingAutoRestartHours,
@@ -664,7 +674,7 @@
                     <span class="setting-title">Login password</span>
                     <span class="setting-desc">Set the password used for dashboard sign-in (stored locally in settings.json).</span>
                   </div>
-                  <div class="setting-control">
+                  <div class="setting-control login-password-control">
                     <input
                       type="password"
                       class="setting-input"
