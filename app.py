@@ -2335,8 +2335,6 @@ def _snapshot_locations_cached() -> Tuple[List[dict], Optional[str], float]:
         warning = last_warning
     elif refreshing:
         warning = "Snapshot location scan is in progress; showing cached results." if items else "Snapshot location scan is in progress."
-    elif items and cache_age >= _SNAPSHOT_LOCATIONS_CACHE_TTL_SEC:
-        warning = "Snapshot location data may be stale; refreshing in background."
     return items, warning, cache_age
 
 
