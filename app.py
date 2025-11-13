@@ -1927,6 +1927,27 @@ def _start_container(name: Optional[str], retries: int = 3, retry_delay: float =
     raise RuntimeError(last_error or "Failed to start container.")
 
 
+def _ensure_clean_container(name: Optional[str]) -> None:
+    if not name or not DOCKER_BIN:
+        return
+    exists, running, _ = _container_state(name)
+    if not exists:
+        return
+    if running:
+        _stop_container(name, timeout=45)
+    try:
+        subprocess.run(
+            [DOCKER_BIN, "rm", name],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        message = (exc.stderr or exc.stdout or str(exc)).strip()
+        raise RuntimeError(f"Failed to remove container {name}: {message}")
+
+
 def _collect_home_dirs(primary_home: Optional[Path] = None) -> List[Path]:
     homes: List[Path] = []
     seen: set[str] = set()
@@ -3315,6 +3336,11 @@ def _start_restore_job(node_id: Optional[str], *, trigger: Optional[str] = None)
         details["preflight_warnings"] = preflight_warnings
     container = details.get("container")
     if container:
+        try:
+            _ensure_clean_container(container)
+        except Exception as exc:
+            message = f"Failed to prepare container {container} for restore: {exc}"
+            return False, message, _snapshot_job_snapshot()
         suspend_window = max(LIVENESS_SNAPSHOT_GRACE_SEC, 60.0)
         _suspend_liveness(container, suspend_window, resume_on_healthy=True)
     with _SNAPSHOT_JOB_LOCK:
