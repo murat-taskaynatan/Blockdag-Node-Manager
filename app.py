@@ -1378,7 +1378,12 @@ _SNAPSHOT_JOB_STATE: Dict[str, object] = {
     "started": None,
     "ended": None,
 }
-_SNAPSHOT_LOCATIONS_CACHE: Dict[str, object] = {"items": [], "updated": 0.0}
+_SNAPSHOT_LOCATIONS_CACHE: Dict[str, object] = {
+    "items": [],
+    "updated": 0.0,
+    "refreshing": False,
+    "last_warning": None,
+}
 _SNAPSHOT_LOCATIONS_CACHE_LOCK = threading.Lock()
 _SNAPSHOT_LOCATIONS_SCAN_LOCK = threading.Lock()
 _SNAPSHOT_LOCATIONS_TIMEOUT_SEC = max(
@@ -2284,31 +2289,102 @@ def _scan_snapshot_locations(timeout: Optional[float] = None, *, force: bool = F
                 _SNAPSHOT_LOCATIONS_CACHE["items"] = items
                 _SNAPSHOT_LOCATIONS_CACHE["updated"] = time.time()
         finally:
+            with _SNAPSHOT_LOCATIONS_CACHE_LOCK:
+                _SNAPSHOT_LOCATIONS_CACHE["refreshing"] = False
             done_event.set()
 
     # Prevent multiple expensive scans from running simultaneously.
     with _SNAPSHOT_LOCATIONS_SCAN_LOCK:
+        with _SNAPSHOT_LOCATIONS_CACHE_LOCK:
+            _SNAPSHOT_LOCATIONS_CACHE["refreshing"] = True
         thread = threading.Thread(target=worker, daemon=True)
         thread.start()
     finished = done_event.wait(timeout)
     if not finished:
         warning = "Snapshot location scan is still running; showing cached results."
         if force and not cached_items:
+            _set_snapshot_locations_warning(warning)
             raise TimeoutError(warning)
         if not cached_items:
+            _set_snapshot_locations_warning(warning)
             return [], warning
         app.logger.warning("%s (timeout %.1fs)", warning, timeout)
+        _set_snapshot_locations_warning(warning)
         return cached_items, warning
     error = result_holder.get("error")
     if error:
         if force:
+            _set_snapshot_locations_warning(f"Snapshot location scan failed: {error}")
             raise RuntimeError(error)
         app.logger.warning("Snapshot location scan failed: %s", error)
         if cached_items:
-            return cached_items, f"Snapshot location scan failed; showing cached results. ({error})"
-        return [], f"Snapshot location scan failed: {error}"
+            warning = f"Snapshot location scan failed; showing cached results. ({error})"
+            _set_snapshot_locations_warning(warning)
+            return cached_items, warning
+        warning = f"Snapshot location scan failed: {error}"
+        _set_snapshot_locations_warning(warning)
+        return [], warning
     items = result_holder.get("items") or []
+    _set_snapshot_locations_warning(None)
     return list(items), None
+
+
+def _set_snapshot_locations_warning(message: Optional[str]) -> None:
+    with _SNAPSHOT_LOCATIONS_CACHE_LOCK:
+        _SNAPSHOT_LOCATIONS_CACHE["last_warning"] = message or None
+
+
+def _snapshot_locations_cached() -> Tuple[List[dict], Optional[str], float]:
+    now = time.time()
+    with _SNAPSHOT_LOCATIONS_CACHE_LOCK:
+        items = list(_SNAPSHOT_LOCATIONS_CACHE.get("items", []))
+        updated = float(_SNAPSHOT_LOCATIONS_CACHE.get("updated") or 0.0)
+        refreshing = bool(_SNAPSHOT_LOCATIONS_CACHE.get("refreshing"))
+        last_warning = _SNAPSHOT_LOCATIONS_CACHE.get("last_warning")
+    cache_age = float("inf") if updated <= 0.0 else max(now - updated, 0.0)
+    warning: Optional[str] = None
+    if isinstance(last_warning, str) and last_warning:
+        warning = last_warning
+    elif refreshing:
+        warning = "Snapshot location scan is in progress; showing cached results." if items else "Snapshot location scan is in progress."
+    elif items and cache_age >= _SNAPSHOT_LOCATIONS_CACHE_TTL_SEC:
+        warning = "Snapshot location data may be stale; refreshing in background."
+    return items, warning, cache_age
+
+
+def _schedule_snapshot_location_scan(force: bool = False) -> bool:
+    now = time.time()
+    with _SNAPSHOT_LOCATIONS_CACHE_LOCK:
+        cached_items = list(_SNAPSHOT_LOCATIONS_CACHE.get("items", []))
+        updated = float(_SNAPSHOT_LOCATIONS_CACHE.get("updated") or 0.0)
+        refreshing = bool(_SNAPSHOT_LOCATIONS_CACHE.get("refreshing"))
+        cache_age = float("inf") if updated <= 0.0 else max(now - updated, 0.0)
+        need_scan = force or not cached_items or cache_age >= _SNAPSHOT_LOCATIONS_CACHE_TTL_SEC
+        if not need_scan or refreshing:
+            return False
+        _SNAPSHOT_LOCATIONS_CACHE["refreshing"] = True
+
+    def worker():
+        warning: Optional[str] = None
+        try:
+            items = _scan_snapshot_locations_impl()
+        except Exception as exc:  # pragma: no cover
+            warning = f"Snapshot location scan failed: {exc}"
+            try:
+                app.logger.warning(warning)
+            except Exception:
+                pass
+        else:
+            with _SNAPSHOT_LOCATIONS_CACHE_LOCK:
+                _SNAPSHOT_LOCATIONS_CACHE["items"] = items
+                _SNAPSHOT_LOCATIONS_CACHE["updated"] = time.time()
+        finally:
+            _set_snapshot_locations_warning(warning)
+            with _SNAPSHOT_LOCATIONS_CACHE_LOCK:
+                _SNAPSHOT_LOCATIONS_CACHE["refreshing"] = False
+
+    threading.Thread(target=worker, daemon=True).start()
+    return True
 
 
 def _snapshot_job_snapshot() -> Dict[str, object]:
@@ -6859,7 +6935,17 @@ def api_overclock_logs():
 def api_snapshots():
     snapshots = list_snapshots()
     job = _snapshot_job_snapshot()
-    locations, location_warning = _scan_snapshot_locations()
+    locations, location_warning, cache_age = _snapshot_locations_cached()
+    has_locations = bool(locations)
+    needs_refresh = (not has_locations) or cache_age >= _SNAPSHOT_LOCATIONS_CACHE_TTL_SEC
+    if needs_refresh:
+        kicked = _schedule_snapshot_location_scan(force=not has_locations)
+        if kicked and not location_warning:
+            location_warning = (
+                "Snapshot location scan is in progress; showing cached results."
+                if has_locations
+                else "Snapshot location scan queued; results will appear once discovery completes."
+            )
     with _AUTO_SNAPSHOT_LOCK:
         interval_sec = float(_AUTO_SNAPSHOT_STATE.get("interval") or 0.0)
         next_run = float(_AUTO_SNAPSHOT_STATE.get("next_run") or 0.0)
