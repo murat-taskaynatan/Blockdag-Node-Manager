@@ -1,8 +1,42 @@
 # Changelog
 
-## v1.5.4 - 2025-11-12
-- Settings now expose a “Require login” toggle plus username/password fields, so enabling the dashboard gate and rotating credentials no longer requires editing `/etc/blockdag-node-manager/node-manager.env`.
-- Liveness auto-recover defaults to off again; operators can re-enable it from Settings once their nodes are healthy, which prevents surprise auto-restores on fresh deployments.
+## v1.5.4 - 2025-11-13
+
+### Dashboard & Settings
+- Added a **Require login** toggle plus inline username/password inputs under Settings so you can enable the dashboard gate and rotate credentials without touching `/etc/blockdag-node-manager/node-manager.env`.
+- Reworked the login tiles and automation logs card (inline placement, consistent spacing/borders, clarified copy) so the Settings pane exposes the new controls without clutter.
+- Wallet summary copy now matches the data pulled from `rpc.awakening.bdagscan.com`, clarifying that the panel surfaces balances and recent history.
+
+### Snapshot & Recovery
+- Installs now seed `BDAG_SNAPSHOT_LIGHT_MODE=1`, and overlay flush/staging only run when an OverlayFS overclock toggle is enabled, dramatically cutting snapshot I/O on hosts that stick with ext4/btrfs.
+- Restore jobs stop the target container before extraction (the backend and `scripts/restore_offline_nodes.sh` share the same helper), preventing stale containers from breaking subsequent launches.
+
+### Monitoring & Automation
+- Health polling caches remote height RPC responses for five seconds by default (`BDAG_REMOTE_RPC_CACHE_SEC`) to reduce duplicate upstream calls on large fleets.
+- Liveness auto-recover now ships disabled by default again; flip it back on from Settings once your nodes are steady to avoid surprise recoveries on fresh installs.
+
+### Launchpad
+- Launchpad drops a helper entrypoint script into each deployment and mounts it automatically so nodeworker always invokes the preferred BDAG binary (falling back to `/usr/local/bin/bdag`), removing the need to edit docker-compose by hand.
+
+## v1.5.3 - 2025-11-12
+- Added a `BDAG_SNAPSHOT_LIGHT_MODE` switch that skips OverlayFS flushes and staging copies during snapshot jobs and routes restores through the Docker extractor, shaving minutes off backups on storage-constrained hosts.
+
+## v1.5.2 - 2025-11-12
+
+### Installer & Runtime Defaults
+- The installer pins the manager service to CPU `0` with a systemd drop-in, bumps Waitress concurrency to 24 threads, and documents `SERVICE_CPU_AFFINITY`/`SERVICE_CPU_WEIGHT` overrides so the UI stays responsive on busy hosts.
+
+### Snapshot & Recovery
+- Snapshot creation now stages data with rsync (tolerating vanished files), prunes pre-restore backups, auto-chowns staging directories, and fixes `network.key` ownership so permission errors stop derailing backups.
+- Restore jobs automatically fall back to Docker extraction when the host cannot write, suspend liveness auto-recover until the recovered node reports healthy, and prune stale backups to keep disks tidy.
+
+### Launchpad & Automation
+- Launchpad installs auto-chown their work directories, clean up busy-port/network leftovers, and keep the Launch button disabled after a success so accidental double submits stop happening.
+- Liveness auto-recover now trips after two failed restarts, hides manual restart/restore events from the Automation log, and request logging keeps operators informed whenever the manager triggers a recovery.
+
+### Observability & UI
+- Global stats now show the manager's hostname and IP, while the wallet balance toggle was removed so the dashboard simply displays balances whenever a wallet address exists.
+- `/api/node-manager` endpoints reuse cached samples instead of blocking on fresh collectors, and the background log viewer refreshes automatically so external tools and the UI stay responsive.
 
 ## v1.5.0 - 2025-11-10
 - Launchpad now calls the backend to preview auto-selected ports before you reach the Review step, so the UI shows the exact external bindings and blocks launch until the preview succeeds.
