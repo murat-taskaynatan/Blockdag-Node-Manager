@@ -2061,7 +2061,7 @@ function switchSummaryTab(target) {
       },
       wallet: {
         title: 'Wallet',
-        desc: 'Wallet address, balance, and recent history collected from rpc.awakening.bdagscan.com.',
+        desc: 'Balance, and recent history collected from rpc.awakening.bdagscan.com.',
       },
       launchpad: {
         title: 'Launchpad',
