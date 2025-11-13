@@ -23,18 +23,8 @@ ensure_clean_node() {
     echo "  Docker CLI not available; skipping cleanup for ${container}"
     return 0
   fi
-  local ids
-  if ! ids=$(docker ps -aq -f "name=${container}" 2>/dev/null); then
-    echo "  Unable to inspect docker for ${container}; skipping cleanup"
-    return 0
-  fi
-  if [[ -z "$ids" ]]; then
-    return 0
-  fi
-  echo "  Stopping existing container(s) for ${container}..."
-  docker stop $ids >/dev/null 2>&1 || true
-  echo "  Removing existing container(s) for ${container}..."
-  docker rm $ids >/dev/null 2>&1 || true
+  echo "  Stopping container ${container} before restore..."
+  docker stop "$container" >/dev/null 2>&1 || true
 }
 
 nodes_json=$(curl -sS "$BASE_URL/api/node-manager/nodes")

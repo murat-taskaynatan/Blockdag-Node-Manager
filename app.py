@@ -1939,6 +1939,7 @@ def _start_container(name: Optional[str], retries: int = 3, retry_delay: float =
 
 
 def _ensure_clean_container(name: Optional[str]) -> None:
+    """Stop the container if it is running so restores can safely reuse it."""
     if not name or not DOCKER_BIN:
         return
     exists, running, _ = _container_state(name)
@@ -1946,17 +1947,6 @@ def _ensure_clean_container(name: Optional[str]) -> None:
         return
     if running:
         _stop_container(name, timeout=45)
-    try:
-        subprocess.run(
-            [DOCKER_BIN, "rm", name],
-            check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-    except subprocess.CalledProcessError as exc:
-        message = (exc.stderr or exc.stdout or str(exc)).strip()
-        raise RuntimeError(f"Failed to remove container {name}: {message}")
 
 
 def _collect_home_dirs(primary_home: Optional[Path] = None) -> List[Path]:
