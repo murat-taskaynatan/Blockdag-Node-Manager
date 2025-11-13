@@ -697,36 +697,36 @@
               <span class="settings-status" id="settingsStatus"></span>
             </div>
           </form>
-          <div class="automation-log-card">
-            <section class="automation-log-panel" id="automationLogPanel">
-              <button type="button" class="automation-log-toggle" id="automationLogToggle" aria-expanded="false">
-                <span class="automation-log-title">
-                  <span>Automation Logs</span>
-                  <span class="automation-log-count" id="automationLogCount">0</span>
-                </span>
-                <span class="chevron">⌄</span>
-              </button>
-              <div class="automation-log-body" id="automationLogBody" hidden>
-                <div class="automation-log-controls">
-                  <span class="automation-log-status" id="automationLogStatus">No events yet.</span>
-                  <div class="automation-log-filter">
-                    <label>
-                      <span class="automation-log-filter-label">Event</span>
-                      <select id="automationLogFilter">
-                        <option value="all">All events</option>
-                        <option value="auto_restart">Auto Restart</option>
-                        <option value="chain_restore">Chain Recovery</option>
-                        <option value="auto_snapshot">Auto Snapshot</option>
-                      </select>
-                    </label>
-                    <button type="button" class="btn btn--ghost" id="automationLogRefresh">Refresh</button>
-                  </div>
+        </div>
+        <div class="automation-log-card">
+          <section class="automation-log-panel" id="automationLogPanel">
+            <button type="button" class="automation-log-toggle" id="automationLogToggle" aria-expanded="false">
+              <span class="automation-log-title">
+                <span>Automation Logs</span>
+                <span class="automation-log-count" id="automationLogCount">0</span>
+              </span>
+              <span class="chevron">⌄</span>
+            </button>
+            <div class="automation-log-body" id="automationLogBody" hidden>
+              <div class="automation-log-controls">
+                <span class="automation-log-status" id="automationLogStatus">No events yet.</span>
+                <div class="automation-log-filter">
+                  <label>
+                    <span class="automation-log-filter-label">Event</span>
+                    <select id="automationLogFilter">
+                      <option value="all">All events</option>
+                      <option value="auto_restart">Auto Restart</option>
+                      <option value="chain_restore">Chain Recovery</option>
+                      <option value="auto_snapshot">Auto Snapshot</option>
+                    </select>
+                  </label>
+                  <button type="button" class="btn btn--ghost" id="automationLogRefresh">Refresh</button>
                 </div>
-                <div class="automation-log-empty" id="automationLogEmpty">No automation activity yet.</div>
-                <ul class="automation-log-list" id="automationLogList"></ul>
               </div>
-            </section>
-          </div>
+              <div class="automation-log-empty" id="automationLogEmpty">No automation activity yet.</div>
+              <ul class="automation-log-list" id="automationLogList"></ul>
+            </div>
+          </section>
         </div>
         <div class="summary-pane" data-summary-pane="overclock" hidden>
           <form class="settings-form" id="overclockForm">
