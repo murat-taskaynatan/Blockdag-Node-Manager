@@ -141,11 +141,6 @@
   .setting-desc{color:var(--muted);font-size:13px;line-height:1.4}
   .setting-hint{color:var(--muted);font-size:12px;line-height:1.4}
   .setting-control{display:flex;align-items:center;gap:10px;position:relative}
-  .login-settings-text{gap:10px}
-  .login-settings-toggle{display:inline-flex;align-items:center;gap:10px}
-  .login-settings-toggle .toggle-hint{font-size:12px;color:var(--muted);text-transform:none}
-  .login-settings-fields{display:flex;gap:10px;width:100%;flex-wrap:wrap}
-  .login-settings-fields .setting-input{flex:1 1 140px;min-width:140px}
   .setting-control input[type="number"]{margin-right:auto}
   #settingAutoRestartHours,
   #settingAutoSnapshotHours{width:90px;padding:6px 10px;border:1px solid rgba(255,255,255,.15);border-radius:10px;background:rgba(255,255,255,.08);color:var(--text);font-size:13px;font-weight:600;box-sizing:border-box}
@@ -524,16 +519,23 @@
               </div>
             </label>
             <label class="setting-row">
-              <div class="setting-text login-settings-text">
-                <span class="setting-title">Dashboard login</span>
-                <span class="setting-desc">Require a username/password for remote access.</span>
-                <label class="toggle login-settings-toggle" title="Toggle login requirement">
+              <div class="setting-text">
+                <span class="setting-title">Require login</span>
+                <span class="setting-desc">Gate the dashboard behind a username and password for remote access.</span>
+              </div>
+              <div class="setting-control">
+                <label class="toggle" title="Toggle login requirement">
                   <input type="checkbox" class="toggle-input" id="settingLoginGate" name="login_gate_enabled" data-setting-key="login_gate_enabled">
                   <span class="toggle-slider"></span>
-                  <span class="toggle-hint">Require login</span>
                 </label>
               </div>
-              <div class="setting-control login-settings-fields">
+            </label>
+            <label class="setting-row">
+              <div class="setting-text">
+                <span class="setting-title">Login username</span>
+                <span class="setting-desc">Choose the username required when login is enabled.</span>
+              </div>
+              <div class="setting-control">
                 <input
                   type="text"
                   class="setting-input"
@@ -545,6 +547,14 @@
                   autocomplete="off"
                   spellcheck="false"
                 >
+              </div>
+            </label>
+            <label class="setting-row">
+              <div class="setting-text">
+                <span class="setting-title">Login password</span>
+                <span class="setting-desc">Set the password used for dashboard sign-in (stored locally in settings.json).</span>
+              </div>
+              <div class="setting-control">
                 <input
                   type="password"
                   class="setting-input"
