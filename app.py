@@ -525,6 +525,17 @@ ENV_REMOTE_RPC_BASES = _parse_remote_rpc_bases(
 )
 DEFAULT_REMOTE_BASES = ENV_REMOTE_RPC_BASES or DEFAULT_REMOTE_RPC_BASES[:]
 
+_REMOTE_HEIGHT_CACHE: Dict[Tuple[str, str], Dict[str, object]] = {}
+_REMOTE_HEIGHT_CACHE_LOCK = threading.Lock()
+_REMOTE_HEIGHT_CACHE_TTL_SEC = max(
+    1.0,
+    float(os.getenv("BDAG_REMOTE_RPC_CACHE_SEC", "5") or "5"),
+)
+_REMOTE_HEIGHT_CACHE_MAX_AGE_SEC = max(
+    _REMOTE_HEIGHT_CACHE_TTL_SEC * 6,
+    _REMOTE_HEIGHT_CACHE_TTL_SEC + 5.0,
+)
+
 WEI_PER_BDAG = Decimal("1000000000000000000")
 WALLET_BALANCE_CACHE_SEC = max(0.0, float(os.getenv("BDAG_BALANCE_CACHE_SEC", "120") or "120"))
 _wallet_address_cache: Dict[str, object] = {"path": None, "mtime": 0.0, "address": None}
@@ -4772,25 +4783,51 @@ def _fetch_peer_count(ctx: NodeContext) -> Optional[int]:
     return 0
 
 
-def _fetch_remote_height(ctx: NodeContext) -> Optional[int]:
+def _remote_height_from_cache(
+    base: str, method: str, *, timeout: float, verify: bool
+) -> Tuple[Optional[int], Optional[float]]:
+    key = (base, method)
+    now = time.time()
+    with _REMOTE_HEIGHT_CACHE_LOCK:
+        entry = _REMOTE_HEIGHT_CACHE.get(key)
+        if entry:
+            age = now - float(entry.get("ts", 0.0))
+            if age <= _REMOTE_HEIGHT_CACHE_TTL_SEC:
+                return entry.get("height"), entry.get("latency_ms")
+    start = time.perf_counter()
+    result = _rpc_call(
+        base,
+        method,
+        [],
+        timeout=timeout,
+        auth=None,
+        verify=verify,
+    )
+    latency_ms = (time.perf_counter() - start) * 1000.0
+    height = _parse_height_value(result)
+    if height is None:
+        return None, None
+    with _REMOTE_HEIGHT_CACHE_LOCK:
+        _REMOTE_HEIGHT_CACHE[key] = {"height": height, "ts": time.time(), "latency_ms": latency_ms}
+    return height, latency_ms
+
+
+def _fetch_remote_height(ctx: NodeContext) -> Tuple[Optional[int], Optional[float]]:
     if not ctx.remote_rpc_bases:
-        return None
+        return None, None
     for base in ctx.remote_rpc_bases:
         try:
-            result = _rpc_call(
+            height, latency_ms = _remote_height_from_cache(
                 base,
                 ctx.remote_rpc_method,
-                [],
                 timeout=ctx.remote_rpc_timeout,
-                auth=None,
                 verify=ctx.remote_rpc_verify,
             )
-            height = _parse_height_value(result)
             if height is not None:
-                return height
+                return height, latency_ms
         except Exception:
             continue
-    return None
+    return None, None
 
 
 def _parse_docker_timestamp(value: str) -> Optional[float]:
@@ -4869,15 +4906,12 @@ def _collect_node_metrics(ctx: NodeContext) -> Tuple[dict, Optional[int]]:
     finally:
         local_latency_ms = (time.perf_counter() - start_local) * 1000.0
     has_remote = bool(ctx.remote_rpc_bases)
-    remote_latency_ms = None
+    remote_latency_ms: Optional[float] = None
     if has_remote:
-        start_remote = time.perf_counter()
         try:
-            remote_height = _fetch_remote_height(ctx)
+            remote_height, remote_latency_ms = _fetch_remote_height(ctx)
         except Exception:
-            remote_height = None
-        finally:
-            remote_latency_ms = (time.perf_counter() - start_remote) * 1000.0
+            remote_height, remote_latency_ms = None, None
     else:
         remote_height = None
     try:
