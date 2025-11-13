@@ -302,6 +302,9 @@ const state = {
     display_wallet_balance: false,
     snapshot_max: 0,
     cpu_temp_path: '',
+    login_gate_enabled: false,
+    login_user: '',
+    login_pass: '',
   };
 
   state.settings = { ...defaultSettings };
@@ -869,6 +872,8 @@ const state = {
         const value = Number(rawValue);
         input.value = Number.isFinite(value) && value >= 0 ? value : '';
       } else if (type === 'text') {
+        input.value = typeof rawValue === 'string' ? rawValue : rawValue == null ? '' : String(rawValue);
+      } else if (type === 'password') {
         input.value = typeof rawValue === 'string' ? rawValue : rawValue == null ? '' : String(rawValue);
       } else {
         input.checked = !!rawValue;
@@ -2121,6 +2126,11 @@ function updateSettingsStatus(message, options = {}) {
         input.value = safeValue;
         state.settings[key] = safeValue;
       } else if (type === 'text') {
+        const raw = merged[key];
+        const value = typeof raw === 'string' ? raw : raw == null ? '' : String(raw);
+        input.value = value;
+        state.settings[key] = value;
+      } else if (type === 'password') {
         const raw = merged[key];
         const value = typeof raw === 'string' ? raw : raw == null ? '' : String(raw);
         input.value = value;
@@ -3996,6 +4006,9 @@ function syncCards(nodes) {
           } else if (type === 'text') {
             const value = target.value.trim();
             target.value = value;
+            state.settings[key] = value;
+          } else if (type === 'password') {
+            const value = target.value;
             state.settings[key] = value;
           } else {
             state.settings[key] = !!target.checked;
