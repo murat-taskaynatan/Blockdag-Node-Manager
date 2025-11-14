@@ -8,6 +8,7 @@ const state = {
     lastProgress: new Map(), // id -> last non-null sync progress
     nodeLogs: new Map(), // id -> { lines, ts, loading, error }
     logPollTimers: new Map(),
+    pendingNodeActions: new Map(), // id -> optimistic button states
     lastMetricsTs: 0,
     settings: {},
     summary: null,
@@ -1439,11 +1440,11 @@ const state = {
         if (snapshotLock) {
           toggleBtn.dataset.snapshotLock = '1';
           toggleBtn.disabled = true;
-        } else if (toggleBtn.dataset.snapshotLock === '1') {
-          delete toggleBtn.dataset.snapshotLock;
-          if (!toggleBtn.dataset.manualDisable) {
-            toggleBtn.disabled = false;
+        } else {
+          if (toggleBtn.dataset.snapshotLock === '1') {
+            delete toggleBtn.dataset.snapshotLock;
           }
+          updatePendingStartStopState(toggleBtn, nodeId);
         }
       }
     });
@@ -2954,6 +2955,34 @@ function syncCards(nodes) {
     }
   }
 
+  function resolvePendingState(nodeId, containerRunning, effectiveRunning, forcedOffline) {
+    const pendingAction = state.pendingNodeActions.get(nodeId);
+    if (!pendingAction) {
+      return {
+        containerRunning,
+        effectiveRunning,
+        forcedOffline,
+      };
+    }
+    const matches =
+      containerRunning === pendingAction.expectedRunning &&
+      effectiveRunning === pendingAction.expectedEffective &&
+      Boolean(forcedOffline) === Boolean(pendingAction.forcedOffline);
+    if (matches) {
+      state.pendingNodeActions.delete(nodeId);
+      return {
+        containerRunning,
+        effectiveRunning,
+        forcedOffline,
+      };
+    }
+    return {
+      containerRunning: pendingAction.expectedRunning,
+      effectiveRunning: pendingAction.expectedEffective,
+      forcedOffline: Boolean(pendingAction.forcedOffline),
+    };
+  }
+
   function updateCardHeader(node) {
     const entry = state.nodes.get(node.id);
     if (!entry) return;
@@ -3027,6 +3056,15 @@ function syncCards(nodes) {
       forceOffline: forcedHeader.forced,
       reason: forcedHeader.reason,
     });
+    const pendingState = resolvePendingState(
+      node.id,
+      containerRunning,
+      effectiveRunning,
+      forcedHeader.forced
+    );
+    const displayContainerRunning = pendingState.containerRunning;
+    const displayEffectiveRunning = pendingState.effectiveRunning;
+    const displayForcedOffline = pendingState.forcedOffline;
     const displayHealth = health.display;
     const code = health.code;
     const healthDetail = health.detail;
@@ -3072,10 +3110,12 @@ function syncCards(nodes) {
     setStat(card, '.stat-peers', stats.peers);
     setPeerId(card, stats.peer_id, stats.peer_ports);
     updateUptime(card, stats.uptime_seconds);
-    updateStartStopButton(card.querySelector('[data-role="toggle"]'), containerRunning, {
-      effectiveRunning,
-      forcedOffline: forcedHeader.forced,
+    const toggleBtn = card.querySelector('[data-role="toggle"]');
+    updateStartStopButton(toggleBtn, displayContainerRunning, {
+      effectiveRunning: displayEffectiveRunning,
+      forcedOffline: displayForcedOffline,
     });
+    updatePendingStartStopState(toggleBtn, node.id);
     if (entry.meta && entry.meta.status) {
       entry.meta.status.container_running = containerRunning;
       entry.meta.status.forced_offline = forcedHeader.forced;
@@ -3615,6 +3655,85 @@ function syncCards(nodes) {
     btn.title = title;
   }
 
+  function updatePendingStartStopState(btn, nodeId) {
+    if (!btn || !nodeId) return;
+    const forcedDisable =
+      btn.dataset.snapshotLock === '1' ||
+      btn.dataset.manualDisable === '1' ||
+      btn.dataset.controlLock === '1';
+    if (forcedDisable) {
+      return;
+    }
+    const pending = state.pendingNodeActions.has(nodeId);
+    if (pending) {
+      btn.dataset.pendingAction = '1';
+      btn.classList.add('is-pending');
+      btn.disabled = true;
+      btn.setAttribute('aria-busy', 'true');
+      return;
+    }
+    btn.classList.remove('is-pending');
+    delete btn.dataset.pendingAction;
+    btn.removeAttribute('aria-busy');
+    btn.disabled = false;
+  }
+
+  function applyLocalNodeStatus(nodeId, statusPatch = {}) {
+    if (!nodeId) return;
+    const entry = state.nodes.get(nodeId);
+    if (!entry) return;
+    const baseMeta = entry.meta || { id: nodeId };
+    const mergedStatus = {
+      ...(baseMeta.status || {}),
+      ...statusPatch,
+    };
+    const mergedNode = {
+      ...baseMeta,
+      id: baseMeta.id || nodeId,
+      status: mergedStatus,
+    };
+    updateCardHeader(mergedNode);
+  }
+
+  async function waitForNodeState(nodeId, expectedState, options = {}) {
+    const { timeoutMs = 10000, pollIntervalMs = 600 } = options;
+    if (!nodeId || !expectedState) return false;
+    const deadline = Date.now() + timeoutMs;
+    const query = encodeURIComponent(nodeId);
+    while (Date.now() < deadline) {
+      try {
+        const res = await fetch(`/api/node-manager/metrics?nodes=${query}&force=1`, {
+          cache: 'no-store',
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const payload = await res.json();
+        const nodeMetrics = payload?.nodes?.[nodeId];
+        if (!nodeMetrics) break;
+        const containerRunning = isRunningFlag(
+          nodeMetrics.container_running ?? nodeMetrics.raw_running ?? nodeMetrics.running
+        );
+        const effectiveRunning = isRunningFlag(nodeMetrics.running);
+        const forcedOffline = Boolean(nodeMetrics.forced_offline || nodeMetrics.stalled);
+        if (
+          containerRunning === expectedState.containerRunning &&
+          effectiveRunning === expectedState.effectiveRunning &&
+          forcedOffline === Boolean(expectedState.forcedOffline)
+        ) {
+          state.pendingNodeActions.delete(nodeId);
+          applyLocalNodeStatus(nodeId, nodeMetrics);
+          return true;
+        }
+      } catch (err) {
+        console.warn('[fleet] waitForNodeState failed', err);
+        break;
+      }
+      await new Promise((resolve) => {
+        window.setTimeout(resolve, pollIntervalMs);
+      });
+    }
+    return false;
+  }
+
   async function startStopNode(nodeId, btn) {
     const entry = state.nodes.get(nodeId);
     if (!entry) return;
@@ -3659,11 +3778,26 @@ function syncCards(nodes) {
         effective_running: optimisticState.effectiveRunning,
         forced_offline: optimisticState.forcedOffline,
       };
+      state.pendingNodeActions.set(nodeId, {
+        action,
+        expectedRunning: optimisticState.containerRunning,
+        expectedEffective: optimisticState.effectiveRunning,
+        forcedOffline: optimisticState.forcedOffline,
+        startedAt: Date.now(),
+      });
+      if (btn) {
+        updatePendingStartStopState(btn, nodeId);
+      }
+    } else {
+      state.pendingNodeActions.delete(nodeId);
     }
     if (btn) {
       btn.disabled = true;
       btn.dataset.manualDisable = '1';
+      btn.dataset.controlLock = '1';
     }
+    let controlSucceeded = false;
+    let confirmedState = false;
     try {
       const res = await fetch('/api/control', {
         method: 'POST',
@@ -3671,17 +3805,37 @@ function syncCards(nodes) {
         body: JSON.stringify({ action, container, node: nodeId }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      controlSucceeded = true;
+      if (optimisticState) {
+        confirmedState = await waitForNodeState(nodeId, {
+          containerRunning: optimisticState.containerRunning,
+          effectiveRunning: optimisticState.effectiveRunning,
+          forcedOffline: optimisticState.forcedOffline,
+        });
+        if (!confirmedState) {
+          state.pendingNodeActions.delete(nodeId);
+        }
+      }
     } catch (err) {
       console.error('[fleet] start/stop failed', err);
+      state.pendingNodeActions.delete(nodeId);
     } finally {
       if (btn) {
         delete btn.dataset.manualDisable;
-        if (!btn.dataset.snapshotLock) {
-          btn.disabled = false;
+        delete btn.dataset.controlLock;
+        if (btn.dataset.snapshotLock === '1') {
+          btn.disabled = true;
+        } else {
+          updatePendingStartStopState(btn, nodeId);
         }
       }
-      await loadNodes();
-      await refreshMetrics();
+      if (!controlSucceeded) {
+        state.pendingNodeActions.delete(nodeId);
+      }
+      window.setTimeout(() => {
+        void loadNodes();
+        void refreshMetrics();
+      }, 0);
     }
   }
 
@@ -3831,10 +3985,18 @@ function syncCards(nodes) {
         },
       });
 
-      updateStartStopButton(card.querySelector('[data-role="toggle"]'), containerRunning, {
+      const pendingState = resolvePendingState(
+        nodeId,
+        containerRunning,
         effectiveRunning,
-        forcedOffline: forcedState.forced,
+        forcedState.forced
+      );
+      const toggleBtn = card.querySelector('[data-role="toggle"]');
+      updateStartStopButton(toggleBtn, pendingState.containerRunning, {
+        effectiveRunning: pendingState.effectiveRunning,
+        forcedOffline: pendingState.forcedOffline,
       });
+      updatePendingStartStopState(toggleBtn, nodeId);
       setPeerId(card, metrics.peer_id, metrics.peer_ports);
       entry.meta.status = {
         ...(entry.meta.status || {}),

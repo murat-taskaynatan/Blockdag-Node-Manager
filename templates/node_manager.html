@@ -350,7 +350,10 @@
   .snapshot-empty{font-size:13px;color:var(--muted);padding:12px;border:1px dashed rgba(255,255,255,.14);border-radius:12px;text-align:center}
 .icon-btn{width:41px;height:41px;border-radius:14px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.03);color:inherit;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background .2s,border .2s,color .2s}
 .icon-btn:hover:not(:disabled){background:rgba(255,255,255,.08)}
-.icon-btn .icon{display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:17px;line-height:1;transform:none}
+  .icon-btn .icon{display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:17px;line-height:1;transform:none;transition:opacity .15s}
+  .icon-btn.play.is-pending{position:relative;color:var(--muted)}
+  .icon-btn.play.is-pending .icon{opacity:0}
+  .icon-btn.play.is-pending::after{content:'';position:absolute;inset:0;margin:auto;width:18px;height:18px;border:2px solid rgba(255,255,255,.3);border-top-color:var(--muted);border-radius:50%;animation:nodeSpinner 1s linear infinite}
 .icon-btn.play[data-action="start"] .icon{font-size:18px;transform:translateX(1px)}
 .icon-btn.play[data-action="restart"] .icon{font-size:17px;transform:none}
 .icon-btn.play[data-running="1"] .icon{transform:none}
@@ -1146,4 +1149,4 @@
 
 <script src="{{ url_for('static', filename='chart.umd.min.js') }}"></script>
 <script src="{{ url_for('static', filename='node_manager.js') }}?v={{ app_version }}-{{ cache_buster }}"></script>
-        <div class="version-badge"><strong>{{ app_version_display or 'v1.5.5' }}</strong></div>
+        <div class="version-badge"><strong>{{ app_version_display or 'v1.5.6' }}</strong></div>

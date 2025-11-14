@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.5.6 - 2025-11-17
+
+- Start/stop controls now stay disabled with a spinner until the backend confirms each action, and health chips update immediately using the new optimistic state patching.
+- The Node Manager UI no longer flickers between stop/start icons during control actions thanks to per-node pending state tracking and forced metrics confirmation.
+- Installer scripts and default version badges point to `v1.5.6` so fresh installs pull the latest tag without extra flags.
+
 ## v1.5.5 - 2025-11-13
 
 ### Snapshot & Recovery
