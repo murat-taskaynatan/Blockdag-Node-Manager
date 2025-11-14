@@ -2678,6 +2678,21 @@ def _run_snapshot_job(details: Dict[str, object]) -> None:
                 status=status,
                 metadata={"trigger": trigger_label},
             )
+        if status == "completed":
+            label = (details or {}).get("label") or (details or {}).get("node")
+            summary = message or (f"Snapshot job completed{f' for {label}' if label else ''}")
+            _automation_event(
+                "snapshot_job",
+                summary,
+                node=(details or {}).get("node"),
+                container=(details or {}).get("container"),
+                status="success",
+                metadata={
+                    "path": dest_name,
+                    "mode": (details or {}).get("mode"),
+                    "trigger": (details or {}).get("trigger"),
+                },
+            )
 
 
 def _snapshot_post_restore_sanity(data_dir: Optional[Path]) -> List[str]:
@@ -3168,6 +3183,23 @@ def _run_restore_job(details: Dict[str, object]) -> None:
                     "ended": time.time(),
                     "warnings": job_warnings,
                 }
+            )
+        if status == "completed":
+            label = details.get("label") or details.get("node")
+            completion_message = (
+                f"Chain data recovery completed for {label}" if label else (message or "Chain data recovery completed")
+            )
+            _automation_event(
+                "chain_restore",
+                completion_message,
+                node=details.get("node"),
+                container=details.get("container"),
+                status="success",
+                metadata={
+                    "snapshot": details.get("snapshot"),
+                    "trigger": details.get("trigger"),
+                    "restart": details.get("restart"),
+                },
             )
 
 
