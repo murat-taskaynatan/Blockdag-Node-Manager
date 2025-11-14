@@ -14,7 +14,6 @@ const state = {
     settingsDirty: false,
     snapshots: {
       items: [],
-      locations: [],
       dir: '',
       job: null,
     },
@@ -89,7 +88,6 @@ const state = {
   const snapshotStatus = document.getElementById('snapshotStatus');
   const snapshotEmptyState = document.getElementById('snapshotEmptyState');
   const snapshotRefreshBtn = document.getElementById('btnRefreshSnapshots');
-  const snapshotScanBtn = document.getElementById('btnScanSnapshots');
   const automationLogPanel = document.getElementById('automationLogPanel');
   const automationLogToggle = document.getElementById('automationLogToggle');
   const automationLogBody = document.getElementById('automationLogBody');
@@ -1454,9 +1452,7 @@ const state = {
   function renderSnapshots() {
     const snapshotsState = state.snapshots || {};
     const items = Array.isArray(snapshotsState.items) ? snapshotsState.items : [];
-    const dir = snapshotsState.dir || '';
     const job = snapshotsState.job || null;
-    const locations = Array.isArray(snapshotsState.locations) ? snapshotsState.locations : [];
     const hasSnapshots = items.length > 0;
     if (!snapshotList) {
       return;
@@ -1569,9 +1565,6 @@ const state = {
     if (snapshotRefreshBtn && !snapshotRefreshBtn.dataset.busy) {
       snapshotRefreshBtn.disabled = !!jobActive;
     }
-    if (snapshotScanBtn && !snapshotScanBtn.dataset.busy) {
-      snapshotScanBtn.disabled = !!jobActive;
-    }
 
     if (snapshotList) {
       snapshotList.querySelectorAll('[data-snapshot-action="delete"]').forEach((btn) => {
@@ -1584,7 +1577,7 @@ const state = {
 
   function ensureSnapshotState() {
     if (!state.snapshots) {
-      state.snapshots = { items: [], locations: [], dir: '', job: null };
+      state.snapshots = { items: [], dir: '', job: null };
     }
     return state.snapshots;
   }
@@ -1631,16 +1624,10 @@ const state = {
       const payload = await res.json();
       state.snapshots = {
         items: Array.isArray(payload.snapshots) ? payload.snapshots : [],
-        locations: Array.isArray(payload.locations) ? payload.locations : [],
         dir: payload.directory || '',
         job: payload.job || null,
         automation: payload.automation || null,
       };
-      if (payload.locationWarning) {
-        state.snapshots.locationWarning = payload.locationWarning;
-      } else if (state.snapshots) {
-        delete state.snapshots.locationWarning;
-      }
       if (!preserveStatus && payload.status && payload.status.text) {
         state.snapshotStatus = {
           text: payload.status.text,
@@ -1649,23 +1636,6 @@ const state = {
         };
       } else if (!silent && !preserveStatus) {
         state.snapshotStatus = { text: 'Snapshots refreshed.', level: 'ok', manual: false };
-      }
-      if (payload.locationWarning) {
-        const warning = payload.locationWarning.trim();
-        if (warning) {
-          const current = state.snapshotStatus && state.snapshotStatus.text ? state.snapshotStatus.text : '';
-          if (!current) {
-            state.snapshotStatus = { text: warning, level: 'warn', manual: false };
-          } else if (!current.includes(warning)) {
-            const combined = `${current}\n${warning}`.trim();
-            const level = (state.snapshotStatus && state.snapshotStatus.level === 'error') ? 'error' : 'warn';
-            state.snapshotStatus = {
-              text: combined,
-              level,
-              manual: state.snapshotStatus ? state.snapshotStatus.manual : false,
-            };
-          }
-        }
       }
       state.snapshotsLoaded = true;
       renderSnapshots();
@@ -1771,31 +1741,6 @@ const state = {
         setBusy(btn, false);
       }
       updateSnapshotButtons();
-    }
-  }
-
-  async function scanSnapshots() {
-    if (!snapshotScanBtn || snapshotScanBtn.dataset.busy) return;
-    setSnapshotStatus('Scanning snapshot locations…', { level: 'warn' });
-    setBusy(snapshotScanBtn, true, 'Scanning…');
-    try {
-      const res = await fetch('/api/snapshots/scan', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({}),
-      });
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok || payload.ok === false) {
-        throw new Error(payload && payload.error ? payload.error : `HTTP ${res.status}`);
-      }
-      const message = payload.message || 'Snapshot locations updated.';
-      setSnapshotStatus(message, { level: 'ok' });
-      await loadSnapshots({ silent: true });
-      setSnapshotStatus(message, { level: 'ok' });
-    } catch (err) {
-      setSnapshotStatus(err && err.message ? err.message : 'Snapshot scan failed', { level: 'error' });
-    } finally {
-      setBusy(snapshotScanBtn, false);
     }
   }
 
@@ -4718,11 +4663,6 @@ function syncCards(nodes) {
     if (snapshotRefreshBtn) {
       snapshotRefreshBtn.addEventListener('click', () => {
         void refreshSnapshots();
-      });
-    }
-    if (snapshotScanBtn) {
-      snapshotScanBtn.addEventListener('click', () => {
-        void scanSnapshots();
       });
     }
     if (snapshotList) {

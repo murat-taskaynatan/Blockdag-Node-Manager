@@ -649,14 +649,14 @@
             <label class="setting-row">
               <div class="setting-text">
                 <span class="setting-title">Snapshot directory</span>
-                <span class="setting-desc">Path where snapshot archives are stored. Updates trigger a new directory scan.</span>
+                <span class="setting-desc">Path where snapshot archives are stored. Defaults to the manager's local <code>backups</code> folder; update to use another location.</span>
               </div>
               <div class="setting-control">
                 <input
                   type="text"
                   class="setting-input"
                   id="settingSnapshotDir"
-                  placeholder="/blockdag-scripts/backups"
+                  placeholder="/opt/blockdag-node-manager/backups"
                   data-setting-key="snapshot_dir"
                   data-setting-type="text"
                   spellcheck="false"
@@ -1025,14 +1025,9 @@
                   <span class="icon">🔄</span>
                   Refresh
                 </button>
-                <button type="button" class="btn btn--ghost" id="btnScanSnapshots">
-                  <span class="icon">🧭</span>
-                  Rescan Locations
-                </button>
               </div>
             </div>
             <div class="snapshot-meta">
-              <div class="snapshot-locations" id="snapshotLocations" hidden></div>
               <span class="snapshot-status" id="snapshotStatus"></span>
             </div>
             <div class="snapshot-latest-grid" id="snapshotList">
