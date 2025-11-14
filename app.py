@@ -683,7 +683,7 @@ def _detect_primary_ip() -> Optional[str]:
 SETTINGS_PATH = Path(__file__).resolve().parent / "config" / "settings.json"
 SNAPSHOT_MAX_DEFAULT = max(0, int(os.getenv("BDAG_SNAPSHOT_MAX", "0") or 0))
 SNAPSHOT_MAX = SNAPSHOT_MAX_DEFAULT
-SNAPSHOT_DIR_DEFAULT_PATH = "/blockdag-scripts/backups"
+SNAPSHOT_DIR_DEFAULT_PATH = str((Path(__file__).resolve().parent / "backups"))
 
 DEFAULT_SETTINGS: Dict[str, object] = {
     "liveness_auto_recover": False,
@@ -763,7 +763,6 @@ def _apply_runtime_settings(settings: Dict[str, object]) -> None:
         path_value = str(DEFAULT_SETTINGS.get("cpu_temp_path", "")).strip()
     _CUSTOM_TEMP_PATH = _normalize_path(path_value)
 
-    previous_snapshot_dir = str(SNAPSHOT_DIR)
     requested_snapshot_dir = str(settings.get("snapshot_dir") or "").strip()
     env_snapshot_dir = os.getenv("BDAG_SNAPSHOT_DIR", "").strip()
     effective_snapshot_dir = requested_snapshot_dir or env_snapshot_dir or SNAPSHOT_DIR_DEFAULT_PATH
@@ -772,13 +771,6 @@ def _apply_runtime_settings(settings: Dict[str, object]) -> None:
         _ensure_directory_rw(SNAPSHOT_DIR, create=True)
     except Exception:
         pass
-    if previous_snapshot_dir != str(SNAPSHOT_DIR):
-        with _SNAPSHOT_LOCATIONS_CACHE_LOCK:
-            _SNAPSHOT_LOCATIONS_CACHE.clear()
-        try:
-            _schedule_snapshot_location_scan(force=True)
-        except Exception:
-            pass
 
     login_user = str(settings.get("login_user") or "").strip() or _ENV_LOGIN_USER
     login_pass = str(settings.get("login_pass") or "").strip() or _ENV_LOGIN_PASS
@@ -1391,21 +1383,6 @@ _SNAPSHOT_JOB_STATE: Dict[str, object] = {
     "started": None,
     "ended": None,
 }
-_SNAPSHOT_LOCATIONS_CACHE: Dict[str, object] = {
-    "items": [],
-    "updated": 0.0,
-    "refreshing": False,
-    "last_warning": None,
-}
-_SNAPSHOT_LOCATIONS_CACHE_LOCK = threading.Lock()
-_SNAPSHOT_LOCATIONS_SCAN_LOCK = threading.Lock()
-_SNAPSHOT_LOCATIONS_TIMEOUT_SEC = max(
-    1.0, float(os.getenv("BDAG_SNAPSHOT_LOCATIONS_TIMEOUT_SEC", "6") or "6")
-)
-_SNAPSHOT_LOCATIONS_CACHE_TTL_SEC = max(
-    _SNAPSHOT_LOCATIONS_TIMEOUT_SEC,
-    float(os.getenv("BDAG_SNAPSHOT_LOCATIONS_TTL_SEC", "45") or "45"),
-)
 
 
 def _estimate_dir_size_bytes(directory: Optional[Path]) -> int:
@@ -2041,24 +2018,6 @@ def _collect_home_dirs(primary_home: Optional[Path] = None) -> List[Path]:
     return homes
 
 
-def _candidate_snapshot_dirs() -> List[Path]:
-    candidates: List[Path] = []
-    seen: set[str] = set()
-
-    def enqueue(path: Optional[Path]) -> None:
-        normalized = _normalize_path(path)
-        if not normalized:
-            return
-        key = str(normalized)
-        if key in seen:
-            return
-        seen.add(key)
-        candidates.append(normalized)
-
-    enqueue(SNAPSHOT_DIR)
-    return candidates
-
-
 def _snapshot_patterns() -> List[str]:
     patterns = [f"{SNAPSHOT_PREFIX}*.tar"]
     patterns.extend(LEGACY_SNAPSHOT_PATTERNS)
@@ -2070,7 +2029,6 @@ def _ensure_snapshot_dir() -> Path:
         directory = SNAPSHOT_DIR
         _ensure_directory_rw(directory, create=True)
         return directory
-
 
 def _ensure_sensor_packages() -> None:
     if shutil.which("sensors"):
@@ -2103,21 +2061,6 @@ def list_snapshots() -> List[dict]:
             files.extend(directory.glob(pattern))
         except Exception:
             continue
-    if not files:
-        for candidate in _candidate_snapshot_dirs():
-            if candidate == directory:
-                continue
-            tmp: List[Path] = []
-            for pattern in patterns:
-                try:
-                    tmp.extend(candidate.glob(pattern))
-                except Exception:
-                    continue
-            if tmp:
-                if _update_snapshot_dir(candidate):
-                    directory = candidate
-                files = tmp
-                break
     files.sort(key=lambda path: path.stat().st_mtime if path.exists() else 0.0, reverse=True)
     snapshots: List[dict] = []
     for path in files:
@@ -2201,176 +2144,6 @@ def _stage_snapshot_source(data_dir: Path, snapshot_dir: Path) -> Path:
     except Exception:
         pass
     return staging_dir
-
-
-def _scan_snapshot_locations_impl() -> List[dict]:
-    results: List[dict] = []
-    patterns = _snapshot_patterns()
-    for directory in _candidate_snapshot_dirs():
-        if not directory.exists() or not directory.is_dir():
-            continue
-        entries: List[Path] = []
-        for pattern in patterns:
-            try:
-                entries.extend(directory.glob(pattern))
-            except Exception:
-                continue
-        if not entries:
-            continue
-        count = 0
-        latest_mtime = 0.0
-        latest_name = ""
-        total_size = 0
-        for entry in entries:
-            try:
-                stat = entry.stat()
-            except OSError:
-                continue
-            count += 1
-            total_size += stat.st_size
-            if stat.st_mtime > latest_mtime:
-                latest_mtime = stat.st_mtime
-                latest_name = entry.name
-        if count == 0:
-            continue
-        try:
-            latest_iso = datetime.fromtimestamp(latest_mtime, timezone.utc).isoformat()
-        except Exception:
-            latest_iso = None
-        results.append(
-            {
-                "path": str(directory),
-                "count": count,
-                "latest": latest_iso,
-                "latest_name": latest_name,
-                "total_size": total_size,
-                "latest_ts": latest_mtime,
-            }
-        )
-    results.sort(key=lambda item: item.get("latest_ts", 0.0), reverse=True)
-    for item in results:
-        item.pop("latest_ts", None)
-    return results
-
-
-def _scan_snapshot_locations(timeout: Optional[float] = None, *, force: bool = False) -> Tuple[List[dict], Optional[str]]:
-    timeout = timeout or _SNAPSHOT_LOCATIONS_TIMEOUT_SEC
-    now = time.time()
-    with _SNAPSHOT_LOCATIONS_CACHE_LOCK:
-        cached_items = list(_SNAPSHOT_LOCATIONS_CACHE.get("items", []))
-        updated = float(_SNAPSHOT_LOCATIONS_CACHE.get("updated") or 0.0)
-    cache_age = now - updated
-    if cached_items and not force and cache_age < _SNAPSHOT_LOCATIONS_CACHE_TTL_SEC:
-        return cached_items, None
-
-    result_holder: Dict[str, object] = {"items": None, "error": None}
-    done_event = threading.Event()
-
-    def worker():
-        try:
-            items = _scan_snapshot_locations_impl()
-        except Exception as exc:  # pragma: no cover
-            result_holder["error"] = str(exc)
-        else:
-            result_holder["items"] = items
-            with _SNAPSHOT_LOCATIONS_CACHE_LOCK:
-                _SNAPSHOT_LOCATIONS_CACHE["items"] = items
-                _SNAPSHOT_LOCATIONS_CACHE["updated"] = time.time()
-        finally:
-            with _SNAPSHOT_LOCATIONS_CACHE_LOCK:
-                _SNAPSHOT_LOCATIONS_CACHE["refreshing"] = False
-            done_event.set()
-
-    # Prevent multiple expensive scans from running simultaneously.
-    with _SNAPSHOT_LOCATIONS_SCAN_LOCK:
-        with _SNAPSHOT_LOCATIONS_CACHE_LOCK:
-            _SNAPSHOT_LOCATIONS_CACHE["refreshing"] = True
-        thread = threading.Thread(target=worker, daemon=True)
-        thread.start()
-    finished = done_event.wait(timeout)
-    if not finished:
-        warning = "Snapshot location scan is still running; showing cached results."
-        if force and not cached_items:
-            _set_snapshot_locations_warning(warning)
-            raise TimeoutError(warning)
-        if not cached_items:
-            _set_snapshot_locations_warning(warning)
-            return [], warning
-        app.logger.warning("%s (timeout %.1fs)", warning, timeout)
-        _set_snapshot_locations_warning(warning)
-        return cached_items, warning
-    error = result_holder.get("error")
-    if error:
-        if force:
-            _set_snapshot_locations_warning(f"Snapshot location scan failed: {error}")
-            raise RuntimeError(error)
-        app.logger.warning("Snapshot location scan failed: %s", error)
-        if cached_items:
-            warning = f"Snapshot location scan failed; showing cached results. ({error})"
-            _set_snapshot_locations_warning(warning)
-            return cached_items, warning
-        warning = f"Snapshot location scan failed: {error}"
-        _set_snapshot_locations_warning(warning)
-        return [], warning
-    items = result_holder.get("items") or []
-    _set_snapshot_locations_warning(None)
-    return list(items), None
-
-
-def _set_snapshot_locations_warning(message: Optional[str]) -> None:
-    with _SNAPSHOT_LOCATIONS_CACHE_LOCK:
-        _SNAPSHOT_LOCATIONS_CACHE["last_warning"] = message or None
-
-
-def _snapshot_locations_cached() -> Tuple[List[dict], Optional[str], float]:
-    now = time.time()
-    with _SNAPSHOT_LOCATIONS_CACHE_LOCK:
-        items = list(_SNAPSHOT_LOCATIONS_CACHE.get("items", []))
-        updated = float(_SNAPSHOT_LOCATIONS_CACHE.get("updated") or 0.0)
-        refreshing = bool(_SNAPSHOT_LOCATIONS_CACHE.get("refreshing"))
-        last_warning = _SNAPSHOT_LOCATIONS_CACHE.get("last_warning")
-    cache_age = float("inf") if updated <= 0.0 else max(now - updated, 0.0)
-    warning: Optional[str] = None
-    if isinstance(last_warning, str) and last_warning:
-        warning = last_warning
-    elif refreshing:
-        warning = "Snapshot location scan is in progress; showing cached results." if items else "Snapshot location scan is in progress."
-    return items, warning, cache_age
-
-
-def _schedule_snapshot_location_scan(force: bool = False) -> bool:
-    now = time.time()
-    with _SNAPSHOT_LOCATIONS_CACHE_LOCK:
-        cached_items = list(_SNAPSHOT_LOCATIONS_CACHE.get("items", []))
-        updated = float(_SNAPSHOT_LOCATIONS_CACHE.get("updated") or 0.0)
-        refreshing = bool(_SNAPSHOT_LOCATIONS_CACHE.get("refreshing"))
-        cache_age = float("inf") if updated <= 0.0 else max(now - updated, 0.0)
-        need_scan = force or not cached_items or cache_age >= _SNAPSHOT_LOCATIONS_CACHE_TTL_SEC
-        if not need_scan or refreshing:
-            return False
-        _SNAPSHOT_LOCATIONS_CACHE["refreshing"] = True
-
-    def worker():
-        warning: Optional[str] = None
-        try:
-            items = _scan_snapshot_locations_impl()
-        except Exception as exc:  # pragma: no cover
-            warning = f"Snapshot location scan failed: {exc}"
-            try:
-                app.logger.warning(warning)
-            except Exception:
-                pass
-        else:
-            with _SNAPSHOT_LOCATIONS_CACHE_LOCK:
-                _SNAPSHOT_LOCATIONS_CACHE["items"] = items
-                _SNAPSHOT_LOCATIONS_CACHE["updated"] = time.time()
-        finally:
-            _set_snapshot_locations_warning(warning)
-            with _SNAPSHOT_LOCATIONS_CACHE_LOCK:
-                _SNAPSHOT_LOCATIONS_CACHE["refreshing"] = False
-
-    threading.Thread(target=worker, daemon=True).start()
-    return True
 
 
 def _snapshot_job_snapshot() -> Dict[str, object]:
@@ -2709,11 +2482,6 @@ def _run_snapshot_job(details: Dict[str, object]) -> None:
     restart_required = False
     staging_dir: Optional[Path] = None
     try:
-        locations, _ = _scan_snapshot_locations(timeout=_SNAPSHOT_LOCATIONS_TIMEOUT_SEC, force=True)
-        if locations:
-            primary_path = locations[0].get("path")
-            if primary_path:
-                _update_snapshot_dir(Path(primary_path))
         directory = _ensure_snapshot_dir()
         data_dir = _normalize_path(details.get("data_dir")) if details else None
         if not data_dir or not data_dir.exists() or not data_dir.is_dir():
@@ -6953,17 +6721,6 @@ def api_overclock_logs():
 def api_snapshots():
     snapshots = list_snapshots()
     job = _snapshot_job_snapshot()
-    locations, location_warning, cache_age = _snapshot_locations_cached()
-    has_locations = bool(locations)
-    needs_refresh = (not has_locations) or cache_age >= _SNAPSHOT_LOCATIONS_CACHE_TTL_SEC
-    if needs_refresh:
-        kicked = _schedule_snapshot_location_scan(force=not has_locations)
-        if kicked and not location_warning:
-            location_warning = (
-                "Snapshot location scan is in progress; showing cached results."
-                if has_locations
-                else "Snapshot location scan queued; results will appear once discovery completes."
-            )
     with _AUTO_SNAPSHOT_LOCK:
         interval_sec = float(_AUTO_SNAPSHOT_STATE.get("interval") or 0.0)
         next_run = float(_AUTO_SNAPSHOT_STATE.get("next_run") or 0.0)
@@ -6979,11 +6736,8 @@ def api_snapshots():
         "snapshots": snapshots,
         "job": job,
         "directory": str(SNAPSHOT_DIR),
-        "locations": locations,
         "automation": {"auto_snapshot": auto_snapshot_state},
     }
-    if location_warning:
-        response["locationWarning"] = location_warning
     message = job.get("message") if isinstance(job, dict) else None
     if message:
         status = job.get("status") if isinstance(job, dict) else None
@@ -6997,8 +6751,6 @@ def api_snapshots():
         else:
             level = "warn"
         response["status"] = {"text": message, "level": level}
-    elif location_warning:
-        response["status"] = {"text": location_warning, "level": "warn"}
     return jsonify(response)
 
 
@@ -7030,29 +6782,15 @@ def api_snapshots_create():
 
 @app.route("/api/snapshots/scan", methods=["POST"])
 def api_snapshots_scan():
-    try:
-        locations, _ = _scan_snapshot_locations(timeout=_SNAPSHOT_LOCATIONS_TIMEOUT_SEC * 2, force=True)
-    except TimeoutError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 504
-    except RuntimeError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 500
-    message: str
-    if locations:
-        selected_path = locations[0].get("path")
-        updated = _update_snapshot_dir(Path(selected_path)) if selected_path else False
-        if updated:
-            message = f"Snapshot directory set to {selected_path}"
-        else:
-            message = f"Using snapshot directory {selected_path}"
-    else:
-        _ensure_snapshot_dir()
-        message = "No snapshot directories found. Created default location."
+    directory = _ensure_snapshot_dir()
+    message = (
+        f"Snapshot directory set to {directory}. Update the path under Settings to choose a different location."
+    )
     return jsonify(
         {
             "ok": True,
             "message": message,
             "directory": str(SNAPSHOT_DIR),
-            "locations": locations,
             "snapshots": list_snapshots(),
         }
     )

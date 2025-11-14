@@ -8,10 +8,9 @@
   "auto_snapshot_enabled": false,
   "auto_snapshot_hours": 0,
   "cpu_temp_path": "/mnt/hgfs/vmshared/cpu_temp.txt",
-  "snapshot_dir": "/blockdag-scripts/backups",
   "display_wallet_balance": true,
   "liveness_auto_recover": true,
-  "login_gate_enabled": false,
+  "login_gate_enabled": true,
   "login_pass": "blockdag",
   "login_user": "node",
   "overclock_cpu": false,
@@ -22,6 +21,7 @@
   "overclock_remount": false,
   "overclock_scheduler": false,
   "overclock_vm_mode": false,
+  "snapshot_dir": "/opt/blockdag-node-manager/backups",
   "snapshot_max": 0,
   "wallet_address": ""
 }
