@@ -2,7 +2,21 @@
 
 ## v1.5.5 - 2025-11-13
 
-- Version badge, installer defaults, and runtime reporting now point to `v1.5.5` so the dashboard matches the released artifacts.
+### Snapshot & Recovery
+- Snapshot jobs now respect a `Snapshot directory` value stored in `config/settings.json` (and exposed under Settings), so you can point backups at a different disk without editing env files; the UI no longer scans every `/media` path or shows stale “location” warnings, and the Rescan button was removed because `/api/snapshots/scan` simply reports the active directory and list.
+- Snapshot creation stops the target container before packaging, flushes overlays, and cleanly returns `snapshot already in progress` when a job is active, fixing the deadlock that previously left `_SNAPSHOT_JOB_STATE` wedged.
+- Snapshot and restore jobs now stream more detail into the Automation log: every successful snapshot/restore logs the path, trigger, and restart info, and restores triggered while another job is running emit a “deferred” entry so operators know why an auto-recover skipped.
+
+### Automation & Stability
+- Liveness auto-restart refuses to touch a container while snapshot or restore work is active, preventing policy restarts from racing maintenance windows.
+- Snapshot status messaging was trimmed so only the active job’s status surfaces in the dashboard instead of repeating stale directory warnings.
+
+### Dashboard & Settings
+- Settings adds a dedicated Snapshot directory text field plus layout tweaks around the login tiles, and the footer badge now reads `v1.5.5` so the UI matches the shipped release.
+
+### Installer & Runtime
+- `install_nm_from_github.sh` and `install_node_manager.sh` now pin to `v1.5.5` so fresh `/opt` installs pull the tagged release by default.
+- `run_node_manager.sh` defaults Waitress to 12 worker threads, a backlog of 256, and unlimited connections, matching the new release’s resource profile out of the box.
 
 ## v1.5.4 - 2025-11-13
 

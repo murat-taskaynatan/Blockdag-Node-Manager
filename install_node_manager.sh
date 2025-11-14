@@ -17,6 +17,7 @@ HOST_DEFAULT="${HOST:-0.0.0.0}"
 PORT_DEFAULT="${PORT:-8081}"
 SERVICE_CPU_AFFINITY="${SERVICE_CPU_AFFINITY:-0}"
 SERVICE_CPU_WEIGHT="${SERVICE_CPU_WEIGHT:-900}"
+SNAPSHOT_DIR_DEFAULT="${SNAPSHOT_DIR_DEFAULT:-/opt/backups}"
 
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || { echo "Error: required command '$1' not found." >&2; exit 1; }
@@ -124,6 +125,8 @@ sudo chown -R "$SERVICE_USER":"$SERVICE_GROUP" "$INSTALL_DIR"
 # Guarantee runtime data directory exists and is writable
 sudo mkdir -p "$INSTALL_DIR/data"
 sudo chown "$SERVICE_USER":"$SERVICE_GROUP" "$INSTALL_DIR/data"
+sudo mkdir -p "$SNAPSHOT_DIR_DEFAULT"
+sudo chown "$SERVICE_USER":"$SERVICE_GROUP" "$SNAPSHOT_DIR_DEFAULT"
 
 echo "[3/10] Preparing Python environment"
 "$PYTHON_BIN" -m venv "$INSTALL_DIR/.venv"

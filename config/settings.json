@@ -21,7 +21,7 @@
   "overclock_remount": false,
   "overclock_scheduler": false,
   "overclock_vm_mode": false,
-  "snapshot_dir": "/opt/blockdag-node-manager/backups",
+  "snapshot_dir": "/opt/backups",
   "snapshot_max": 0,
   "wallet_address": ""
 }

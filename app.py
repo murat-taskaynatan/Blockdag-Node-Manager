@@ -683,7 +683,7 @@ def _detect_primary_ip() -> Optional[str]:
 SETTINGS_PATH = Path(__file__).resolve().parent / "config" / "settings.json"
 SNAPSHOT_MAX_DEFAULT = max(0, int(os.getenv("BDAG_SNAPSHOT_MAX", "0") or 0))
 SNAPSHOT_MAX = SNAPSHOT_MAX_DEFAULT
-SNAPSHOT_DIR_DEFAULT_PATH = str((Path(__file__).resolve().parent / "backups"))
+SNAPSHOT_DIR_DEFAULT_PATH = "/opt/backups"
 
 DEFAULT_SETTINGS: Dict[str, object] = {
     "liveness_auto_recover": False,
