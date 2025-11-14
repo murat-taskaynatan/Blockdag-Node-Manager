@@ -2488,7 +2488,7 @@ def _run_snapshot_job(details: Dict[str, object]) -> None:
             data_dir = _normalize_path(SNAPSHOT_DATA_DIR)
         if not data_dir or not data_dir.exists() or not data_dir.is_dir():
             raise RuntimeError(f"Snapshot data directory not found: {data_dir}")
-        if container and DOCKER_BIN and quiesce_overlay:
+        if container and DOCKER_BIN:
             try:
                 restart_required = _stop_container(container)
             except Exception as exc:
