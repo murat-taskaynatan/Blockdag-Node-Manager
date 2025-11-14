@@ -2942,21 +2942,25 @@ def _start_snapshot_job(
     details["quiesce_overlay"] = bool(quiesce_overlay)
     if trigger:
         details["trigger"] = trigger
+    job_already_active = False
     with _SNAPSHOT_JOB_LOCK:
         if _SNAPSHOT_JOB_STATE.get("active"):
-            return False, "Snapshot already in progress", _snapshot_job_snapshot()
-        _SNAPSHOT_JOB_STATE.pop("progress", None)
-        _SNAPSHOT_JOB_STATE.update(
-            {
-                "active": True,
-                "status": "running",
-                "message": "Snapshot job running…",
-                "details": details,
-                "started": time.time(),
-                "ended": None,
-                "warnings": [],
-            }
-        )
+            job_already_active = True
+        else:
+            _SNAPSHOT_JOB_STATE.pop("progress", None)
+            _SNAPSHOT_JOB_STATE.update(
+                {
+                    "active": True,
+                    "status": "running",
+                    "message": "Snapshot job running…",
+                    "details": details,
+                    "started": time.time(),
+                    "ended": None,
+                    "warnings": [],
+                }
+            )
+    if job_already_active:
+        return False, "Snapshot already in progress", _snapshot_job_snapshot()
     thread = threading.Thread(target=_run_snapshot_job, args=(details,), daemon=True)
     thread.start()
     label = details.get("label") or details.get("node")
@@ -3224,21 +3228,25 @@ def _start_restore_job(node_id: Optional[str], *, trigger: Optional[str] = None)
             return False, message, _snapshot_job_snapshot()
         suspend_window = max(LIVENESS_SNAPSHOT_GRACE_SEC, 60.0)
         _suspend_liveness(container, suspend_window, resume_on_healthy=True)
+    job_already_active = False
     with _SNAPSHOT_JOB_LOCK:
         if _SNAPSHOT_JOB_STATE.get("active"):
-            return False, "Snapshot already in progress", _snapshot_job_snapshot()
-        _SNAPSHOT_JOB_STATE.pop("progress", None)
-        _SNAPSHOT_JOB_STATE.update(
-            {
-                "active": True,
-                "status": "running",
-                "message": "Snapshot restore running…",
-                "details": details,
-                "started": time.time(),
-                "ended": None,
-                "warnings": list(preflight_warnings),
-            }
-        )
+            job_already_active = True
+        else:
+            _SNAPSHOT_JOB_STATE.pop("progress", None)
+            _SNAPSHOT_JOB_STATE.update(
+                {
+                    "active": True,
+                    "status": "running",
+                    "message": "Snapshot restore running…",
+                    "details": details,
+                    "started": time.time(),
+                    "ended": None,
+                    "warnings": list(preflight_warnings),
+                }
+            )
+    if job_already_active:
+        return False, "Snapshot already in progress", _snapshot_job_snapshot()
     thread = threading.Thread(target=_run_restore_job, args=(details,), daemon=True)
     thread.start()
     label = details.get("label") or details.get("node")
