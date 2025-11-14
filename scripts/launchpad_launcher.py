@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 LAUNCHPAD_REPO = "https://github.com/BlockdagNetworkLabs/blockdag-scripts.git"
+LAUNCHPAD_DEFAULT_IMAGE = os.getenv("BDAG_LAUNCHPAD_IMAGE", "blockdagnetwork/awakening:v0.0.2")
 HELPER_TEMPLATE = Path(__file__).resolve().parent / "launchpad_entrypoint.sh"
 
 
@@ -405,6 +406,12 @@ def _render_compose(
     text = text.replace("--http.port=18545", f"--http.port={rpc}")
     text = text.replace("--ws.port=18546", f"--ws.port={ws}")
     text = text.replace("ws://127.0.0.1:18546", f"ws://127.0.0.1:{ws}")
+    image_line = f"image: {LAUNCHPAD_DEFAULT_IMAGE}"
+    pattern = re.compile(r"image:\s+blockdagnetwork/awakening:[^\s]+", re.IGNORECASE)
+    if pattern.search(text):
+        text = pattern.sub(image_line, text, count=1)
+    elif "blockdagnetwork/awakening" in text:
+        text = text.replace("blockdagnetwork/awakening", LAUNCHPAD_DEFAULT_IMAGE, 1)
     if helper_mount:
         container_line = f"    container_name: {label}\n"
         replacement = container_line + '    entrypoint: ["/custom-entrypoint.sh"]\n'
