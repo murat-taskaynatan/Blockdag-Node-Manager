@@ -368,11 +368,18 @@
   .icon-btn.restore[disabled]{opacity:.5;cursor:default}
   .icon-btn.restore .icon-image{display:block;width:18px;height:18px;object-fit:contain;filter:invert(100%);}
   .icon-btn.snapshot.is-busy,
-  .icon-btn.restore.is-busy{position:relative}
+  .icon-btn.restore.is-busy{position:relative;overflow:hidden}
   .icon-btn.snapshot.is-busy .icon-image,
-  .icon-btn.restore.is-busy .icon-image{animation:spin .9s linear infinite;opacity:.85}
+  .icon-btn.restore.is-busy .icon-image{opacity:.85}
   .icon-btn.snapshot.is-busy::after,
-  .icon-btn.restore.is-busy::after{content:'';position:absolute;inset:6px;background:url("{{ url_for('static', filename='icon-spinner.png') }}") center/contain no-repeat;animation:spin 1.1s linear infinite;opacity:.6;pointer-events:none}
+  .icon-btn.restore.is-busy::after{content:'';position:absolute;inset:6px;background:url("{{ url_for('static', filename='icon-spinner.png') }}") center/contain no-repeat;animation:spin 1s linear infinite;opacity:.6;pointer-events:none}
+  .icon-btn.snapshot.is-busy[data-progress],
+  .icon-btn.restore.is-busy[data-progress]{--spinner-progress:0deg}
+  .icon-btn.snapshot.is-busy[data-progress]::after,
+  .icon-btn.restore.is-busy[data-progress]::after{inset:2px;border-radius:50%;background:
+      radial-gradient(circle at center, rgba(11,16,32,.95) 58%, transparent 60%),
+      conic-gradient(rgba(68,242,168,.75) var(--spinner-progress,0deg), rgba(68,242,168,.18) 0deg);
+    animation:none;opacity:1;pointer-events:none;mix-blend-mode:screen}
 
   .icon-btn[disabled]{opacity:.5;cursor:default}
   .fleet-body{padding:0 18px 18px;display:grid;gap:12px}

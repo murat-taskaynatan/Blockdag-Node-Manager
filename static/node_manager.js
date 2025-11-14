@@ -1101,6 +1101,19 @@ const state = {
     }
   }
 
+  function setSnapshotProgressState(btn, pct) {
+    if (!btn) return;
+    if (Number.isFinite(pct) && pct >= 0) {
+      const clamped = Math.min(100, Math.max(0, pct));
+      const degrees = (clamped / 100) * 360;
+      btn.dataset.progress = clamped.toFixed(1);
+      btn.style.setProperty('--spinner-progress', `${degrees}deg`);
+    } else {
+      delete btn.dataset.progress;
+      btn.style.removeProperty('--spinner-progress');
+    }
+  }
+
   function getSnapshotCountdown() {
     const countdown = state.snapshotCountdown;
     return countdown && countdown.active ? countdown : null;
@@ -1337,6 +1350,10 @@ const state = {
       const restoreBtn = entry.card.querySelector('[data-action="node-restore"]');
       if (!btn) return;
       const nodeId = entry.meta.id;
+      setSnapshotProgressState(btn, null);
+      if (restoreBtn) {
+        setSnapshotProgressState(restoreBtn, null);
+      }
       const label = entry.meta.label || nodeId || 'node';
       let title = `Create snapshot for ${label}`;
       let disabled = false;
@@ -1368,10 +1385,13 @@ const state = {
           const mode = jobDetails.mode || 'snapshot';
           const verb = mode === 'restore' ? 'Restore' : 'Snapshot';
           title = `${verb} running for ${label}${progressText}`;
+          const pctValue = Number(progress.pct);
           if (mode === 'restore' && restoreBtn) {
             restoreBtn.classList.add('is-busy');
+            setSnapshotProgressState(restoreBtn, pctValue);
           } else {
             btn.classList.add('is-busy');
+            setSnapshotProgressState(btn, pctValue);
           }
         } else {
           title = jobDetails.mode === 'restore' ? 'Restore in progress' : 'Snapshot in progress';
