@@ -4309,6 +4309,8 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
                     liveness_suspended = True
 
     if enable_liveness and not liveness_suspended:
+        if _is_restore_job_active_for_container(ctx.container) or _is_snapshot_job_active_for_container(ctx.container):
+            return
         stalled_flag = bool(metrics.get("stalled"))
         if not stalled_flag:
             with _LOG_POLICY_LOCK:
@@ -4350,8 +4352,6 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
                 return
             else:
                 return
-        if _is_restore_job_active_for_container(ctx.container) or _is_snapshot_job_active_for_container(ctx.container):
-            return
     if not enable_error_restart:
         return
     reason = _derive_health_restart_reason(metrics)
