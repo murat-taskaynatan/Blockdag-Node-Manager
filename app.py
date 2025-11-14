@@ -4165,13 +4165,23 @@ def _trigger_restore_for_context(ctx: "NodeContext", reason: str) -> bool:
         )
     except Exception:
         pass
+    message = message or ""
+    friendly_error = message
+    already_running = "already in progress" in message.lower()
+    if already_running:
+        friendly_error = "Another restore is already in progress"
+        user_message = f"Chain data recovery deferred for {ctx.id}"
+        status = "skipped"
+    else:
+        user_message = f"Chain data recovery failed for {ctx.id}"
+        status = "failed"
     _automation_event(
         "chain_restore",
-        f"Chain data recovery failed for {ctx.id}",
+        user_message,
         node=ctx.id,
         container=ctx.container or None,
-        status="failed",
-        metadata={"reason": reason, "error": message},
+        status=status,
+        metadata={"reason": reason, "error": friendly_error},
     )
     return False
 
