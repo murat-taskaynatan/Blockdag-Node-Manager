@@ -2346,6 +2346,11 @@ def _select_best_snapshot_node() -> Optional[str]:
         container_running = metrics.get("container_running")
         if not running or (container_running is False):
             continue
+        if bool(metrics.get("stalled")):
+            continue
+        health_text = str(metrics.get("health_text") or "").strip()
+        if health_text:
+            continue
         local_height = metrics.get("local_height")
         remote_height = metrics.get("remote_height")
         if not isinstance(local_height, (int, float)):
