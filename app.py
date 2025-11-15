@@ -4105,10 +4105,17 @@ def _log_refresh_worker() -> None:
             _refresh_container_logs(container, limit)
 
 
-def _restart_container_for_policy(ctx: "NodeContext", reason: str, *, source: str = "policy") -> bool:
+def _restart_container_for_policy(
+    ctx: "NodeContext",
+    reason: str,
+    *,
+    source: str = "policy",
+    metadata_extra: Optional[Dict[str, object]] = None,
+) -> bool:
     if not ctx or not ctx.container:
         return False
     result = docker_action(ctx.container, "restart")
+    metadata_extra = metadata_extra or {}
     if result.get("ok"):
         try:
             app.logger.warning(
@@ -4119,13 +4126,18 @@ def _restart_container_for_policy(ctx: "NodeContext", reason: str, *, source: st
             )
         except Exception:
             pass
+        restart_note = ""
+        if "restart_count" in metadata_extra:
+            restart_note = f" ({metadata_extra['restart_count']})"
+        meta_payload: Dict[str, object] = {"reason": reason, "source": source}
+        meta_payload.update(metadata_extra)
         _automation_event(
             "auto_restart",
-            f"Auto restart triggered via {source}",
+            f"Auto restart triggered via {source}{restart_note}",
             node=ctx.id,
             container=ctx.container,
             status="success",
-            metadata={"reason": reason, "source": source},
+            metadata=meta_payload,
         )
         return True
     error_message = result.get("error") or result.get("output") or "unknown error"
@@ -4138,13 +4150,15 @@ def _restart_container_for_policy(ctx: "NodeContext", reason: str, *, source: st
         )
     except Exception:
         pass
+    meta_payload = {"reason": reason, "source": source, "error": error_message}
+    meta_payload.update(metadata_extra)
     _automation_event(
         "auto_restart",
         f"Auto restart failed via {source}",
         node=getattr(ctx, "id", None),
         container=getattr(ctx, "container", None),
         status="failed",
-        metadata={"reason": reason, "source": source, "error": error_message},
+        metadata=meta_payload,
     )
     return False
 
@@ -4340,14 +4354,20 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
                 with _LOG_POLICY_LOCK:
                     state["last_liveness"] = now
                 if liveness_restarts < LIVENESS_MAX_RESTARTS:
-                    if _restart_container_for_policy(ctx, stalled_reason, source="liveness"):
+                    next_attempt = liveness_restarts + 1
+                    if _restart_container_for_policy(
+                        ctx,
+                        stalled_reason,
+                        source="liveness",
+                        metadata_extra={"restart_count": next_attempt},
+                    ):
                         with _LOG_POLICY_LOCK:
                             state["last_restart"] = now
                             state["error_streak"] = 0
-                            state["liveness_restarts"] = liveness_restarts + 1
+                            state["liveness_restarts"] = next_attempt
                         return
                     with _LOG_POLICY_LOCK:
-                        state["liveness_restarts"] = liveness_restarts + 1
+                        state["liveness_restarts"] = next_attempt
                     return
                 if _trigger_restore_for_context(ctx, stalled_reason):
                     with _LOG_POLICY_LOCK:
