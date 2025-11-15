@@ -1971,8 +1971,23 @@ const state = {
     const remote = meta.remote_height ?? meta.remote;
     if (progressChip) {
       const hasProgress = Number.isFinite(progress);
-      const progressValue = hasProgress ? progress : null;
-      const progressText = hasProgress ? `${progressValue.toFixed(1)}%` : '—';
+    const progressValue = hasProgress ? progress : null;
+    const progressText = hasProgress ? `${progressValue.toFixed(1)}%` : '—';
+    const fullySynced = etaInfo && etaInfo.text === 'Healthy';
+    const details = [];
+    if (Number.isFinite(local) && Number.isFinite(remote)) {
+      details.push(`Local ${fmt.format(local)} of ${fmt.format(remote)}`);
+    }
+    if (fullySynced) {
+      progressChip.textContent = 'Healthy';
+      progressChip.classList.remove('is-ok', 'is-warn', 'is-danger');
+      progressChip.classList.add('is-ok');
+      if (details.length) {
+        progressChip.title = details.join(' • ');
+      } else {
+        progressChip.removeAttribute('title');
+      }
+    } else {
       progressChip.textContent = `Synced ${progressText}`;
       progressChip.classList.remove('is-ok', 'is-warn', 'is-danger');
       if (hasProgress) {
@@ -1984,15 +1999,12 @@ const state = {
         }
         progressChip.classList.add(`is-${progressVariant}`);
       }
-      const details = [];
-      if (hasProgress && Number.isFinite(local) && Number.isFinite(remote)) {
-        details.push(`Local ${fmt.format(local)} of ${fmt.format(remote)}`);
-      }
       if (details.length) {
         progressChip.title = details.join(' • ');
       } else {
         progressChip.removeAttribute('title');
       }
+    }
     }
     if (rateChip) {
       const effectiveRate = Number.isFinite(rateOverride) ? rateOverride : rate;
@@ -2056,8 +2068,8 @@ const state = {
         if (!detail) {
           detail = reason;
         }
-    } else {
-        display = 'Healthy';
+      } else {
+        display = 'Online';
         code = 'online';
       }
     }
