@@ -1114,6 +1114,16 @@ const state = {
     }
   }
 
+  function handleSnapshotJobCompletion(nodeId) {
+    window.setTimeout(() => {
+      void loadNodes();
+      void refreshMetrics();
+    }, 250);
+    if (nodeId) {
+      state.pendingNodeActions.delete(nodeId);
+    }
+  }
+
   function getSnapshotCountdown() {
     const countdown = state.snapshotCountdown;
     return countdown && countdown.active ? countdown : null;
@@ -1639,6 +1649,14 @@ const state = {
     if (!silent) {
       setSnapshotStatus('Loading snapshots…', { level: 'warn' });
     }
+    const prevJob = state.snapshots?.job ? { ...state.snapshots.job } : null;
+    const prevJobActive = Boolean(prevJob && prevJob.active);
+    const prevJobNode =
+      prevJob && prevJob.details && prevJob.details.node
+        ? prevJob.details.node
+        : prevJob && prevJob.node
+        ? prevJob.node
+        : null;
     try {
       const res = await fetch('/api/snapshots', { cache: 'no-store' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -1662,6 +1680,10 @@ const state = {
       renderSnapshots();
       if (!silent && state.snapshotStatus && state.snapshotStatus.text) {
         setSnapshotStatus(state.snapshotStatus.text, { level: state.snapshotStatus.level });
+      }
+      const nextJobActive = Boolean(state.snapshots?.job && state.snapshots.job.active);
+      if (prevJobActive && !nextJobActive) {
+        handleSnapshotJobCompletion(prevJobNode);
       }
     } catch (err) {
       const message = err && err.message ? err.message : 'Failed to load snapshots';
