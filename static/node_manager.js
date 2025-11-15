@@ -413,7 +413,7 @@ const state = {
   const automationKindLabels = {
     auto_restart: 'Auto Restart',
     chain_restore: 'Chain Recovery',
-    auto_snapshot: 'Auto Snapshot',
+    auto_snapshot: 'AUTO SNAPSHOT',
   };
 
   function automationKindLabel(kind) {
