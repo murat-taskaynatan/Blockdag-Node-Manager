@@ -2029,18 +2029,21 @@ const state = {
   }
 
   function evaluateNoPeersChip(card, etaInfo, stats) {
-    const summaryHealthChip = card?.querySelector('.summary-health-chip');
-    if (!summaryHealthChip || !etaInfo || etaInfo.text !== 'ETA pending…') {
+    if (!card || !etaInfo || etaInfo.text !== 'ETA pending…') {
       return;
     }
     const peers = Number(stats.peers);
     if (!Number.isFinite(peers) || peers > 0) {
       return;
     }
-    summaryHealthChip.textContent = 'No peers';
-    summaryHealthChip.title = 'Peer count is zero; the node cannot connect.';
-    summaryHealthChip.classList.remove('health-online', 'health-offline', 'health-warn', 'health-progress');
-    summaryHealthChip.classList.add('health-warn');
+    const etaChip = card.querySelector('[data-role="sync-eta"]');
+    if (!etaChip) {
+      return;
+    }
+    etaChip.textContent = 'ETA pending…';
+    etaChip.title = 'Peer count is zero so the ETA remains pending.';
+    etaChip.classList.remove('is-ok', 'is-danger');
+    etaChip.classList.add('is-warn');
   }
 
   function isImportingReason(reason) {
