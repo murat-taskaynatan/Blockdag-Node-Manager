@@ -1971,24 +1971,18 @@ const state = {
     const remote = meta.remote_height ?? meta.remote;
     if (progressChip) {
       const hasProgress = Number.isFinite(progress);
-    const progressValue = hasProgress ? progress : null;
-    const progressText = hasProgress ? `${progressValue.toFixed(1)}%` : '—';
-    const fullySynced = etaInfo && etaInfo.text === 'Healthy';
-    const details = [];
-    if (Number.isFinite(local) && Number.isFinite(remote)) {
-      details.push(`Local ${fmt.format(local)} of ${fmt.format(remote)}`);
-    }
-    if (fullySynced) {
-      progressChip.textContent = 'Healthy';
-      progressChip.classList.remove('is-ok', 'is-warn', 'is-danger');
-      progressChip.classList.add('is-ok');
-      if (details.length) {
-        progressChip.title = details.join(' • ');
-      } else {
-        progressChip.removeAttribute('title');
+      const progressValue = hasProgress ? progress : null;
+      const progressText = hasProgress ? `${progressValue.toFixed(1)}%` : '—';
+      const fullySynced = Boolean(etaInfo && etaInfo.fullySynced);
+      const details = [];
+      if (Number.isFinite(local) && Number.isFinite(remote)) {
+        details.push(`Local ${fmt.format(local)} of ${fmt.format(remote)}`);
       }
-    } else {
-      progressChip.textContent = `Synced ${progressText}`;
+      let pillText = `Synced ${progressText}`;
+      if (fullySynced) {
+        pillText = `${pillText} · Healthy`;
+      }
+      progressChip.textContent = pillText;
       progressChip.classList.remove('is-ok', 'is-warn', 'is-danger');
       if (hasProgress) {
         let progressVariant = 'danger';
@@ -1998,13 +1992,14 @@ const state = {
           progressVariant = 'warn';
         }
         progressChip.classList.add(`is-${progressVariant}`);
+      } else if (fullySynced) {
+        progressChip.classList.add('is-ok');
       }
       if (details.length) {
         progressChip.title = details.join(' • ');
       } else {
         progressChip.removeAttribute('title');
       }
-    }
     }
     if (rateChip) {
       const effectiveRate = Number.isFinite(rateOverride) ? rateOverride : rate;
@@ -3459,11 +3454,12 @@ function syncCards(nodes) {
       return null;
     }
     if (remaining <= 0) {
-    return {
-      text: 'Healthy',
-      variant: 'ok',
-      hint: 'Local height matches remote height.',
-    };
+      return {
+        text: 'Healthy',
+        variant: 'ok',
+        hint: 'Local height matches remote height.',
+        fullySynced: true,
+      };
     }
     const rate = averageHeightRate(metrics.labels, metrics.local);
     if (!Number.isFinite(rate) || rate <= 0) {
@@ -3512,7 +3508,7 @@ function syncCards(nodes) {
     if (info.variant) {
       etaEl.classList.add(`is-${info.variant}`);
     }
-    return info;
+    return { ...info, text: tileText };
   }
 
   function createChart(ctx) {
