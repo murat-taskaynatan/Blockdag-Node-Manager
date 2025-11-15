@@ -3185,6 +3185,9 @@ function syncCards(nodes) {
     const displayForcedOffline = pendingState.forcedOffline;
     const displayHealth = health.display;
     const code = health.code;
+    if (card) {
+      card.dataset.healthCode = code;
+    }
     const healthDetail = health.detail;
     if (statusEl) {
       statusEl.textContent = '';
@@ -3444,11 +3447,11 @@ function syncCards(nodes) {
       return null;
     }
     if (remaining <= 0) {
-      return {
-        text: 'Fully Synced',
-        variant: 'ok',
-        hint: 'Local height matches remote height.',
-      };
+    return {
+      text: 'Healthy',
+      variant: 'ok',
+      hint: 'Local height matches remote height.',
+    };
     }
     const rate = averageHeightRate(metrics.labels, metrics.local);
     if (!Number.isFinite(rate) || rate <= 0) {
@@ -3482,13 +3485,17 @@ function syncCards(nodes) {
   }
 
   function updateEta(card, metrics) {
-    const info = computeEtaInfo(metrics);
+    let info = computeEtaInfo(metrics);
     const etaEl = card.querySelector('.stat-eta');
     if (!etaEl) return info;
     etaEl.classList.remove('is-ok', 'is-warn', 'is-danger');
     if (!info) {
       etaEl.textContent = '—';
       return null;
+    }
+    const healthCode = (card?.dataset?.healthCode || '').trim().toLowerCase();
+    if (healthCode === 'online' && info.text === 'Healthy') {
+      info = { ...info, text: 'Fully Synced' };
     }
     etaEl.textContent = info.text;
     if (info.variant) {
@@ -4095,6 +4102,9 @@ function syncCards(nodes) {
       const displayHealth = health.display;
       const healthDetail = health.detail;
       const code = health.code;
+      if (card) {
+        card.dataset.healthCode = code;
+      }
       if (code === 'online') {
         onlineCount += 1;
       }
