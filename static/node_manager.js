@@ -2056,8 +2056,8 @@ const state = {
         if (!detail) {
           detail = reason;
         }
-      } else {
-        display = 'Online';
+    } else {
+        display = 'Healthy';
         code = 'online';
       }
     }
