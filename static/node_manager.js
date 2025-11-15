@@ -1973,16 +1973,7 @@ const state = {
       const hasProgress = Number.isFinite(progress);
       const progressValue = hasProgress ? progress : null;
       const progressText = hasProgress ? `${progressValue.toFixed(1)}%` : '—';
-      const fullySynced = Boolean(etaInfo && etaInfo.fullySynced);
-      const details = [];
-      if (Number.isFinite(local) && Number.isFinite(remote)) {
-        details.push(`Local ${fmt.format(local)} of ${fmt.format(remote)}`);
-      }
-      let pillText = `Synced ${progressText}`;
-      if (fullySynced) {
-        pillText = `${pillText} · Healthy`;
-      }
-      progressChip.textContent = pillText;
+      progressChip.textContent = `Synced ${progressText}`;
       progressChip.classList.remove('is-ok', 'is-warn', 'is-danger');
       if (hasProgress) {
         let progressVariant = 'danger';
@@ -1992,8 +1983,10 @@ const state = {
           progressVariant = 'warn';
         }
         progressChip.classList.add(`is-${progressVariant}`);
-      } else if (fullySynced) {
-        progressChip.classList.add('is-ok');
+      }
+      const details = [];
+      if (hasProgress && Number.isFinite(local) && Number.isFinite(remote)) {
+        details.push(`Local ${fmt.format(local)} of ${fmt.format(remote)}`);
       }
       if (details.length) {
         progressChip.title = details.join(' • ');
@@ -3192,9 +3185,6 @@ function syncCards(nodes) {
     const displayForcedOffline = pendingState.forcedOffline;
     const displayHealth = health.display;
     const code = health.code;
-    if (card) {
-      card.dataset.healthCode = code;
-    }
     const healthDetail = health.detail;
     if (statusEl) {
       statusEl.textContent = '';
@@ -3458,7 +3448,6 @@ function syncCards(nodes) {
         text: 'Healthy',
         variant: 'ok',
         hint: 'Local height matches remote height.',
-        fullySynced: true,
       };
     }
     const rate = averageHeightRate(metrics.labels, metrics.local);
@@ -3501,14 +3490,11 @@ function syncCards(nodes) {
       etaEl.textContent = '—';
       return null;
     }
-    const healthCode = (card?.dataset?.healthCode || '').trim().toLowerCase();
-    const tileText =
-      healthCode === 'online' && info.text === 'Healthy' ? 'Fully Synced' : info.text;
-    etaEl.textContent = tileText;
+    etaEl.textContent = info.text;
     if (info.variant) {
       etaEl.classList.add(`is-${info.variant}`);
     }
-    return { ...info, text: tileText };
+    return info;
   }
 
   function createChart(ctx) {
@@ -4109,9 +4095,6 @@ function syncCards(nodes) {
       const displayHealth = health.display;
       const healthDetail = health.detail;
       const code = health.code;
-      if (card) {
-        card.dataset.healthCode = code;
-      }
       if (code === 'online') {
         onlineCount += 1;
       }
