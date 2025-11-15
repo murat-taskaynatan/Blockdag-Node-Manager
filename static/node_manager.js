@@ -1921,6 +1921,11 @@ const state = {
     const QUICK_STALL = 90;
     const stallByRate = remotePositive && peers <= 0 && zeroTrend && blockRate <= 0 && uptime >= QUICK_STALL;
     if (stallByRate) {
+      const localDelta = recentLocal.length >= 2 ? recentLocal[recentLocal.length - 1] - recentLocal[0] : 0;
+      const importingBlocks = localDelta > 0 && remoteHeight > localHeight;
+      if (importingBlocks) {
+        return { forced: false, reason: 'Importing blocks' };
+      }
       return { forced: true, reason: 'No block production while remote height is advancing.' };
     }
     return outcome;
@@ -1997,6 +2002,12 @@ function resolveHealth(stats, running, options = {}) {
       display = 'Stalled';
       code = 'warn';
       if (!detail && reason) {
+        detail = reason;
+      }
+    } else if (reason) {
+      display = reason;
+      code = reason === 'Importing blocks' ? 'online' : 'warn';
+      if (!detail) {
         detail = reason;
       }
     } else {
