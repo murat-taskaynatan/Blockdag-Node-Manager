@@ -2028,6 +2028,21 @@ const state = {
     }
   }
 
+  function evaluateNoPeersChip(card, etaInfo, stats) {
+    const summaryHealthChip = card?.querySelector('.summary-health-chip');
+    if (!summaryHealthChip || !etaInfo || etaInfo.text !== 'ETA pending…') {
+      return;
+    }
+    const peers = Number(stats.peers);
+    if (!Number.isFinite(peers) || peers > 0) {
+      return;
+    }
+    summaryHealthChip.textContent = 'No peers';
+    summaryHealthChip.title = 'Peer count is zero; the node cannot connect.';
+    summaryHealthChip.classList.remove('health-online', 'health-offline', 'health-warn', 'health-progress');
+    summaryHealthChip.classList.add('health-warn');
+  }
+
   function isImportingReason(reason) {
     if (!reason) return false;
     const normalizedReason = String(reason).trim().toLowerCase();
@@ -3214,10 +3229,12 @@ function syncCards(nodes) {
       }
     }
 
+    const etaInfo = stats.eta_info || null;
     renderSyncChips(syncChips, {
       progress: state.lastProgress.get(node.id),
       rate: state.lastRates.get(node.id),
       etaInfo: stats.eta_info || null,
+      etaInfo,
       progressLabel: code === 'progress' ? displayHealth : '',
       rateOverride:
         code === 'progress' && Number.isFinite(stats.block_rate_per_sec)
@@ -3251,6 +3268,7 @@ function syncCards(nodes) {
       entry.meta.status.running = effectiveRunning;
       entry.meta.status.effective_running = effectiveRunning;
     }
+    evaluateNoPeersChip(card, etaInfo, stats);
   }
 
   function setStat(card, selector, value, opts = {}) {
@@ -4154,6 +4172,7 @@ function syncCards(nodes) {
           remote_height: metrics.remote_height,
         },
       });
+      evaluateNoPeersChip(card, etaInfo, metrics);
 
       const pendingState = resolvePendingState(
         nodeId,
