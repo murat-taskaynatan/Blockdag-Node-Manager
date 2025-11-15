@@ -4312,16 +4312,26 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
         if _is_restore_job_active_for_container(ctx.container) or _is_snapshot_job_active_for_container(ctx.container):
             return
         stalled_flag = bool(metrics.get("stalled"))
+        stall_reason = (
+            metrics.get("stalled_reason")
+            or metrics.get("health_detail")
+            or metrics.get("health_text")
+            or "stalled detection triggered"
+        )
+        running_flag = bool(metrics.get("running") or metrics.get("container_running"))
+        if not running_flag:
+            offline_reason = (
+                metrics.get("health_detail")
+                or metrics.get("health_text")
+                or "node reported offline"
+            )
+            stall_reason = offline_reason
+            stalled_flag = True
         if not stalled_flag:
             with _LOG_POLICY_LOCK:
                 state["liveness_restarts"] = 0
         if stalled_flag:
-            stalled_reason = (
-                metrics.get("stalled_reason")
-                or metrics.get("health_detail")
-                or metrics.get("health_text")
-                or "stalled detection triggered"
-            )
+            stalled_reason = stall_reason
             with _LOG_POLICY_LOCK:
                 last_liveness = float(state.get("last_liveness", 0.0))
                 liveness_restarts = int(state.get("liveness_restarts", 0))
