@@ -3706,6 +3706,7 @@ class NodeContext:
         self.last_metrics: Optional[dict] = None
         self.last_sample_ts: float = 0.0
         self.running: bool = False
+        self.container_image: Optional[str] = None
         self.auto_discovered = auto_discovered
         self._peer_identity: Optional[str] = None
         self._peer_identity_ts: float = 0.0
@@ -4922,6 +4923,21 @@ def _container_state(name: str) -> Tuple[bool, bool, Optional[float]]:
     return True, running, started_ts
 
 
+def _resolve_container_image(name: Optional[str]) -> Optional[str]:
+    if not name or not DOCKER_BIN:
+        return None
+    try:
+        out = subprocess.check_output(
+            [DOCKER_BIN, "inspect", "--format", "{{.Config.Image}}", name],
+            text=True,
+            timeout=5,
+        )
+    except Exception:
+        return None
+    image = (out or "").strip()
+    return image or None
+
+
 def _collect_node_metrics(ctx: NodeContext) -> Tuple[dict, Optional[int]]:
     if ctx and ctx.container:
         need_internal = not ctx.peer_port_internal
@@ -4979,6 +4995,14 @@ def _collect_node_metrics(ctx: NodeContext) -> Tuple[dict, Optional[int]]:
         "uptime_seconds": uptime_seconds,
         "last_updated": now_ms,
     }
+    image = ctx.container_image
+    if exists and ctx.container:
+        resolved_image = _resolve_container_image(ctx.container)
+        if resolved_image:
+            ctx.container_image = resolved_image
+            image = resolved_image
+    if image:
+        metrics["container_image"] = image
     return metrics, remote_val
 
 

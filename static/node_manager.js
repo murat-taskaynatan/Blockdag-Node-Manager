@@ -3235,6 +3235,7 @@ function syncCards(nodes) {
     setStat(card, '.stat-peers', stats.peers);
     setPeerId(card, stats.peer_id, stats.peer_ports);
     updateUptime(card, stats.uptime_seconds);
+    setTextStat(card, '.stat-image', stats.container_image);
     const toggleBtn = card.querySelector('[data-role="toggle"]');
     updateStartStopButton(toggleBtn, displayContainerRunning, {
       effectiveRunning: displayEffectiveRunning,
@@ -3264,6 +3265,19 @@ function syncCards(nodes) {
     if (selector.includes('delta')) {
       el.classList.toggle('is-warn', num > 8);
     }
+  }
+
+  function setTextStat(card, selector, value) {
+    const el = card.querySelector(selector);
+    if (!el) return;
+    if (value === undefined || value === null || value === '') {
+      el.textContent = '—';
+      el.removeAttribute('title');
+      return;
+    }
+    const text = String(value);
+    el.textContent = text;
+    el.title = text;
   }
 
   function setPeerId(card, value, ports) {
