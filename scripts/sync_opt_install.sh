@@ -4,7 +4,8 @@ set -euo pipefail
 # Helper to keep /opt/blockdag-node-manager in sync after pushing to main.
 # Usage: run this from the repository clone after a `git push origin main`.
 
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 INSTALLER="$REPO_DIR/install_node_manager.sh"
 
 if [[ ! -x "$INSTALLER" ]]; then
