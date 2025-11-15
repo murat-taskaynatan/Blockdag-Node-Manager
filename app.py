@@ -182,6 +182,9 @@ LIVENESS_SNAPSHOT_GRACE_SEC = max(
 LIVENESS_RESUME_MAX_DELTA = max(
     0.0, float(os.getenv("BDAG_LIVENESS_RESUME_MAX_DELTA", "25") or "25")
 )
+LIVENESS_STABLE_SEC = max(
+    30.0, float(os.getenv("BDAG_LIVENESS_STABLE_SEC", "300") or "300")
+)
 _liveness_patterns_raw = [
     part.strip().lower()
     for part in str(os.getenv("BDAG_LIVENESS_RECOVER_PATTERNS", "") or "").split(",")
@@ -4333,6 +4336,7 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
             or "stalled detection triggered"
         )
         running_flag = bool(metrics.get("running") or metrics.get("container_running"))
+        uptime_seconds = float(metrics.get("uptime_seconds") or 0.0)
         if not running_flag:
             offline_reason = (
                 metrics.get("health_detail")
@@ -4342,8 +4346,9 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
             stall_reason = offline_reason
             stalled_flag = True
         if not stalled_flag:
-            with _LOG_POLICY_LOCK:
-                state["liveness_restarts"] = 0
+            if running_flag and uptime_seconds >= LIVENESS_STABLE_SEC:
+                with _LOG_POLICY_LOCK:
+                    state["liveness_restarts"] = 0
         if stalled_flag:
             stalled_reason = stall_reason
             with _LOG_POLICY_LOCK:
