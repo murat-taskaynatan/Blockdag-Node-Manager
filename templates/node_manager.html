@@ -308,8 +308,10 @@
   .summary-health-chip::before{content:'';width:8px;height:8px;border-radius:999px;flex-shrink:0;background:var(--muted);box-shadow:0 0 0 2px rgba(0,0,0,.18)}
   .summary-health-chip.health-online{color:var(--ok);background:rgba(37,211,102,.12)}
   .summary-health-chip.health-online::before{background:var(--ok)}
-  .summary-health-chip.health-warn{color:var(--warn);background:rgba(255,183,77,.18)}
-  .summary-health-chip.health-warn::before{background:var(--warn)}
+  .summary-health-chip.health-warn,
+  .summary-health-chip.health-progress{color:var(--warn);background:rgba(255,183,77,.18)}
+  .summary-health-chip.health-warn::before,
+  .summary-health-chip.health-progress::before{background:var(--warn)}
   .summary-health-chip.health-offline{color:var(--bad);background:rgba(255,83,112,.18)}
   .summary-health-chip.health-offline::before{background:var(--bad)}
   .node-name{font-size:18px;font-weight:600}

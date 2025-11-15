@@ -1908,6 +1908,9 @@ const state = {
     const zeroLocalNow = localHeight <= 0;
     const zeroTrend = zeroedRecentLocal || zeroLocalNow;
 
+    if (remotePositive && remoteHeight > localHeight + 2) {
+      return { forced: false, reason: 'Importing blocks' };
+    }
     const stallByReset = hadProgress && zeroLocalNow && remotePositive && peers <= 0;
     if (stallByReset) {
       return { forced: true, reason: 'Container running but height reset and no peers detected.' };
@@ -1939,6 +1942,8 @@ const state = {
       rate,
       etaInfo,
       meta = {},
+      progressLabel = '',
+      rateOverride,
     } = options;
     const local = meta.local_height ?? meta.local;
     const remote = meta.remote_height ?? meta.remote;
@@ -1968,9 +1973,18 @@ const state = {
       }
     }
     if (rateChip) {
-      const hasRate = Number.isFinite(rate) && rate > 0;
-      const rateValue = hasRate ? (rate >= 10 ? rate.toFixed(1) : rate.toFixed(2)) : '—';
-      rateChip.textContent = `Rate ${rateValue} blk/s`;
+      const effectiveRate = Number.isFinite(rateOverride) ? rateOverride : rate;
+      const hasRate = Number.isFinite(effectiveRate) && effectiveRate >= 0;
+      const rateValue = hasRate
+        ? effectiveRate >= 10
+          ? effectiveRate.toFixed(1)
+          : effectiveRate.toFixed(2)
+        : '—';
+      if (progressLabel) {
+        rateChip.textContent = `${rateValue} blk/s`;
+      } else {
+        rateChip.textContent = `Rate ${rateValue} blk/s`;
+      }
       if (hasRate) {
         rateChip.title = `${rateValue} blocks per second`;
       } else {
@@ -1992,31 +2006,35 @@ const state = {
     }
   }
 
-function resolveHealth(stats, running, options = {}) {
-  const { forceOffline = false, reason = '' } = options;
-  let detail = (stats.health_detail || stats.health_text || '').toString().trim();
-  let display = 'Offline';
-  let code = 'offline';
-  if (running) {
-    if (forceOffline) {
-      display = 'Stalled';
-      code = 'warn';
-      if (!detail && reason) {
-        detail = reason;
+  function resolveHealth(stats, running, options = {}) {
+    const { forceOffline = false, reason = '' } = options;
+    let detail = (stats.health_detail || stats.health_text || '').toString().trim();
+    let display = 'Offline';
+    let code = 'offline';
+    const normalizedReason = reason.toLowerCase();
+    const isProgressReason =
+      normalizedReason.startsWith('importing blocks') ||
+      normalizedReason.startsWith('downloading blocks');
+    if (running) {
+      if (forceOffline && !isProgressReason) {
+        display = 'Stalled';
+        code = 'warn';
+        if (!detail && reason) {
+          detail = reason;
+        }
+      } else if (reason) {
+        display = reason;
+        code = isProgressReason ? 'progress' : 'warn';
+        if (!detail) {
+          detail = reason;
+        }
+      } else {
+        display = 'Healthy';
+        code = 'online';
       }
-    } else if (reason) {
-      display = reason;
-      code = reason === 'Importing blocks' ? 'online' : 'warn';
-      if (!detail) {
-        detail = reason;
-      }
-    } else {
-      display = 'Online';
-      code = 'online';
     }
+    return { display, detail, code };
   }
-  return { display, detail, code };
-}
 
 
 function switchSummaryTab(target) {
@@ -3137,9 +3155,11 @@ function syncCards(nodes) {
       } else {
         summaryHealthChip.removeAttribute('title');
       }
-      summaryHealthChip.classList.remove('health-online', 'health-offline', 'health-warn');
+      summaryHealthChip.classList.remove('health-online', 'health-offline', 'health-warn', 'health-progress');
       if (code === 'online') {
         summaryHealthChip.classList.add('health-online');
+      } else if (code === 'progress') {
+        summaryHealthChip.classList.add('health-progress');
       } else if (code === 'warn') {
         summaryHealthChip.classList.add('health-warn');
       } else {
@@ -3151,6 +3171,11 @@ function syncCards(nodes) {
       progress: state.lastProgress.get(node.id),
       rate: state.lastRates.get(node.id),
       etaInfo: stats.eta_info || null,
+      progressLabel: code === 'progress' ? displayHealth : '',
+      rateOverride:
+        code === 'progress' && Number.isFinite(stats.block_rate_per_sec)
+          ? stats.block_rate_per_sec
+          : undefined,
       meta: {
         local_height: stats.local_height,
         remote_height: stats.remote_height,
@@ -4000,9 +4025,11 @@ function syncCards(nodes) {
         } else {
           summaryHealthChip.removeAttribute('title');
         }
-        summaryHealthChip.classList.remove('health-online', 'health-offline', 'health-warn');
+        summaryHealthChip.classList.remove('health-online', 'health-offline', 'health-warn', 'health-progress');
         if (code === 'online') {
           summaryHealthChip.classList.add('health-online');
+        } else if (code === 'progress') {
+          summaryHealthChip.classList.add('health-progress');
         } else if (code === 'warn') {
           summaryHealthChip.classList.add('health-warn');
         } else {
@@ -4022,7 +4049,7 @@ function syncCards(nodes) {
         state.lastProgress.set(nodeId, progress);
       }
       let rate = averageHeightRate(metrics.labels, metrics.local);
-      if (Number.isFinite(rate) && rate > 0) {
+      if (Number.isFinite(rate)) {
         state.lastRates.set(nodeId, rate);
       } else {
         rate = state.lastRates.get(nodeId);
@@ -4032,6 +4059,11 @@ function syncCards(nodes) {
         progress,
         rate,
         etaInfo,
+        progressLabel: code === 'progress' ? displayHealth : '',
+        rateOverride:
+          code === 'progress' && Number.isFinite(metrics.block_rate_per_sec)
+            ? metrics.block_rate_per_sec
+            : undefined,
         meta: {
           local_height: metrics.local_height,
           remote_height: metrics.remote_height,
