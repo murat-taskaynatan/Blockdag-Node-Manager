@@ -5375,6 +5375,7 @@ def api_node_manager_logs():
 
 
 @app.route("/api/node-manager/automation/logs")
+@app.route("/api/automation/logs")
 def api_automation_logs():
     limit_param = request.args.get("limit")
     try:

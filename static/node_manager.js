@@ -166,6 +166,7 @@ const state = {
   const launchpadStatus = document.getElementById('launchpadStatus');
   const launchpadAutoNote = document.getElementById('launchpadAutoNote');
   let ocLogPollTimer = null;
+  let snapshotHeartbeatTimer = null;
   const SYSTEM_POLL_INTERVAL_MS = 10000;
   let systemPollTimer = null;
   const AUTOMATION_LOG_LIMIT = 100;
@@ -883,6 +884,7 @@ const state = {
   const defaultChartView = 'height';
   const LOG_REFRESH_COOLDOWN_MS = 5000;
   const LOG_AUTO_REFRESH_MS = Math.max(6000, Math.floor(LOG_REFRESH_COOLDOWN_MS * 1.5));
+  const SNAPSHOT_HEARTBEAT_MS = 15000;
 
   function formatChartLabels(rawLabels) {
     if (!Array.isArray(rawLabels)) return [];
@@ -1196,6 +1198,26 @@ const state = {
     } else if (snapshotPollTimer) {
       clearInterval(snapshotPollTimer);
       snapshotPollTimer = null;
+    }
+  }
+
+  function startSnapshotHeartbeat() {
+    stopSnapshotHeartbeat();
+    snapshotHeartbeatTimer = window.setInterval(() => {
+      if (document.hidden) return;
+      const jobActive = Boolean(state.snapshots?.job && state.snapshots.job.active);
+      const countdownActive = Boolean(state.snapshotCountdown && state.snapshotCountdown.active);
+      if (jobActive || countdownActive) {
+        return;
+      }
+      void loadSnapshots({ silent: true, preserveStatus: true });
+    }, SNAPSHOT_HEARTBEAT_MS);
+  }
+
+  function stopSnapshotHeartbeat() {
+    if (snapshotHeartbeatTimer) {
+      window.clearInterval(snapshotHeartbeatTimer);
+      snapshotHeartbeatTimer = null;
     }
   }
 
@@ -4978,6 +5000,7 @@ function syncCards(nodes) {
     await loadSystem();
     startSystemPolling();
     await loadSnapshots({ silent: true });
+    startSnapshotHeartbeat();
     await discoverNodes({ auto: true });
     await refreshMetrics();
     // Chart removed per request; skipping auto-prime visualization
@@ -5020,6 +5043,7 @@ function syncCards(nodes) {
       if (state.snapshotsLoaded) {
         void loadSnapshots({ silent: true });
       }
+      startSnapshotHeartbeat();
       void loadSystem();
       const ocExpanded = ocLogsToggle && ocLogsToggle.getAttribute('aria-expanded') === 'true';
       if (ocExpanded) {
@@ -5033,6 +5057,7 @@ function syncCards(nodes) {
     } else {
       stopOcLogPolling();
       stopAutomationLogPolling();
+      stopSnapshotHeartbeat();
     }
   });
 
