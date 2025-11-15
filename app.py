@@ -4379,6 +4379,27 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
                     with _LOG_POLICY_LOCK:
                         state["liveness_restarts"] = next_attempt
                     return
+                metrics_check: Dict[str, object] = {}
+                try:
+                    metrics_check = ctx.sample(force=True) or {}
+                except Exception:
+                    metrics_check = metrics or {}
+                healthy_now = bool(metrics_check.get("running")) and not bool(
+                    metrics_check.get("stalled") or metrics_check.get("health_text")
+                )
+                if healthy_now:
+                    try:
+                        app.logger.info(
+                            "Liveness aborting restore for %s (%s); node reporting healthy.",
+                            ctx.id,
+                            ctx.container or "unknown",
+                        )
+                    except Exception:
+                        pass
+                    with _LOG_POLICY_LOCK:
+                        state["liveness_restarts"] = 0
+                        state["last_liveness"] = now
+                    return
                 if _trigger_restore_for_context(ctx, stalled_reason):
                     with _LOG_POLICY_LOCK:
                         state["last_restart"] = now
