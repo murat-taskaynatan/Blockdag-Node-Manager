@@ -1956,6 +1956,41 @@ const state = {
     return outcome;
   }
 
+  function resolveSyncStatusOverride(options = {}) {
+    const { healthCode = '', peers = null, progress = null } = options;
+    const code = typeof healthCode === 'string' ? healthCode.toLowerCase() : '';
+    const peerCount = Number(peers);
+    const hasPeerMetric = Number.isFinite(peerCount);
+    const hasPeers = hasPeerMetric ? peerCount > 0 : false;
+    const progressValue = Number(progress);
+    const synced = Number.isFinite(progressValue) && progressValue >= 99.9;
+    if (code === 'online' && (!hasPeerMetric || peerCount <= 0)) {
+      return {
+        text: 'No Peers',
+        variant: 'warn',
+        hint: 'Node is online but not connected to any peers.',
+      };
+    }
+    if (code === 'online' && hasPeers && synced) {
+      return {
+        text: 'Healthy',
+        variant: 'ok',
+        hint: 'Node is fully synced and connected to peers.',
+      };
+    }
+    return null;
+  }
+
+  function resolveSyncStatusText({ override, etaInfo }) {
+    if (override && override.text) {
+      return override;
+    }
+    if (etaInfo && etaInfo.text) {
+      return etaInfo;
+    }
+    return null;
+  }
+
   function renderSyncChips(chips, options = {}) {
     if (!chips) return;
     const { progressChip, rateChip, etaChip } = chips;
@@ -1966,6 +2001,8 @@ const state = {
       meta = {},
       progressLabel = '',
       rateOverride,
+      healthCode,
+      peers,
     } = options;
     const local = meta.local_height ?? meta.local;
     const remote = meta.remote_height ?? meta.remote;
@@ -2015,12 +2052,14 @@ const state = {
     }
     if (etaChip) {
       etaChip.classList.remove('is-ok', 'is-warn', 'is-danger');
-      if (etaInfo && etaInfo.text) {
-        etaChip.textContent = etaInfo.text;
-        if (etaInfo.variant) {
-          etaChip.classList.add(`is-${etaInfo.variant}`);
+      const override = resolveSyncStatusOverride({ healthCode, peers, progress });
+      const info = resolveSyncStatusText({ override, etaInfo });
+      if (info && info.text) {
+        etaChip.textContent = info.text;
+        if (info.variant) {
+          etaChip.classList.add(`is-${info.variant}`);
         }
-        etaChip.title = etaInfo.hint || etaInfo.text;
+        etaChip.title = info.hint || info.text;
       } else {
         etaChip.textContent = 'Sync Status —';
         etaChip.removeAttribute('title');
@@ -3241,6 +3280,8 @@ function syncCards(nodes) {
         code === 'progress' && Number.isFinite(stats.block_rate_per_sec)
           ? stats.block_rate_per_sec
           : undefined,
+      healthCode: code,
+      peers: stats.peers,
       meta: {
         local_height: stats.local_height,
         remote_height: stats.remote_height,
@@ -4176,6 +4217,8 @@ function syncCards(nodes) {
           code === 'progress' && Number.isFinite(metrics.block_rate_per_sec)
             ? metrics.block_rate_per_sec
             : undefined,
+        healthCode: code,
+        peers: metrics.peers,
         meta: {
           local_height: metrics.local_height,
           remote_height: metrics.remote_height,
