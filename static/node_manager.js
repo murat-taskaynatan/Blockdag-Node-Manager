@@ -3445,7 +3445,7 @@ function syncCards(nodes) {
     }
     if (remaining <= 0) {
       return {
-        text: 'Healthy',
+        text: 'Fully Synced',
         variant: 'ok',
         hint: 'Local height matches remote height.',
       };
