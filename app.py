@@ -203,6 +203,8 @@ else:
         "illegal withdrawal at block",
         "illegal withdrawal at block:difflayer, you can cleanup your block data base by '--cleanup'",
         "the dag data was damaged (can't find tip",
+        "unknown to the objstorage provider",
+        "unclean shutdown detected",
     )
 
 _DEFAULT_LOG_CRITICAL_ERROR_PATTERNS = (
@@ -211,6 +213,8 @@ _DEFAULT_LOG_CRITICAL_ERROR_PATTERNS = (
     "liveness probe exceeded timeout; forcing shutdown",
     "illegal withdrawal at block",
     "cleanup your block data base by '--cleanup' to start liveness error recovery",
+    "unknown to the objstorage provider",
+    "unclean shutdown detected",
 )
 _dag_log_critical_patterns_raw: List[str] = []
 for _env_name in ("DAG_LOG_CRITICAL_PATTERNS", "BDAG_LOG_CRITICAL_PATTERNS"):
