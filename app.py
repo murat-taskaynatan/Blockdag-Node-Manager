@@ -5102,6 +5102,24 @@ def refresh_discovered_nodes() -> Tuple[List[str], List[str], List[str]]:
     return added, removed, updated
 
 
+def _is_importing_status(metrics: Optional[dict]) -> bool:
+    if not isinstance(metrics, dict):
+        return False
+    if not metrics.get("running"):
+        return False
+    try:
+        remote_height = int(metrics.get("remote_height") or 0)
+    except Exception:
+        remote_height = 0
+    try:
+        local_height = int(metrics.get("local_height") or 0)
+    except Exception:
+        local_height = 0
+    if remote_height <= 0:
+        return False
+    return remote_height > local_height + 2
+
+
 def _fleet_summary(nodes: List[dict]) -> dict:
     count = len(nodes)
     running = sum(1 for node in nodes if node.get("status", {}).get("running"))
@@ -5113,11 +5131,13 @@ def _fleet_summary(nodes: List[dict]) -> dict:
     remote_heights = [
         node.get("status", {}).get("remote_height") or 0 for node in nodes
     ]
+    importing = sum(1 for node in nodes if _is_importing_status(node.get("status", {})))
     summary = {
         "count": count,
         "running": running,
         "offline": offline,
         "stalled": stalled,
+        "importing": importing,
         "max_local_height": max(local_heights) if local_heights else 0,
         "max_remote_height": max(remote_heights) if remote_heights else 0,
         "timestamp": time.time(),

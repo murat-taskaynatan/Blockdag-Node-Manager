@@ -2028,15 +2028,21 @@ const state = {
     }
   }
 
+  function isImportingReason(reason) {
+    if (!reason) return false;
+    const normalizedReason = String(reason).trim().toLowerCase();
+    return (
+      normalizedReason.startsWith('importing blocks') ||
+      normalizedReason.startsWith('downloading blocks')
+    );
+  }
+
   function resolveHealth(stats, running, options = {}) {
     const { forceOffline = false, reason = '' } = options;
     let detail = (stats.health_detail || stats.health_text || '').toString().trim();
     let display = 'Offline';
     let code = 'offline';
-    const normalizedReason = reason.toLowerCase();
-    const isProgressReason =
-      normalizedReason.startsWith('importing blocks') ||
-      normalizedReason.startsWith('downloading blocks');
+    const isProgressReason = isImportingReason(reason);
     if (running) {
       if (forceOffline && !isProgressReason) {
         display = 'Stalled';
@@ -2380,14 +2386,24 @@ async function saveSettings() {
         // ignore
       }
       const nodes = nodesList;
-      const stalled = nodes.reduce((count, node) => {
-        if (!node || !node.id) return count;
-        const stats = node.status || {};
-        const rawRunning = isRunningFlag(stats.running);
-        const forced = shouldForceOffline(stats, rawRunning, state.lastProgress.get(node.id));
-        return forced.forced ? count + 1 : count;
-      }, 0);
-      const summary = { ...(payload.summary || {}), stalled };
+      const aggregated = nodes.reduce(
+        (counts, node) => {
+          if (!node || !node.id) return counts;
+          const stats = node.status || {};
+          const runningFlag = isRunningFlag(
+            stats.container_running ?? stats.raw_running ?? stats.running
+          );
+          const forced = shouldForceOffline(stats, runningFlag, state.lastProgress.get(node.id));
+          if (forced.forced) {
+            counts.stalled += 1;
+          } else if (isImportingReason(forced.reason)) {
+            counts.importing += 1;
+          }
+          return counts;
+        },
+        { stalled: 0, importing: 0 }
+      );
+      const summary = { ...aggregated, ...(payload.summary || {}) };
       renderSummary(summary);
       syncCards(nodes);
       toggleEmptyState();
@@ -2412,7 +2428,10 @@ async function saveSettings() {
       summaryBadge.textContent = '—';
       summaryBadge.removeAttribute('title');
       countEl.textContent = onlineEl.textContent = offlineEl.textContent = maxLocalEl.textContent = maxRemoteEl.textContent = '—';
-      if (stalledEl) stalledEl.textContent = '—';
+      if (stalledEl) {
+        stalledEl.textContent = '— / —';
+        stalledEl.removeAttribute('title');
+      }
       return;
     }
 
@@ -2420,11 +2439,17 @@ async function saveSettings() {
     const online = summary.running ?? 0;
     const offline = summary.offline ?? Math.max(count - online, 0);
     const stalled = summary.stalled ?? 0;
+    const importing = summary.importing ?? 0;
 
     countEl.textContent = fmt.format(count);
     onlineEl.textContent = fmt.format(online);
     offlineEl.textContent = fmt.format(offline);
-    if (stalledEl) stalledEl.textContent = fmt.format(stalled);
+    if (stalledEl) {
+      const stalledValue = fmt.format(stalled);
+      const importingValue = fmt.format(importing);
+      stalledEl.textContent = `${stalledValue} / ${importingValue}`;
+      stalledEl.title = `Stalled ${stalledValue} • Importing ${importingValue}`;
+    }
     maxLocalEl.textContent = summary.max_local_height !== undefined ? fmt.format(summary.max_local_height) : '—';
     maxRemoteEl.textContent = summary.max_remote_height !== undefined ? fmt.format(summary.max_remote_height) : '—';
 
