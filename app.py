@@ -4094,6 +4094,23 @@ def _get_recent_logs(limit: int, container: str) -> List[str]:
     return []
 
 
+def _detect_liveness_failsafe_from_logs(container: Optional[str]) -> Optional[str]:
+    """Return the most recent log line that matches a liveness failsafe pattern."""
+    if not container or not DOCKER_BIN or not LIVENESS_FAILSAFE_PATTERNS:
+        return None
+    lines = _get_recent_logs(LOG_ERROR_TAIL, container)
+    if not lines:
+        return None
+    for line in reversed(lines):
+        normalized = line.strip().lower()
+        if not normalized:
+            continue
+        for pattern in LIVENESS_FAILSAFE_PATTERNS:
+            if pattern and pattern in normalized:
+                return line.strip()
+    return None
+
+
 def _log_refresh_worker() -> None:
     while True:
         triggered = _LOG_REFRESH_EVENT.wait(timeout=LOG_REFRESH_INTERVAL_SEC)
@@ -4306,7 +4323,14 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
         if now - last_check < LOG_ERROR_CHECK_SEC:
             return
         state["last_check"] = now
-    metrics = getattr(ctx, "last_metrics", None) or {}
+    metrics_raw = getattr(ctx, "last_metrics", None)
+    metrics = metrics_raw if isinstance(metrics_raw, dict) else {}
+    failsafe_reason = _detect_liveness_failsafe_from_logs(ctx.container)
+    if failsafe_reason:
+        metrics["stalled"] = True
+        metrics["stalled_reason"] = failsafe_reason
+        metrics["health_text"] = failsafe_reason
+        metrics["health_detail"] = failsafe_reason
     liveness_suspended = False
     suspension: Optional[Dict[str, object]] = None
     if enable_liveness:
