@@ -2051,7 +2051,7 @@ const state = {
           detail = reason;
         }
       } else {
-        display = 'Healthy';
+        display = 'Online';
         code = 'online';
       }
     }
@@ -3382,7 +3382,7 @@ function syncCards(nodes) {
     }
     if (remaining <= 0) {
       return {
-        text: 'Fully synced',
+        text: 'Healthy',
         variant: 'ok',
         hint: 'Local height matches remote height.',
       };
