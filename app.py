@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from decimal import Decimal, ROUND_UP, getcontext
 from collections import OrderedDict, deque
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Set, Tuple, Pattern
+from typing import Deque, Dict, Iterable, List, Optional, Set, Tuple, Pattern
 from urllib.parse import urlparse
 
 import psutil
@@ -1386,6 +1386,32 @@ _SNAPSHOT_JOB_STATE: Dict[str, object] = {
     "started": None,
     "ended": None,
 }
+_PENDING_RESTORE_QUEUE: Deque[Dict[str, Optional[str]]] = deque()
+_PENDING_RESTORE_LOCK = threading.Lock()
+
+
+def _queue_pending_restore(node_id: Optional[str], trigger: Optional[str]) -> None:
+    if not node_id:
+        return
+    with _PENDING_RESTORE_LOCK:
+        if any(entry.get("node") == node_id for entry in _PENDING_RESTORE_QUEUE):
+            return
+        _PENDING_RESTORE_QUEUE.append({"node": node_id, "trigger": trigger})
+
+
+def _dispatch_pending_restore() -> None:
+    entry: Optional[Dict[str, Optional[str]]] = None
+    with _PENDING_RESTORE_LOCK:
+        if not _PENDING_RESTORE_QUEUE:
+            return
+        entry = _PENDING_RESTORE_QUEUE.popleft()
+    if not entry:
+        return
+    node_id = entry.get("node")
+    trigger = entry.get("trigger")
+    ok, message, _ = _start_restore_job(node_id, trigger=trigger)
+    if not ok and message and "already in progress" in message.lower():
+        _queue_pending_restore(node_id, trigger)
 
 
 def _estimate_dir_size_bytes(directory: Optional[Path]) -> int:
@@ -3209,6 +3235,7 @@ def _run_restore_job(details: Dict[str, object]) -> None:
                     "restart": details.get("restart"),
                 },
             )
+    _dispatch_pending_restore()
 
 
 def _start_restore_job(node_id: Optional[str], *, trigger: Optional[str] = None) -> Tuple[bool, str, Dict[str, object]]:
@@ -3286,6 +3313,7 @@ def _start_restore_job(node_id: Optional[str], *, trigger: Optional[str] = None)
                 }
             )
     if job_already_active:
+        _queue_pending_restore(details.get("node") or node_id, trigger)
         return False, "Snapshot already in progress", _snapshot_job_snapshot()
     thread = threading.Thread(target=_run_restore_job, args=(details,), daemon=True)
     thread.start()
