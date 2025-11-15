@@ -3497,7 +3497,7 @@ function syncCards(nodes) {
   }
 
   function updateEta(card, metrics) {
-    let info = computeEtaInfo(metrics);
+    const info = computeEtaInfo(metrics);
     const etaEl = card.querySelector('.stat-eta');
     if (!etaEl) return info;
     etaEl.classList.remove('is-ok', 'is-warn', 'is-danger');
@@ -3506,10 +3506,9 @@ function syncCards(nodes) {
       return null;
     }
     const healthCode = (card?.dataset?.healthCode || '').trim().toLowerCase();
-    if (healthCode === 'online' && info.text === 'Healthy') {
-      info = { ...info, text: 'Fully Synced' };
-    }
-    etaEl.textContent = info.text;
+    const tileText =
+      healthCode === 'online' && info.text === 'Healthy' ? 'Fully Synced' : info.text;
+    etaEl.textContent = tileText;
     if (info.variant) {
       etaEl.classList.add(`is-${info.variant}`);
     }
