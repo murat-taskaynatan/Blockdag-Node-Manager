@@ -2022,7 +2022,7 @@ const state = {
         }
         etaChip.title = etaInfo.hint || etaInfo.text;
       } else {
-        etaChip.textContent = 'ETA —';
+        etaChip.textContent = 'Sync Status —';
         etaChip.removeAttribute('title');
       }
     }
@@ -2042,8 +2042,6 @@ const state = {
     }
     etaChip.textContent = 'ETA pending…';
     etaChip.title = 'Peer count is zero so the ETA remains pending.';
-    etaChip.classList.remove('is-ok', 'is-danger');
-    etaChip.classList.add('is-warn');
   }
 
   function isImportingReason(reason) {
@@ -3476,8 +3474,8 @@ function syncCards(nodes) {
       const peers = Number(metrics.peers);
       if (!Number.isFinite(peers) || peers <= 0) {
         return {
-          text: 'No peers',
-          variant: 'warn',
+          text: 'ETA pending…',
+          variant: null,
           hint: 'Peer count is zero so the ETA cannot be estimated.',
         };
       }
