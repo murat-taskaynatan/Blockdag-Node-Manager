@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.5.7 - 2025-11-15
+
+- Liveness failsafe detection now also matches the DAG corruption/shutdown log lines so stalled nodes surface a meaningful reason before recovery intervenes.
+- The UI badge, `APP_VERSION`, and installer defaults now all say `v1.5.7`, keeping fresh installs and diagnostics in sync without manual overrides.
+- Remote install helpers and `/opt/blockdag-node-manager` sync scripts now pull the `v1.5.7` tag by default so leaning on the documented workflow delivers the release build.
+
 ## v1.5.6 - 2025-11-17
 
 - Start/stop controls now stay disabled with a spinner until the backend confirms each action, and health chips update immediately using the new optimistic state patching.

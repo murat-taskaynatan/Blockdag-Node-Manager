@@ -199,8 +199,10 @@ else:
         "forcing shutdown url=http://127.0.0.1:6061/healthz",
         "watchexecuted: dial ws failed",
         "block chain is shutdown",
+        "shutdown complete",
         "illegal withdrawal at block",
         "illegal withdrawal at block:difflayer, you can cleanup your block data base by '--cleanup'",
+        "the dag data was damaged (can't find tip",
     )
 
 _DEFAULT_LOG_CRITICAL_ERROR_PATTERNS = (
@@ -5178,7 +5180,7 @@ def _resolve_node(node_id: Optional[str]) -> NodeContext:
 # ---------------------------------------------------------------------------
 # API endpoints
 # ---------------------------------------------------------------------------
-APP_VERSION = os.getenv("BDAG_MANAGER_VERSION", "v1.5.6").strip() or "v1.5.6"
+APP_VERSION = os.getenv("BDAG_MANAGER_VERSION", "v1.5.7").strip() or "v1.5.7"
 
 
 @app.route("/healthz")
