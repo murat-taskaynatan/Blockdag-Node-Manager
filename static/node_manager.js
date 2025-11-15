@@ -3470,6 +3470,14 @@ function syncCards(nodes) {
     }
     const rate = averageHeightRate(metrics.labels, metrics.local);
     if (!Number.isFinite(rate) || rate <= 0) {
+      const peers = Number(metrics.peers);
+      if (!Number.isFinite(peers) || peers <= 0) {
+        return {
+          text: 'No peers',
+          variant: 'warn',
+          hint: 'Peer count is zero so the ETA cannot be estimated.',
+        };
+      }
       return {
         text: 'ETA pending…',
         variant: null,
