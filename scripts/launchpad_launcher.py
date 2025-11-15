@@ -406,6 +406,12 @@ def _render_compose(
     text = text.replace("--http.port=18545", f"--http.port={rpc}")
     text = text.replace("--ws.port=18546", f"--ws.port={ws}")
     text = text.replace("ws://127.0.0.1:18546", f"ws://127.0.0.1:{ws}")
+    if "--health=0.0.0.0:6061" not in text:
+        text = text.replace(
+            "--walletpass=test ",
+            "--walletpass=test --health=0.0.0.0:6061 ",
+            1,
+        )
     image_line = f"image: {LAUNCHPAD_DEFAULT_IMAGE}"
     pattern = re.compile(r"image:\s+blockdagnetwork/awakening:[^\s]+", re.IGNORECASE)
     if pattern.search(text):
