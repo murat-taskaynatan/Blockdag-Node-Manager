@@ -3269,11 +3269,11 @@ function syncCards(nodes) {
       }
     }
 
-    const etaInfo = stats.eta_info || null;
+    const syncProgress = state.lastProgress.get(node.id);
+    const etaInfo = updateEta(card, stats, { healthCode: code, progress: syncProgress });
     renderSyncChips(syncChips, {
-      progress: state.lastProgress.get(node.id),
+      progress: syncProgress,
       rate: state.lastRates.get(node.id),
-      etaInfo: stats.eta_info || null,
       etaInfo,
       progressLabel: code === 'progress' ? displayHealth : '',
       rateOverride:
@@ -3549,19 +3549,34 @@ function syncCards(nodes) {
     };
   }
 
-  function updateEta(card, metrics) {
-    const info = computeEtaInfo(metrics);
+  function updateEta(card, metrics, options = {}) {
     const etaEl = card.querySelector('.stat-eta');
+    const baseInfo = computeEtaInfo(metrics);
+    const hasDirectProgress = Number.isFinite(options.progress);
+    const hasMetricProgress = Number.isFinite(metrics.sync_progress);
+    const progressValue = hasDirectProgress
+      ? options.progress
+      : hasMetricProgress
+        ? Number(metrics.sync_progress)
+        : computeSyncProgress(metrics);
+    const override = resolveSyncStatusOverride({
+      healthCode: options.healthCode,
+      peers: metrics.peers,
+      progress: progressValue,
+    });
+    const info = resolveSyncStatusText({ override, etaInfo: baseInfo });
     if (!etaEl) return info;
     etaEl.classList.remove('is-ok', 'is-warn', 'is-danger');
     if (!info) {
       etaEl.textContent = '—';
+      etaEl.removeAttribute('title');
       return null;
     }
     etaEl.textContent = info.text;
     if (info.variant) {
       etaEl.classList.add(`is-${info.variant}`);
     }
+    etaEl.title = info.hint || info.text;
     return info;
   }
 
@@ -4207,7 +4222,7 @@ function syncCards(nodes) {
       } else {
         rate = state.lastRates.get(nodeId);
       }
-      const etaInfo = updateEta(card, metrics);
+      const etaInfo = updateEta(card, metrics, { healthCode: code, progress });
       renderSyncChips(syncChips, {
         progress,
         rate,

@@ -194,6 +194,8 @@ if _liveness_patterns_raw:
     LIVENESS_FAILSAFE_PATTERNS = tuple(dict.fromkeys(_liveness_patterns_raw))
 else:
     LIVENESS_FAILSAFE_PATTERNS = (
+        "node never became ready",
+        "worker stopped",
         "liveness probe exceeded timeout",
         "liveness probe failed",
         "forcing shutdown url=http://127.0.0.1:6061/healthz",
