@@ -4145,6 +4145,7 @@ function syncCards(nodes) {
     if (btn) {
       setBusy(btn, true);
       btn.dataset.controlLock = '1';
+      btn.classList.add('is-pending');
     }
     try {
       const res = await fetch('/api/control', {
@@ -4164,6 +4165,7 @@ function syncCards(nodes) {
       if (btn) {
         setBusy(btn, false);
         delete btn.dataset.controlLock;
+        btn.classList.remove('is-pending');
       }
       window.setTimeout(() => {
         void loadNodes();

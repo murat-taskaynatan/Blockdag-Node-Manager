@@ -360,6 +360,9 @@
   .icon-btn.play.is-pending::after{content:'';position:absolute;inset:0;margin:auto;width:18px;height:18px;border:2px solid rgba(255,255,255,.3);border-top-color:var(--muted);border-radius:50%;animation:nodeSpinner 1s linear infinite}
 .icon-btn.play[data-action="start"] .icon{font-size:18px;transform:translateX(1px)}
 .icon-btn.play[data-running="1"] .icon{transform:none}
+.icon-btn.restart.is-pending{position:relative;color:var(--muted)}
+.icon-btn.restart.is-pending .icon{opacity:0}
+.icon-btn.restart.is-pending::after{content:'';position:absolute;inset:0;margin:auto;width:18px;height:18px;border:2px solid rgba(255,255,255,.3);border-top-color:var(--muted);border-radius:50%;animation:nodeSpinner 1s linear infinite}
 .icon-btn.restart.is-stalled{color:#ffb74d;border-color:rgba(255,183,77,.4)}
 .icon-btn.restart.is-stalled:hover:not(:disabled){background:rgba(255,183,77,.12)}
   .icon-btn.snapshot{border-color:rgba(255,255,255,.35);background:rgba(255,255,255,.1)}
