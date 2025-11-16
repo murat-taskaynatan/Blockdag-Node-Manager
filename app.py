@@ -191,26 +191,32 @@ _liveness_patterns_raw = [
     if part.strip()
 ]
 if _liveness_patterns_raw:
-    LIVENESS_FAILSAFE_PATTERNS = tuple(dict.fromkeys(_liveness_patterns_raw))
+    LIVENESS_FAILSAFE_RECOVERY_PATTERNS = tuple(dict.fromkeys(_liveness_patterns_raw))
 else:
-    LIVENESS_FAILSAFE_PATTERNS = (
-        "node never became ready",
-        "worker stopped",
+    LIVENESS_FAILSAFE_RECOVERY_PATTERNS = (
         "chain db: need to thoroughly clean up old data",
-        "liveness probe exceeded timeout",
-        "liveness probe failed",
         "bdag chain env error",
         "can't find cur block state",
-        "forcing shutdown url=http://127.0.0.1:6061/healthz",
-        "watchexecuted: dial ws failed",
-        "block chain is shutdown",
-        "shutdown complete",
         "illegal withdrawal at block",
         "illegal withdrawal at block:difflayer, you can cleanup your block data base by '--cleanup'",
         "the dag data was damaged (can't find tip",
         "unknown to the objstorage provider",
         "unclean shutdown detected",
     )
+
+LIVENESS_FAILSAFE_RESTART_PATTERNS = (
+    "node never became ready",
+    "worker stopped",
+    "liveness probe exceeded timeout",
+    "liveness probe failed",
+    "forcing shutdown url=http://127.0.0.1:6061/healthz",
+    "watchexecuted: dial ws failed",
+    "block chain is shutdown",
+    "shutdown complete",
+)
+LIVENESS_FAILSAFE_PATTERNS = tuple(
+    dict.fromkeys(LIVENESS_FAILSAFE_RESTART_PATTERNS + LIVENESS_FAILSAFE_RECOVERY_PATTERNS)
+)
 
 _DEFAULT_LOG_CRITICAL_ERROR_PATTERNS = (
     "the dag data was damaged",
@@ -4185,8 +4191,8 @@ def _get_recent_logs(limit: int, container: str) -> List[str]:
     return []
 
 
-def _detect_liveness_failsafe_from_logs(container: Optional[str]) -> Optional[str]:
-    """Return the most recent log line that matches a liveness failsafe pattern."""
+def _detect_liveness_failsafe_from_logs(container: Optional[str]) -> Optional[Tuple[str, bool]]:
+    """Return the most recent failsafe line and whether recovery (vs restart) is required."""
     if not container or not DOCKER_BIN or not LIVENESS_FAILSAFE_PATTERNS:
         return None
     lines = _get_recent_logs(LOG_ERROR_TAIL, container)
@@ -4199,10 +4205,13 @@ def _detect_liveness_failsafe_from_logs(container: Optional[str]) -> Optional[st
             continue
         for marker in download_markers:
             if marker and marker in normalized:
-                return "Downloading blocks…"
-        for pattern in LIVENESS_FAILSAFE_PATTERNS:
+                return "Downloading blocks…", False
+        for pattern in LIVENESS_FAILSAFE_RESTART_PATTERNS:
             if pattern and pattern in normalized:
-                return line.strip()
+                return line.strip(), False
+        for pattern in LIVENESS_FAILSAFE_RECOVERY_PATTERNS:
+            if pattern and pattern in normalized:
+                return line.strip(), True
     return None
 
 
@@ -4420,12 +4429,14 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
         state["last_check"] = now
     metrics_raw = getattr(ctx, "last_metrics", None)
     metrics = metrics_raw if isinstance(metrics_raw, dict) else {}
-    failsafe_reason = _detect_liveness_failsafe_from_logs(ctx.container)
-    if failsafe_reason:
+    failsafe = _detect_liveness_failsafe_from_logs(ctx.container)
+    if failsafe:
+        failsafe_reason, failsafe_recovery = failsafe
         metrics["stalled"] = True
         metrics["stalled_reason"] = failsafe_reason
         metrics["health_text"] = failsafe_reason
         metrics["health_detail"] = failsafe_reason
+        metrics["recovery_required"] = bool(failsafe_recovery)
     liveness_suspended = False
     suspension: Optional[Dict[str, object]] = None
     if enable_liveness:
