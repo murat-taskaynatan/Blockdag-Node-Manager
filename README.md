@@ -134,10 +134,10 @@ The settings form also exposes a memory-pressure auto-restart: enable the toggle
 Need a zero-touch install on a fresh host or update to the latest version? Use the remote installer:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/murat-taskaynatan/Blockdag-Node-Manager/v1.5.7/install_nm_from_github.sh \ | sudo bash
+curl -fsSL https://raw.githubusercontent.com/murat-taskaynatan/Blockdag-Node-Manager/v1.5.8/install_nm_from_github.sh \ | sudo bash
 ```
 
-The installer accepts `REPO_REF`/`REPO_BRANCH`/`REPO_URL` environment variables if you want to pin to a different tag or fork. Running from a tagged path (like `v1.5.7` above) guarantees you pull the matching release assets even while `main` is still in progress.
+The installer accepts `REPO_REF`/`REPO_BRANCH`/`REPO_URL` environment variables if you want to pin to a different tag or fork. Running from a tagged path (like `v1.5.8` above) guarantees you pull the matching release assets even while `main` is still in progress.
 
 The remote installer also inserts the same nginx rate limit by default now, so repeated scans are throttled before they reach the manager—no extra configuration required.
 

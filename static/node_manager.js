@@ -905,6 +905,10 @@ const state = {
     const output = [];
     for (let idx = 0; idx < target; idx += 1) {
       const raw = values[idx];
+      if (raw === null || raw === undefined) {
+        output.push(null);
+        continue;
+      }
       const num = Number(raw);
       output.push(Number.isFinite(num) ? num : null);
     }
@@ -922,10 +926,19 @@ const state = {
       ? length
       : Math.max(localSeries.length, remoteSeries.length);
     const output = [];
+    let lastRemote = null;
     for (let idx = 0; idx < targetLength; idx += 1) {
-      const localVal = Number(localSeries[idx]);
-      const remoteVal = Number(remoteSeries[idx]);
-      if (!Number.isFinite(localVal) || !Number.isFinite(remoteVal)) {
+      const localRaw = localSeries[idx];
+      const remoteRaw = remoteSeries[idx];
+      const localVal = Number(localRaw);
+      const remoteValRaw = Number(remoteRaw);
+      const hasLocal = Number.isFinite(localVal);
+      const hasRemote = Number.isFinite(remoteValRaw);
+      const remoteVal = hasRemote ? remoteValRaw : lastRemote;
+      if (hasRemote) {
+        lastRemote = remoteValRaw;
+      }
+      if (!hasLocal || !Number.isFinite(remoteVal)) {
         output.push(null);
         continue;
       }
