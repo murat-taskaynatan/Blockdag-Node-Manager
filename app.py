@@ -4190,10 +4190,14 @@ def _detect_liveness_failsafe_from_logs(container: Optional[str]) -> Optional[st
     lines = _get_recent_logs(LOG_ERROR_TAIL, container)
     if not lines:
         return None
+    download_markers = ("downloading blocks", "client in initial download")
     for line in reversed(lines):
         normalized = line.strip().lower()
         if not normalized:
             continue
+        for marker in download_markers:
+            if marker and marker in normalized:
+                return "Downloading blocks…"
         for pattern in LIVENESS_FAILSAFE_PATTERNS:
             if pattern and pattern in normalized:
                 return line.strip()

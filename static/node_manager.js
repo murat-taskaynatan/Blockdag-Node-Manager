@@ -2120,7 +2120,8 @@ const state = {
     const normalizedReason = String(reason).trim().toLowerCase();
     return (
       normalizedReason.startsWith('importing blocks') ||
-      normalizedReason.startsWith('downloading blocks')
+      normalizedReason.startsWith('downloading blocks') ||
+      normalizedReason.includes('initial download')
     );
   }
 
