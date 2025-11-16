@@ -3945,7 +3945,7 @@ function syncCards(nodes) {
     if (containerRunning) {
       icon = '⏹';
       aria = 'Stop node';
-      title = forcedOffline ? 'Stop container (stalled)' : 'Stop container';
+      title = 'Stop container';
     }
     btn.innerHTML = `<span class="icon">${icon}</span>`;
     btn.setAttribute('aria-label', aria);
