@@ -1972,7 +1972,8 @@ const state = {
     const hasPeers = hasPeerMetric ? peerCount > 0 : false;
     const progressValue = Number(progress);
     const synced = Number.isFinite(progressValue) && progressValue >= 99.9;
-    if (code === 'online' && (!hasPeerMetric || peerCount <= 0)) {
+    const isOffline = code === 'offline';
+    if (!isOffline && (!hasPeerMetric || peerCount <= 0)) {
       return {
         text: 'No Peers',
         variant: 'warn',
