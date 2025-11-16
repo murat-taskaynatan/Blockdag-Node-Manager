@@ -52,7 +52,7 @@ REPO_URL="${REPO_URL:-https://github.com/murat-taskaynatan/Blockdag-Node-Manager
 REPO_REF="${REPO_REF:-${REPO_BRANCH:-v1.5.8}}"
 
 need_cmd "$PYTHON_BIN"
-ensure_packages python3 python3-venv python3-pip rsync fio nginx
+ensure_packages python3 python3-venv python3-pip rsync fio
 
 TEMP_DIR=""
 cleanup() {
