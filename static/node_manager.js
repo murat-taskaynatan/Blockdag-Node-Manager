@@ -100,16 +100,17 @@ const state = {
   const automationLogList = document.getElementById('automationLogList');
   const automationLogEmpty = document.getElementById('automationLogEmpty');
   const automationLogStatus = document.getElementById('automationLogStatus');
-  const automationLogRefreshBtn = document.getElementById('automationLogRefresh');
-  const automationLogCount = document.getElementById('automationLogCount');
-  const automationLogTabCount = document.getElementById('automationLogTabCount');
-  const automationLogFilter = document.getElementById('automationLogFilter');
-  const automationQueueCount = document.getElementById('automationQueueCount');
-  const automationQueueList = document.getElementById('automationQueueList');
-  const automationQueueEmpty = document.getElementById('automationQueueEmpty');
-  const automationLogPane = document.getElementById('automationLogPane');
-  const automationQueuePane = document.getElementById('automationQueuePane');
-  const automationTabs = Array.from(document.querySelectorAll('[data-automation-tab]'));
+const automationLogRefreshBtn = document.getElementById('automationLogRefresh');
+const automationLogCount = document.getElementById('automationLogCount');
+const automationLogTabCount = document.getElementById('automationLogTabCount');
+const automationLogFilter = document.getElementById('automationLogFilter');
+const automationQueueCount = document.getElementById('automationQueueCount');
+const automationQueueList = document.getElementById('automationQueueList');
+const automationQueueEmpty = document.getElementById('automationQueueEmpty');
+const automationLogPane = document.getElementById('automationLogPane');
+const automationQueuePane = document.getElementById('automationQueuePane');
+const automationTabs = Array.from(document.querySelectorAll('[data-automation-tab]'));
+const automationLogUpdated = document.getElementById('automationLogUpdated');
   const walletAddressValue = document.getElementById('walletAddressValue');
   const walletBalanceValue = document.getElementById('walletBalanceValue');
   const walletTotalValue = document.getElementById('walletTotalValue');
@@ -584,6 +585,9 @@ const state = {
     }
     if (automationLogTabCount) {
       automationLogTabCount.textContent = String(filteredItems.length);
+    }
+    if (automationLogUpdated && state.automationLogs.lastFetched) {
+      automationLogUpdated.textContent = `Updated ${fmtTime.format(new Date(state.automationLogs.lastFetched))}`;
     }
   }
 
