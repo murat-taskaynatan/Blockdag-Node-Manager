@@ -1079,14 +1079,17 @@
           </div>
         </div>
       </div>
-      <div class="summary-actions">
-        <div class="button-row">
-          <button class="icon-btn play" data-role="toggle" data-action="toggle" aria-label="Pause sampling">
-            <span class="icon">⏹</span>
-          </button>
-          <button class="icon-btn snapshot" data-action="node-snapshot" aria-label="Create snapshot">
-            <img src="{{ url_for('static', filename='icon-backup.png') }}" alt="Create snapshot" class="icon-image">
-          </button>
+        <div class="summary-actions">
+          <div class="button-row">
+            <button class="icon-btn play" data-role="toggle" data-action="toggle" aria-label="Pause sampling">
+              <span class="icon">⏹</span>
+            </button>
+            <button class="icon-btn restart" data-action="node-restart" aria-label="Restart container">
+              <span class="icon">⟳</span>
+            </button>
+            <button class="icon-btn snapshot" data-action="node-snapshot" aria-label="Create snapshot">
+              <img src="{{ url_for('static', filename='icon-backup.png') }}" alt="Create snapshot" class="icon-image">
+            </button>
           <button class="icon-btn restore" data-action="node-restore" aria-label="Restore snapshot">
             <img src="{{ url_for('static', filename='icon-restore.png') }}" alt="Restore snapshot" class="icon-image">
           </button>

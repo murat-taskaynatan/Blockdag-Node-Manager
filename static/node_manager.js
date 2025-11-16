@@ -2174,7 +2174,7 @@ function switchSummaryTab(target) {
     const copy = {
       stats: {
         title: 'Global Stats',
-        desc: 'Real-time snapshot of every node discovered on the local network.',
+        desc: 'Real-time snapshot of every node discovered on the localhost.',
       },
       system: {
         title: 'System Resources',
@@ -3086,6 +3086,18 @@ function syncCards(nodes) {
       toggleBtn.addEventListener('mouseup', (event) => event.stopPropagation());
       toggleBtn.title = 'Start/Stop container';
     }
+    const restartBtn = details.querySelector('[data-action="node-restart"]');
+    if (restartBtn) {
+      const handler = async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        await restartNode(node.id, restartBtn);
+      };
+      restartBtn.addEventListener('click', handler);
+      restartBtn.addEventListener('mousedown', (event) => event.stopPropagation());
+      restartBtn.addEventListener('mouseup', (event) => event.stopPropagation());
+      restartBtn.title = 'Restart container';
+    }
     const snapshotBtn = details.querySelector('[data-action="node-snapshot"]');
     if (snapshotBtn) {
       const handler = async (event) => {
@@ -3911,10 +3923,8 @@ function syncCards(nodes) {
     if (!btn) return;
     const { effectiveRunning = containerRunning, forcedOffline = false } = options;
     let action = 'start';
-    if (containerRunning && !forcedOffline) {
+    if (containerRunning) {
       action = 'stop';
-    } else if (containerRunning && forcedOffline) {
-      action = 'restart';
     }
     btn.dataset.running = containerRunning ? '1' : '0';
     btn.dataset.effectiveRunning = effectiveRunning ? '1' : '0';
@@ -3923,14 +3933,10 @@ function syncCards(nodes) {
     let icon = '▶';
     let aria = 'Start node';
     let title = 'Start container';
-    if (action === 'restart') {
-      icon = '⟳';
-      aria = 'Restart node';
-      title = 'Restart container (stalled detection)';
-    } else if (containerRunning) {
+    if (containerRunning) {
       icon = '⏹';
       aria = 'Stop node';
-      title = 'Stop container';
+      title = forcedOffline ? 'Stop container (stalled)' : 'Stop container';
     }
     btn.innerHTML = `<span class="icon">${icon}</span>`;
     btn.setAttribute('aria-label', aria);
@@ -4113,6 +4119,42 @@ function syncCards(nodes) {
       }
       if (!controlSucceeded) {
         state.pendingNodeActions.delete(nodeId);
+      }
+      window.setTimeout(() => {
+        void loadNodes();
+        void refreshMetrics();
+      }, 0);
+    }
+  }
+
+  async function restartNode(nodeId, btn) {
+    const entry = state.nodes.get(nodeId);
+    if (!entry) return;
+    const meta = entry.meta || {};
+    const container = meta.container || meta.id;
+    if (!container) return;
+    if (btn) {
+      setBusy(btn, true);
+      btn.dataset.controlLock = '1';
+    }
+    try {
+      const res = await fetch('/api/control', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'docker_restart', container, node: nodeId }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await waitForNodeState(nodeId, {
+        containerRunning: true,
+        effectiveRunning: true,
+        forcedOffline: false,
+      });
+    } catch (err) {
+      console.error('[fleet] restart failed', err);
+    } finally {
+      if (btn) {
+        setBusy(btn, false);
+        delete btn.dataset.controlLock;
       }
       window.setTimeout(() => {
         void loadNodes();
