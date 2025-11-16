@@ -240,6 +240,7 @@
   .automation-log-entry__header{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--muted)}
   .automation-log-entry__kind{font-weight:600;font-size:11px;letter-spacing:.08em;text-transform:uppercase;padding:2px 10px;border-radius:999px;background:rgba(255,255,255,.05)}
   .automation-log-entry__kind--auto_restart{background:rgba(68,242,168,.16);color:#44f2a8}
+  .automation-log-entry__kind--memory_restart{background:rgba(100,181,246,.18);color:#64b5f6}
   .automation-log-entry__kind--chain_restore{background:rgba(255,183,77,.18);color:#ffb74d}
   .automation-log-entry__kind--auto_snapshot{background:rgba(171,129,255,.24);color:#d7b3ff}
   .automation-log-entry__title{font-size:14px;font-weight:600}
@@ -755,6 +756,7 @@
                     <select id="automationLogFilter">
                       <option value="all">All events</option>
                       <option value="auto_restart">Auto Restart</option>
+                      <option value="memory_restart">Memory Restart</option>
                       <option value="chain_restore">Chain Recovery</option>
                       <option value="auto_snapshot">Auto Snapshot</option>
                     </select>

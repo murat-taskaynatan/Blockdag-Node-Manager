@@ -435,11 +435,20 @@ const state = {
     return mapping[status] || status;
   }
 
+  function isMemoryRestart(entry) {
+    if (!entry || String(entry.kind || '').toLowerCase() !== 'auto_restart') return false;
+    const source = String(entry?.meta?.source || '').toLowerCase();
+    return source === 'memory';
+  }
+
   function automationLogMatchesFilter(entry) {
     if (!entry) return true;
     const filter = (state.automationLogs.filter || 'all').toLowerCase();
     if (!filter || filter === 'all') return true;
     const kind = String(entry.kind || '').toLowerCase();
+    if (filter === 'memory_restart') {
+      return isMemoryRestart(entry);
+    }
     return kind === filter;
   }
 
@@ -510,14 +519,16 @@ const state = {
       const fragment = document.createDocumentFragment();
       filteredItems.forEach((entry) => {
         const kind = String(entry?.kind || 'automation');
+        const showMemoryLabel = isMemoryRestart(entry);
         const li = document.createElement('li');
         li.className = 'automation-log-entry';
 
         const header = document.createElement('div');
         header.className = 'automation-log-entry__header';
         const kindChip = document.createElement('span');
-        kindChip.className = `automation-log-entry__kind automation-log-entry__kind--${kind}`;
-        kindChip.textContent = automationKindLabel(kind);
+        const chipClass = showMemoryLabel ? 'memory_restart' : kind;
+        kindChip.className = `automation-log-entry__kind automation-log-entry__kind--${chipClass}`;
+        kindChip.textContent = showMemoryLabel ? 'Memory Restart' : automationKindLabel(kind);
         const timeLabel = document.createElement('span');
         timeLabel.textContent = formatAutomationTimestamp(entry);
         header.append(kindChip, timeLabel);
