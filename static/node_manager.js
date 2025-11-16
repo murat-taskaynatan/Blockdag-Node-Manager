@@ -30,6 +30,11 @@ const state = {
       lastFetched: 0,
       filter: 'all',
     },
+    automationQueue: {
+      items: [],
+      count: 0,
+      tab: 'logs',
+    },
     nodesDiscovering: false,
     discoveryStartTs: 0,
     discoveryDismissed: false,
@@ -97,7 +102,14 @@ const state = {
   const automationLogStatus = document.getElementById('automationLogStatus');
   const automationLogRefreshBtn = document.getElementById('automationLogRefresh');
   const automationLogCount = document.getElementById('automationLogCount');
+  const automationLogTabCount = document.getElementById('automationLogTabCount');
   const automationLogFilter = document.getElementById('automationLogFilter');
+  const automationQueueCount = document.getElementById('automationQueueCount');
+  const automationQueueList = document.getElementById('automationQueueList');
+  const automationQueueEmpty = document.getElementById('automationQueueEmpty');
+  const automationLogPane = document.getElementById('automationLogPane');
+  const automationQueuePane = document.getElementById('automationQueuePane');
+  const automationTabs = Array.from(document.querySelectorAll('[data-automation-tab]'));
   const walletAddressValue = document.getElementById('walletAddressValue');
   const walletBalanceValue = document.getElementById('walletBalanceValue');
   const walletTotalValue = document.getElementById('walletTotalValue');
@@ -570,6 +582,48 @@ const state = {
         automationLogCount.textContent = `${filteredItems.length}/${items.length}`;
       }
     }
+    if (automationLogTabCount) {
+      automationLogTabCount.textContent = String(filteredItems.length);
+    }
+  }
+
+  function renderAutomationQueue() {
+    if (!automationQueueList || !automationQueueEmpty) return;
+    const items = Array.isArray(state.automationQueue.items) ? state.automationQueue.items : [];
+    automationQueueList.innerHTML = '';
+    if (!items.length) {
+      automationQueueEmpty.hidden = false;
+    } else {
+      automationQueueEmpty.hidden = true;
+      const fragment = document.createDocumentFragment();
+      items.forEach((entry) => {
+        const li = document.createElement('li');
+        li.className = 'automation-log-entry';
+        const header = document.createElement('div');
+        header.className = 'automation-log-entry__header';
+        header.textContent = (entry && entry.trigger) ? String(entry.trigger) : 'Pending restore';
+        const title = document.createElement('div');
+        title.className = 'automation-log-entry__title';
+        title.textContent = entry?.node ? `Node ${entry.node}` : 'Pending restore';
+        li.append(header, title);
+        fragment.append(li);
+      });
+      automationQueueList.append(fragment);
+    }
+    if (automationQueueCount) {
+      automationQueueCount.textContent = String(items.length);
+    }
+  }
+
+  function setAutomationTab(tab) {
+    const targetTab = tab || state.automationQueue.tab || 'logs';
+    state.automationQueue.tab = targetTab;
+    automationTabs.forEach((btn) => {
+      const isActive = btn.dataset.automationTab === targetTab;
+      btn.classList.toggle('is-active', isActive);
+    });
+    if (automationLogPane) automationLogPane.hidden = targetTab !== 'logs';
+    if (automationQueuePane) automationQueuePane.hidden = targetTab !== 'queue';
   }
 
   function stopAutomationLogPolling() {
@@ -602,7 +656,10 @@ const state = {
       state.automationLogs.items = Array.isArray(payload.logs) ? payload.logs : [];
       state.automationLogs.lastFetched = Date.now();
       state.automationLogs.error = null;
+      state.automationQueue.items = Array.isArray(payload.pending_restores) ? payload.pending_restores : [];
+      state.automationQueue.count = Number(payload.pending_restore_count) || state.automationQueue.items.length;
       renderAutomationLogs();
+      renderAutomationQueue();
       const updatedLabel = fmtTime.format(new Date(state.automationLogs.lastFetched));
       updateAutomationStatus(`Updated ${updatedLabel}`);
     } catch (err) {
@@ -5219,6 +5276,16 @@ function syncCards(nodes) {
         state.automationLogs.filter = target.value || 'all';
         renderAutomationLogs();
       });
+    }
+    if (automationTabs.length) {
+      automationTabs.forEach((btn) => {
+        btn.addEventListener('click', (event) => {
+          event.preventDefault();
+          const tab = btn.dataset.automationTab || 'logs';
+          setAutomationTab(tab);
+        });
+      });
+      setAutomationTab(state.automationQueue.tab);
     }
   }
 

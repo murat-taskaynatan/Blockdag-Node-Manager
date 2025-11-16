@@ -5645,7 +5645,22 @@ def api_automation_logs():
     except Exception:
         limit = 50
     logs = _automation_log_snapshot(limit)
-    return jsonify({"logs": logs, "updated": time.time()})
+    pending_restore_count = 0
+    pending_restores: List[Dict[str, object]] = []
+    try:
+        with _PENDING_RESTORE_LOCK:
+            pending_restore_count = len(_PENDING_RESTORE_QUEUE)
+            pending_restores = [dict(item) for item in list(_PENDING_RESTORE_QUEUE)[:limit]]
+    except Exception:
+        pending_restores = []
+    return jsonify(
+        {
+            "logs": logs,
+            "updated": time.time(),
+            "pending_restore_count": pending_restore_count,
+            "pending_restores": pending_restores,
+        }
+    )
 
 
 
