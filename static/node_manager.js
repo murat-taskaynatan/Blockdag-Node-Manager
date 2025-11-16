@@ -664,8 +664,7 @@ const automationLogUpdated = document.getElementById('automationLogUpdated');
       state.automationQueue.count = Number(payload.pending_restore_count) || state.automationQueue.items.length;
       renderAutomationLogs();
       renderAutomationQueue();
-      const updatedLabel = fmtTime.format(new Date(state.automationLogs.lastFetched));
-      updateAutomationStatus(`Updated ${updatedLabel}`);
+      updateAutomationStatus('');
     } catch (err) {
       state.automationLogs.error = err;
       updateAutomationStatus('Failed to load logs', { error: true });
