@@ -1417,6 +1417,8 @@ _CORRUPTION_RESTORE_KEYWORDS: Tuple[str, ...] = (
     "chain db: need to thoroughly clean up old data",
     "the dag data was damaged",
     "can't find tip",
+    "bdag chain env error",
+    "can't find cur block state",
     "illegal withdrawal at block",
     "cleanup your block data base by '--cleanup'",
     "unknown to the objstorage provider",
