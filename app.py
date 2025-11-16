@@ -196,6 +196,7 @@ else:
     LIVENESS_FAILSAFE_PATTERNS = (
         "node never became ready",
         "worker stopped",
+        "chain db: need to thoroughly clean up old data",
         "liveness probe exceeded timeout",
         "liveness probe failed",
         "forcing shutdown url=http://127.0.0.1:6061/healthz",
@@ -212,6 +213,7 @@ else:
 _DEFAULT_LOG_CRITICAL_ERROR_PATTERNS = (
     "the dag data was damaged",
     "can't find tip",
+    "chain db: need to thoroughly clean up old data",
     "liveness probe exceeded timeout; forcing shutdown",
     "illegal withdrawal at block",
     "cleanup your block data base by '--cleanup' to start liveness error recovery",
