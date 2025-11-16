@@ -843,8 +843,21 @@ def update_settings(updates: Dict[str, object]) -> Dict[str, object]:
     with _SETTINGS_LOCK:
         if not _SETTINGS_CACHE:
             _SETTINGS_CACHE.update(_load_settings_file())
+        prev_liveness = bool(_SETTINGS_CACHE.get("liveness_auto_recover"))
         _SETTINGS_CACHE.update(filtered)
         _apply_runtime_settings(_SETTINGS_CACHE)
+        new_liveness = bool(_SETTINGS_CACHE.get("liveness_auto_recover"))
+        cleared_restores = 0
+        if prev_liveness and not new_liveness:
+            cleared_restores = _clear_liveness_restore_queue()
+            if cleared_restores:
+                try:
+                    app.logger.info(
+                        "Cleared %s pending liveness restore job(s) after disabling auto-recover.",
+                        cleared_restores,
+                    )
+                except Exception:
+                    pass
         try:
             SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
             with SETTINGS_PATH.open("w", encoding="utf-8") as handle:
@@ -1440,6 +1453,25 @@ def _dispatch_pending_restore() -> None:
     ok, message, _ = _start_restore_job(node_id, trigger=trigger)
     if not ok and message and "already in progress" in message.lower():
         _queue_pending_restore(node_id, trigger)
+
+
+def _clear_liveness_restore_queue() -> int:
+    """Drop pending restores that were queued by the liveness policy."""
+    cleared = 0
+    with _PENDING_RESTORE_LOCK:
+        if not _PENDING_RESTORE_QUEUE:
+            return 0
+        kept: Deque[Dict[str, Optional[str]]] = deque()
+        while _PENDING_RESTORE_QUEUE:
+            entry = _PENDING_RESTORE_QUEUE.popleft()
+            trigger = str(entry.get("trigger") or "").strip().lower()
+            if trigger == "liveness":
+                cleared += 1
+                continue
+            kept.append(entry)
+        if kept:
+            _PENDING_RESTORE_QUEUE.extend(kept)
+    return cleared
 
 
 def _estimate_dir_size_bytes(directory: Optional[Path]) -> int:
