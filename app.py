@@ -798,6 +798,28 @@ def _apply_runtime_settings(settings: Dict[str, object]) -> None:
         _ensure_directory_rw(SNAPSHOT_DIR, create=True)
     except Exception:
         pass
+    if not os.access(SNAPSHOT_DIR, os.R_OK | os.W_OK | os.X_OK):
+        fallback_candidates = [
+            _expanded_path(SNAPSHOT_DIR_DEFAULT_PATH, _SNAPSHOT_DIR_FALLBACK),
+            Path.home() / "backups",
+        ]
+        for candidate in fallback_candidates:
+            try:
+                _ensure_directory_rw(candidate, create=True)
+            except Exception:
+                continue
+            if os.access(candidate, os.R_OK | os.W_OK | os.X_OK):
+                try:
+                    app.logger.warning(
+                        "Snapshot directory %s not writable for user %s; falling back to %s",
+                        SNAPSHOT_DIR,
+                        _service_username(),
+                        candidate,
+                    )
+                except Exception:
+                    pass
+                SNAPSHOT_DIR = candidate
+                break
 
     login_user = str(settings.get("login_user") or "").strip() or _ENV_LOGIN_USER
     login_pass = str(settings.get("login_pass") or "").strip() or _ENV_LOGIN_PASS
@@ -1264,17 +1286,21 @@ def _ensure_directory_rw(path: Optional[Path], *, create: bool) -> None:
         return
     setfacl_bin = shutil.which("setfacl")
     if setfacl_bin:
-        try:
-            subprocess.run(
-                [setfacl_bin, "-m", f"u:{user}:rwX", str(normalized)],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                check=False,
-            )
-            if os.access(normalized, os.R_OK | os.W_OK | os.X_OK):
-                return
-        except Exception:
-            pass
+        acl_cmd = [setfacl_bin, "-m", f"u:{user}:rwX", str(normalized)]
+        for cmd in (acl_cmd, ["sudo", "-n", *acl_cmd] if os.geteuid() != 0 else None):
+            if not cmd:
+                continue
+            try:
+                subprocess.run(
+                    cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                )
+                if os.access(normalized, os.R_OK | os.W_OK | os.X_OK):
+                    return
+            except Exception:
+                continue
     if os.geteuid() == 0:
         try:
             current_mode = stat.S_IMODE(os.stat(normalized).st_mode)
