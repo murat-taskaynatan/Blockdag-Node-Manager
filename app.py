@@ -1386,6 +1386,24 @@ LEGACY_SNAPSHOT_PATTERNS = [
     f"{SNAPSHOT_PREFIX}-*.tar.gz",
 ]
 
+_CORRUPTION_RESTORE_KEYWORDS: Tuple[str, ...] = (
+    "chain db: need to thoroughly clean up old data",
+    "the dag data was damaged",
+    "can't find tip",
+    "illegal withdrawal at block",
+    "cleanup your block data base by '--cleanup'",
+    "unknown to the objstorage provider",
+    "unclean shutdown detected",
+)
+
+def _should_trigger_corruption_restore(reason: Optional[str]) -> bool:
+    if not reason:
+        return False
+    text = str(reason).strip().lower()
+    if not text:
+        return False
+    return any(keyword in text for keyword in _CORRUPTION_RESTORE_KEYWORDS)
+
 _SNAPSHOT_DIR_LOCK = threading.Lock()
 _SNAPSHOT_JOB_LOCK = threading.Lock()
 _SNAPSHOT_JOB_STATE: Dict[str, object] = {
@@ -4463,11 +4481,26 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
                         state["liveness_restarts"] = 0
                         state["last_liveness"] = now
                     return
-                if _trigger_restore_for_context(ctx, stalled_reason):
+                allow_restore = _should_trigger_corruption_restore(stalled_reason)
+                if allow_restore:
+                    if _trigger_restore_for_context(ctx, stalled_reason):
+                        with _LOG_POLICY_LOCK:
+                            state["last_restart"] = now
+                            state["error_streak"] = 0
+                            state["liveness_restarts"] = 0
+                        return
+                else:
+                    try:
+                        app.logger.info(
+                            "Liveness skipping chain restore for %s; stall reason not corruption: %s",
+                            ctx.id,
+                            stalled_reason,
+                        )
+                    except Exception:
+                        pass
                     with _LOG_POLICY_LOCK:
-                        state["last_restart"] = now
-                        state["error_streak"] = 0
                         state["liveness_restarts"] = 0
+                        state["last_liveness"] = now
                     return
                 with _LOG_POLICY_LOCK:
                     state["liveness_restarts"] = 0
