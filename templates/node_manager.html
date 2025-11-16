@@ -227,8 +227,6 @@
   .automation-tab{border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--text);border-radius:10px;padding:6px 10px;font-size:12px;font-weight:600;letter-spacing:.02em;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .2s,border .2s}
   .automation-tab.is-active{border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.12)}
   .automation-log-controls{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
-  .automation-log-status{font-size:12px;color:var(--muted)}
-  .automation-log-status.is-error{color:var(--bad)}
   .automation-log-updated{font-size:12px;color:var(--muted);text-align:right;margin-top:6px}
   .automation-log-filter{display:flex;align-items:center;gap:6px}
   .automation-log-filter-label{font-size:12px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
@@ -755,7 +753,16 @@
             </button>
             <div class="automation-log-body" id="automationLogBody" hidden>
               <div class="automation-log-controls">
-                <span class="automation-log-status" id="automationLogStatus">No events yet.</span>
+                <div class="automation-tab-bar">
+                  <button type="button" class="automation-tab is-active" data-automation-tab="logs">
+                    <span>Logs</span>
+                    <span class="automation-log-count" id="automationLogTabCount">0</span>
+                  </button>
+                  <button type="button" class="automation-tab" data-automation-tab="queue">
+                    <span>Queue</span>
+                    <span class="automation-log-count" id="automationQueueCount">0</span>
+                  </button>
+                </div>
                 <div class="automation-log-filter">
                   <label>
                     <span class="automation-log-filter-label">Event</span>
@@ -769,16 +776,6 @@
                   </label>
                   <button type="button" class="btn btn--ghost" id="automationLogRefresh">Refresh</button>
                 </div>
-              </div>
-              <div class="automation-tab-bar">
-                <button type="button" class="automation-tab is-active" data-automation-tab="logs">
-                  <span>Logs</span>
-                  <span class="automation-log-count" id="automationLogTabCount">0</span>
-                </button>
-                <button type="button" class="automation-tab" data-automation-tab="queue">
-                  <span>Queue</span>
-                  <span class="automation-log-count" id="automationQueueCount">0</span>
-                </button>
               </div>
               <div id="automationLogPane">
                 <div class="automation-log-empty" id="automationLogEmpty">No automation activity yet.</div>
