@@ -4048,12 +4048,7 @@ function syncCards(nodes) {
     const previousProgress = state.lastProgress.get(nodeId);
     const forcedState = shouldForceOffline(status, containerRunning, previousProgress);
     const forcedOffline = forcedState.forced;
-    let action = 'docker_start';
-    if (containerRunning && !forcedOffline) {
-      action = 'docker_stop';
-    } else if (containerRunning && forcedOffline) {
-      action = 'docker_restart';
-    }
+    let action = containerRunning ? 'docker_stop' : 'docker_start';
     const optimisticState = (() => {
       if (action === 'docker_start' || action === 'docker_restart') {
         return { containerRunning: true, effectiveRunning: true, forcedOffline: false };
