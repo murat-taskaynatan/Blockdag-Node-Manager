@@ -2492,7 +2492,7 @@ async function saveSettings() {
       summaryBadge.removeAttribute('title');
       countEl.textContent = onlineEl.textContent = offlineEl.textContent = maxLocalEl.textContent = maxRemoteEl.textContent = '—';
       if (stalledEl) {
-        stalledEl.textContent = '— / —';
+        stalledEl.textContent = '—';
         stalledEl.removeAttribute('title');
       }
       return;
@@ -2509,9 +2509,12 @@ async function saveSettings() {
     offlineEl.textContent = fmt.format(offline);
     if (stalledEl) {
       const stalledValue = fmt.format(stalled);
+      stalledEl.textContent = stalledValue;
       const importingValue = fmt.format(importing);
-      stalledEl.textContent = `${stalledValue} / ${importingValue}`;
-      stalledEl.title = `Stalled ${stalledValue} • Importing ${importingValue}`;
+      stalledEl.title =
+        importing > 0
+          ? `Stalled ${stalledValue} • Importing ${importingValue}`
+          : `Stalled ${stalledValue}`;
     }
     maxLocalEl.textContent = summary.max_local_height !== undefined ? fmt.format(summary.max_local_height) : '—';
     maxRemoteEl.textContent = summary.max_remote_height !== undefined ? fmt.format(summary.max_remote_height) : '—';
