@@ -1912,16 +1912,13 @@ const state = {
     if (!running) {
       return outcome;
     }
-    if (stats && (stats.stalled || stats.stalled_reason || stats.health_text)) {
-      const stalledFlag = Boolean(stats.stalled);
-      const healthText = stats.health_text && String(stats.health_text).trim();
-      if (stalledFlag || (healthText && healthText.length > 0)) {
-        const stalledReason =
-          (stats.stalled_reason && String(stats.stalled_reason).trim()) ||
-          healthText ||
-          'Stalled';
-        return { forced: true, reason: stalledReason };
-      }
+    const stalledFlags = stats && Boolean(stats.stalled);
+    if (stalledFlags) {
+      const stalledReason =
+        (stats.stalled_reason && String(stats.stalled_reason).trim()) ||
+        (stats.health_text && String(stats.health_text).trim()) ||
+        'Stalled';
+      return { forced: true, reason: stalledReason };
     }
     const localSeries = Array.isArray(stats.local) ? stats.local.map(numberOrZero) : [];
     const remoteSeries = Array.isArray(stats.remote) ? stats.remote.map(numberOrZero) : [];
