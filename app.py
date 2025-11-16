@@ -207,6 +207,8 @@ else:
 LIVENESS_FAILSAFE_RESTART_PATTERNS = (
     "node never became ready",
     "worker stopped",
+    "timeout waiting for inner binary shutdown",
+    "inner binary kill resulted error",
     "liveness probe exceeded timeout",
     "liveness probe failed",
     "forcing shutdown url=http://127.0.0.1:6061/healthz",
