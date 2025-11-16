@@ -3317,6 +3317,16 @@ function syncCards(nodes) {
       }
     }
 
+    const restartBtn = card.querySelector('[data-action="node-restart"]');
+    if (restartBtn) {
+      restartBtn.classList.toggle('is-stalled', Boolean(forcedHeader.forced));
+      if (forcedHeader.forced) {
+        restartBtn.title = forcedHeader.reason || 'Restart container';
+      } else {
+        restartBtn.title = 'Restart container';
+      }
+    }
+
     const syncProgress = state.lastProgress.get(node.id);
     const etaInfo = updateEta(card, stats, { healthCode: code, progress: syncProgress });
     renderSyncChips(syncChips, {
@@ -3929,7 +3939,6 @@ function syncCards(nodes) {
     btn.dataset.running = containerRunning ? '1' : '0';
     btn.dataset.effectiveRunning = effectiveRunning ? '1' : '0';
     btn.dataset.action = action;
-    btn.classList.toggle('is-stalled', Boolean(containerRunning && forcedOffline));
     let icon = '▶';
     let aria = 'Start node';
     let title = 'Start container';
