@@ -942,7 +942,7 @@ const state = {
         output.push(null);
         continue;
       }
-      const delta = Math.abs(remoteVal - localVal);
+      const delta = remoteVal - localVal;
       output.push(Number.isFinite(delta) ? delta : null);
     }
     return output;
@@ -966,13 +966,12 @@ const state = {
 
   function formatBlocksValue(value) {
     if (!Number.isFinite(value)) return '—';
-    const safe = Math.max(value, 0);
-    return `${fmt.format(safe)} blocks`;
+    return `${fmt.format(value)} blocks`;
   }
 
   function formatBlocksTick(value) {
     if (!Number.isFinite(value)) return '';
-    return fmt.format(Math.max(value, 0));
+    return fmt.format(value);
   }
 
   function formatPeersValue(value) {
