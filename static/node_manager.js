@@ -3319,8 +3319,11 @@ function syncCards(nodes) {
 
     const restartBtn = card.querySelector('[data-action="node-restart"]');
     if (restartBtn) {
-      restartBtn.classList.toggle('is-stalled', Boolean(forcedHeader.forced));
-      if (forcedHeader.forced) {
+      const isImporting = code === 'progress' && displayHealth
+        && displayHealth.toLowerCase().includes('importing');
+      const showStalled = Boolean(forcedHeader.forced && !isImporting);
+      restartBtn.classList.toggle('is-stalled', showStalled);
+      if (showStalled) {
         restartBtn.title = forcedHeader.reason || 'Restart container';
       } else {
         restartBtn.title = 'Restart container';
