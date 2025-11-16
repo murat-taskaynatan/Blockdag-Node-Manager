@@ -218,6 +218,12 @@ LIVENESS_FAILSAFE_PATTERNS = tuple(
     dict.fromkeys(LIVENESS_FAILSAFE_RESTART_PATTERNS + LIVENESS_FAILSAFE_RECOVERY_PATTERNS)
 )
 
+def _is_importing_reason(reason: Optional[str]) -> bool:
+    if not reason:
+        return False
+    normalized = str(reason or "").strip().lower()
+    return normalized.startswith("importing blocks") or normalized.startswith("downloading blocks")
+
 _DEFAULT_LOG_CRITICAL_ERROR_PATTERNS = (
     "the dag data was damaged",
     "can't find tip",
@@ -4198,14 +4204,10 @@ def _detect_liveness_failsafe_from_logs(container: Optional[str]) -> Optional[Tu
     lines = _get_recent_logs(LOG_ERROR_TAIL, container)
     if not lines:
         return None
-    download_markers = ("downloading blocks", "client in initial download")
     for line in reversed(lines):
         normalized = line.strip().lower()
         if not normalized:
             continue
-        for marker in download_markers:
-            if marker and marker in normalized:
-                return "Downloading blocks…", False
         for pattern in LIVENESS_FAILSAFE_RESTART_PATTERNS:
             if pattern and pattern in normalized:
                 return line.strip(), False
@@ -4437,6 +4439,14 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
         metrics["health_text"] = failsafe_reason
         metrics["health_detail"] = failsafe_reason
         metrics["recovery_required"] = bool(failsafe_recovery)
+    stalled_reason_text = (
+        metrics.get("stalled_reason")
+        or metrics.get("health_detail")
+        or metrics.get("health_text")
+        or ""
+    )
+    if _is_importing_reason(stalled_reason_text):
+        return
     liveness_suspended = False
     suspension: Optional[Dict[str, object]] = None
     if enable_liveness:
