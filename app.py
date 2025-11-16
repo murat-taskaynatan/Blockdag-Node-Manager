@@ -4223,6 +4223,9 @@ def _logs_show_importing(container: Optional[str]) -> bool:
     """Detect importing/downloading activity from recent logs."""
     if not container or not DOCKER_BIN:
         return False
+    exists, running, _ = _container_state(container)
+    if not (exists and running):
+        return False
     lines = _get_recent_logs(LOG_ERROR_TAIL, container)
     if not lines:
         return False
