@@ -20,6 +20,9 @@ BlockDAG Node Manager is a lightweight Flask application that discovers, monitor
 - Live log viewer with ANSI cleanup and auto-scroll to keep recent node activity visible.
 - Remote-height awareness that surfaces local vs remote deltas and ETA to full sync.
 - Mining state detection and health categorisation (steady, syncing, downloading, stalled, etc.).
+- Liveness failsafe patterns split into two buckets so automation can decide whether to restart or restore:
+  - Restart triggers: node never became ready; worker stopped; liveness probe exceeded timeout/failed; forcing shutdown via health URL; watchExecuted dial failures; chain shutdown.
+  - Recovery triggers: chain DB cleanup required; block state/env errors (e.g., “can’t find cur block state”, “bdag chain env error”); illegal withdrawal; damaged DAG tip; unknown objstorage provider; unclean shutdown.
 - Safe Docker controls for starting, stopping, and restarting containers directly from the UI.
 - REST API suitable for automation via `/api/node-manager/*`.
 
