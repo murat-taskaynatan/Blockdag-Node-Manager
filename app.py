@@ -4217,6 +4217,29 @@ def _detect_liveness_failsafe_from_logs(container: Optional[str]) -> Optional[Tu
     return None
 
 
+def _logs_show_importing(container: Optional[str]) -> bool:
+    """Detect importing/downloading activity from recent logs."""
+    if not container or not DOCKER_BIN:
+        return False
+    lines = _get_recent_logs(LOG_ERROR_TAIL, container)
+    if not lines:
+        return False
+    importing_markers = (
+        "importing blocks",
+        "downloading blocks",
+        "client in initial download",
+        "imported new chain segment",
+    )
+    for line in reversed(lines):
+        normalized = line.strip().lower()
+        if not normalized:
+            continue
+        for marker in importing_markers:
+            if marker in normalized:
+                return True
+    return False
+
+
 def _log_refresh_worker() -> None:
     while True:
         triggered = _LOG_REFRESH_EVENT.wait(timeout=LOG_REFRESH_INTERVAL_SEC)
@@ -4439,6 +4462,13 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
         metrics["health_text"] = failsafe_reason
         metrics["health_detail"] = failsafe_reason
         metrics["recovery_required"] = bool(failsafe_recovery)
+    if _logs_show_importing(ctx.container):
+        metrics.pop("stalled_reason", None)
+        metrics.pop("health_detail", None)
+        metrics["stalled"] = False
+        metrics["recovery_required"] = False
+        metrics["health_text"] = "Importing blocks…"
+        return
     stalled_reason_text = (
         metrics.get("stalled_reason")
         or metrics.get("health_detail")
