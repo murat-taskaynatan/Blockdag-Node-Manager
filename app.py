@@ -199,6 +199,8 @@ else:
         "chain db: need to thoroughly clean up old data",
         "liveness probe exceeded timeout",
         "liveness probe failed",
+        "bdag chain env error",
+        "can't find cur block state",
         "forcing shutdown url=http://127.0.0.1:6061/healthz",
         "watchexecuted: dial ws failed",
         "block chain is shutdown",
