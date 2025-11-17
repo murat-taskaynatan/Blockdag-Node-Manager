@@ -5320,6 +5320,7 @@ def _fleet_summary(nodes: List[dict]) -> dict:
         for node in nodes
         if node.get("status", {}).get("stalled") or _is_importing_status(node.get("status", {}))
     )
+    no_peers = sum(1 for node in nodes if (node.get("status", {}) or {}).get("peers") == 0)
     local_heights = [
         node.get("status", {}).get("local_height") or 0 for node in nodes
     ]
@@ -5332,6 +5333,7 @@ def _fleet_summary(nodes: List[dict]) -> dict:
         "offline": offline,
         "stalled": stalled,
         "importing": importing,
+        "no_peers": no_peers,
         "max_local_height": max(local_heights) if local_heights else 0,
         "max_remote_height": max(remote_heights) if remote_heights else 0,
         "timestamp": time.time(),

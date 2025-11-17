@@ -2569,6 +2569,7 @@ async function saveSettings() {
     const offlineEl = document.getElementById('statOffline');
     const stalledEl = document.getElementById('statStalled');
     const importingEl = document.getElementById('statImporting');
+    const noPeersEl = document.getElementById('statNoPeers');
     const maxLocalEl = document.getElementById('statMaxLocal');
     const maxRemoteEl = document.getElementById('statMaxRemote');
 
@@ -2585,6 +2586,9 @@ async function saveSettings() {
       if (importingEl) {
         importingEl.textContent = '—';
       }
+      if (noPeersEl) {
+        noPeersEl.textContent = '—';
+      }
       return;
     }
 
@@ -2593,6 +2597,7 @@ async function saveSettings() {
     const offline = summary.offline ?? Math.max(count - online, 0);
     const stalled = summary.stalled ?? 0;
     const importing = summary.importing ?? 0;
+    const noPeers = summary.no_peers ?? 0;
 
     countEl.textContent = fmt.format(count);
     onlineEl.textContent = fmt.format(online);
@@ -2609,6 +2614,10 @@ async function saveSettings() {
     if (importingEl) {
       importingEl.textContent = fmt.format(importing);
       importingEl.title = `Importing ${fmt.format(importing)}`;
+    }
+    if (noPeersEl) {
+      noPeersEl.textContent = fmt.format(noPeers);
+      noPeersEl.title = `Nodes with zero peers: ${fmt.format(noPeers)}`;
     }
     maxLocalEl.textContent = summary.max_local_height !== undefined ? fmt.format(summary.max_local_height) : '—';
     maxRemoteEl.textContent = summary.max_remote_height !== undefined ? fmt.format(summary.max_remote_height) : '—';
