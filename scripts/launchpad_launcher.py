@@ -11,6 +11,8 @@ from typing import Dict, List, Optional, Tuple
 LAUNCHPAD_REPO = "https://github.com/BlockdagNetworkLabs/blockdag-scripts.git"
 LAUNCHPAD_DEFAULT_IMAGE = os.getenv("BDAG_LAUNCHPAD_IMAGE", "blockdagnetwork/awakening:v0.0.2")
 HELPER_TEMPLATE = Path(__file__).resolve().parent / "launchpad_entrypoint.sh"
+NETWORK_KEY_NAMES = ("network.key",)
+BDAGETH_KEY_GLOBS = ("**/bdageth/keystore/*",)
 
 
 class LaunchError(RuntimeError):
@@ -39,6 +41,34 @@ def _current_identity() -> Tuple[Optional[str], Optional[str]]:
     return user, group
 
 
+def _reset_launchpad_identity(scripts_dir: Path) -> None:
+    """Remove peer identity files so each launchpad node gets a unique ID."""
+    if not scripts_dir:
+        return
+    data_dir = scripts_dir / "bin" / "bdag" / "data"
+    candidates = [
+        data_dir / name for name in NETWORK_KEY_NAMES
+    ] + [
+        data_dir / "testnet" / name for name in NETWORK_KEY_NAMES
+    ]
+    for path in candidates:
+        try:
+            if path.exists():
+                path.unlink(missing_ok=True)
+        except Exception:
+            continue
+    for pattern in BDAGETH_KEY_GLOBS:
+        try:
+            for key_path in data_dir.glob(pattern):
+                try:
+                    if key_path.is_file():
+                        key_path.unlink(missing_ok=True)
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+
 def _ensure_install_path_ready(path: Path) -> None:
     if not path:
         return
@@ -56,8 +86,8 @@ def _ensure_install_path_ready(path: Path) -> None:
                 subprocess.run(["sudo", "mkdir", "-p", str(resolved)], capture_output=True, text=True, check=False)
             except Exception:
                 pass
-    if not user:
-        return
+        if not user:
+            return
     group = group or user
     try:
         subprocess.run(
@@ -474,6 +504,7 @@ def launch_node(payload: Dict) -> Dict:
     compose_target = scripts_dir / f"docker-compose-{label}.yml"
     helper_script = _deploy_helper_entrypoint(scripts_dir, label)
     helper_mount = f"./{helper_script.name}:/custom-entrypoint.sh:ro"
+    _reset_launchpad_identity(scripts_dir)
     _render_compose(
         compose_src,
         compose_target,
