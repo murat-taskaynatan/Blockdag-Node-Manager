@@ -2929,6 +2929,32 @@ def _reapply_peer_identity_from_backup(
     return None
 
 
+def _purge_peer_identity(data_dir: Optional[Path]) -> None:
+    """Remove any existing peer identity files so restores generate fresh IDs."""
+    base = _normalize_path(data_dir)
+    if not base:
+        return
+    candidates = [
+        base / "network.key",
+        base / "testnet" / "network.key",
+    ]
+    for path in candidates:
+        try:
+            if path.exists():
+                path.unlink(missing_ok=True)
+        except Exception:
+            continue
+    try:
+        for key_path in (base / "bdageth").glob("keystore/*"):
+            try:
+                if key_path.is_file():
+                    key_path.unlink(missing_ok=True)
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+
 def _ensure_peer_identity(
     data_dir: Optional[Path], *, preferred: Optional[Path] = None
 ) -> Optional[str]:
@@ -3196,9 +3222,8 @@ def _run_restore_job(details: Dict[str, object]) -> None:
             backup_dir = parent_dir / backup_name if (parent_dir / backup_name).exists() else backup_dir
         if backup_dir and backup_dir.exists():
             details["backup"] = str(backup_dir)
-        identity_note = _reapply_peer_identity_from_backup(backup_dir, data_dir)
-        if not identity_note:
-            identity_note = _ensure_peer_identity(data_dir)
+        _purge_peer_identity(data_dir)
+        identity_note = _ensure_peer_identity(data_dir)
         if identity_note:
             details["identity_preserved"] = True
             details["identity_note"] = identity_note
