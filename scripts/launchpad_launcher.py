@@ -500,7 +500,12 @@ def launch_node(payload: Dict) -> Dict:
     p2p_port, rpc_port, ws_port, peer_port, peer_internal = _prepare_ports(payload)
     compose_src = scripts_dir / "docker-compose.yml"
     if not compose_src.exists():
-        raise LaunchError("docker-compose template not found")
+        try:
+            _run_command(["git", "-C", str(scripts_dir), "checkout", "--", "docker-compose.yml"])
+        except LaunchError:
+            pass
+    if not compose_src.exists():
+        raise LaunchError("docker-compose template not found; try recloning blockdag-scripts")
     compose_target = scripts_dir / f"docker-compose-{label}.yml"
     helper_script = _deploy_helper_entrypoint(scripts_dir, label)
     helper_mount = f"./{helper_script.name}:/custom-entrypoint.sh:ro"
