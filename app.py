@@ -2925,8 +2925,41 @@ def _snapshot_identity_destination(base: Optional[Path], preferred: Optional[Pat
 def _reapply_peer_identity_from_backup(
     backup_dir: Optional[Path], data_dir: Optional[Path]
 ) -> Optional[str]:
-    # Do not reapply peer identities from backups; restoring should generate a fresh identity.
-    return None
+    source_info = _snapshot_identity_source(backup_dir)
+    if not source_info:
+        return None
+    source_path, relative = source_info
+    destination = _snapshot_identity_destination(data_dir, relative)
+    if not destination:
+        return None
+    copied = False
+    try:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_path, destination)
+        copied = True
+    except PermissionError as exc:
+        if _copy_identity_via_docker(source_path, destination):
+            copied = True
+        else:
+            app.logger.warning(
+                "Failed to preserve peer identity from %s to %s: %s",
+                source_path,
+                destination,
+                exc,
+            )
+            return None
+    except Exception as exc:
+        app.logger.warning(
+            "Failed to preserve peer identity from %s to %s: %s",
+            source_path,
+            destination,
+            exc,
+        )
+        return None
+    if not copied:
+        return None
+    app.logger.info("Restored local peer identity from %s to %s", source_path, destination)
+    return f"Preserved peer identity by restoring {destination}."
 
 
 def _purge_peer_identity(data_dir: Optional[Path]) -> None:
@@ -3222,8 +3255,9 @@ def _run_restore_job(details: Dict[str, object]) -> None:
             backup_dir = parent_dir / backup_name if (parent_dir / backup_name).exists() else backup_dir
         if backup_dir and backup_dir.exists():
             details["backup"] = str(backup_dir)
-        _purge_peer_identity(data_dir)
-        identity_note = _ensure_peer_identity(data_dir)
+        identity_note = _reapply_peer_identity_from_backup(backup_dir, data_dir)
+        if not identity_note:
+            identity_note = _ensure_peer_identity(data_dir)
         if identity_note:
             details["identity_preserved"] = True
             details["identity_note"] = identity_note
