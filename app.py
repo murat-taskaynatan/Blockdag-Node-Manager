@@ -4560,11 +4560,16 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
                     state["liveness_restarts"] = 0
         if stalled_flag:
             stalled_reason = stall_reason
+            recovery_required = bool(metrics.get("recovery_required"))
             with _LOG_POLICY_LOCK:
                 last_liveness = float(state.get("last_liveness", 0.0))
                 liveness_restarts = int(state.get("liveness_restarts", 0))
                 cooldown_elapsed = now - last_liveness >= LIVENESS_RECOVER_COOLDOWN_SEC
-            if cooldown_elapsed:
+            if recovery_required:
+                allow_restore = True
+            else:
+                allow_restore = _should_trigger_corruption_restore(stalled_reason)
+            if cooldown_elapsed and not allow_restore:
                 with _LOG_POLICY_LOCK:
                     state["last_liveness"] = now
                 if liveness_restarts < LIVENESS_MAX_RESTARTS:
@@ -4604,7 +4609,6 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
                         state["liveness_restarts"] = 0
                         state["last_liveness"] = now
                     return
-                allow_restore = _should_trigger_corruption_restore(stalled_reason)
                 if allow_restore:
                     if _trigger_restore_for_context(ctx, stalled_reason):
                         with _LOG_POLICY_LOCK:
