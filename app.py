@@ -2916,56 +2916,17 @@ def _snapshot_identity_destination(base: Optional[Path], preferred: Optional[Pat
     normalized = _normalize_path(base)
     if not normalized:
         return None
-    for relative in _SNAPSHOT_IDENTITY_RELATIVE_PATHS:
-        candidate = normalized / relative
-        if candidate.exists():
-            return candidate
     if preferred:
         return normalized / preferred
     testnet_dir = normalized / "testnet"
-    if testnet_dir.exists():
-        return testnet_dir / "network.key"
-    return normalized / "network.key"
+    return (testnet_dir / "network.key") if testnet_dir else (normalized / "network.key")
 
 
 def _reapply_peer_identity_from_backup(
     backup_dir: Optional[Path], data_dir: Optional[Path]
 ) -> Optional[str]:
-    source_info = _snapshot_identity_source(backup_dir)
-    if not source_info:
-        return None
-    source_path, relative = source_info
-    destination = _snapshot_identity_destination(data_dir, relative)
-    if not destination:
-        return None
-    copied = False
-    try:
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source_path, destination)
-        copied = True
-    except PermissionError as exc:
-        if _copy_identity_via_docker(source_path, destination):
-            copied = True
-        else:
-            app.logger.warning(
-                "Failed to preserve peer identity from %s to %s: %s",
-                source_path,
-                destination,
-                exc,
-            )
-            return None
-    except Exception as exc:
-        app.logger.warning(
-            "Failed to preserve peer identity from %s to %s: %s",
-            source_path,
-            destination,
-            exc,
-        )
-        return None
-    if not copied:
-        return None
-    app.logger.info("Restored local peer identity from %s to %s", source_path, destination)
-    return f"Preserved peer identity by restoring {destination}."
+    # Do not reapply peer identities from backups; restoring should generate a fresh identity.
+    return None
 
 
 def _ensure_peer_identity(
