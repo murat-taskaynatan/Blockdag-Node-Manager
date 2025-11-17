@@ -2542,13 +2542,14 @@ async function saveSettings() {
             stats.container_running ?? stats.raw_running ?? stats.running
           );
           const forced = shouldForceOffline(stats, runningFlag, state.lastProgress.get(node.id));
-          if (forced.forced) {
-            counts.stalled += 1;
-          } else if (isImportingReason(forced.reason)) {
-            counts.importing += 1;
-          }
-          return counts;
-        },
+        if (forced.forced) {
+          counts.stalled += 1;
+        } else if (isImportingReason(forced.reason)) {
+          counts.stalled += 1;
+          counts.importing += 1;
+        }
+        return counts;
+      },
         { stalled: 0, importing: 0 }
       );
       const summary = { ...aggregated, ...(payload.summary || {}) };
