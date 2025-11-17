@@ -5311,14 +5311,18 @@ def _fleet_summary(nodes: List[dict]) -> dict:
     count = len(nodes)
     running = sum(1 for node in nodes if node.get("status", {}).get("running"))
     offline = max(count - running, 0)
-    stalled = sum(1 for node in nodes if node.get("status", {}).get("stalled"))
+    importing = sum(1 for node in nodes if _is_importing_status(node.get("status", {})))
+    stalled = sum(
+        1
+        for node in nodes
+        if node.get("status", {}).get("stalled") and not _is_importing_status(node.get("status", {}))
+    )
     local_heights = [
         node.get("status", {}).get("local_height") or 0 for node in nodes
     ]
     remote_heights = [
         node.get("status", {}).get("remote_height") or 0 for node in nodes
     ]
-    importing = sum(1 for node in nodes if _is_importing_status(node.get("status", {})))
     summary = {
         "count": count,
         "running": running,
