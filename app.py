@@ -5199,6 +5199,7 @@ def _detect_stalled_reason(ctx: "NodeContext", metrics: dict, previous: Optional
     horizon_ms = 300_000  # five minutes
     recent_heights: List[int] = []
     recent_ts: List[int] = []
+    importing = _is_importing_status(metrics)
     if ctx.height_series:
         for ts, value in ctx.height_series:
             try:
@@ -5222,7 +5223,9 @@ def _detect_stalled_reason(ctx: "NodeContext", metrics: dict, previous: Optional
     stall_uptime = 180
     if local_height <= 0 and peers <= 0 and uptime >= stall_uptime:
         return "Container has been running with zero height and no peers after a restart."
-    if remote_height > local_height + 2 and (recent_progress or block_rate > 0):
+    if remote_height > local_height + 2 and (recent_progress or block_rate > 0 or importing):
+        return None
+    if importing and block_rate >= 0:
         return None
     if not recent_progress and block_rate <= 0 and peers <= 0:
         stagnant_ms = 120_000
