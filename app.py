@@ -4263,6 +4263,7 @@ def _logs_show_importing(container: Optional[str]) -> bool:
         "client in initial download",
         "imported new chain segment",
         "update bdagpool snapshot",
+        "side chain depth too large",
     )
     for line in reversed(lines):
         normalized = line.strip().lower()
