@@ -8,7 +8,7 @@ import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-LAUNCHPAD_REPO = "https://github.com/BlockdagNetworkLabs/blockdag-scripts.git"
+LAUNCHPAD_REPO = os.getenv("BDAG_LAUNCHPAD_REPO", "https://github.com/BlockdagNetworkLabs/blockdag-scripts.git")
 LAUNCHPAD_DEFAULT_IMAGE = os.getenv("BDAG_LAUNCHPAD_IMAGE", "blockdagnetwork/awakening:v0.0.2")
 HELPER_TEMPLATE = Path(__file__).resolve().parent / "launchpad_entrypoint.sh"
 NETWORK_KEY_NAMES = ("network.key",)
@@ -497,13 +497,18 @@ def launch_node(payload: Dict) -> Dict:
     env_path = scripts_dir / ".env"
     env_path.write_text(f"PUB_ETH_ADDR={wallet}\n", encoding="utf-8")
     (scripts_dir / "wallet.txt").write_text(wallet + "\n", encoding="utf-8")
-    p2p_port, rpc_port, ws_port, peer_port, peer_internal = _prepare_ports(payload)
     compose_src = scripts_dir / "docker-compose.yml"
     if not compose_src.exists():
+        # Restore the template from git to avoid stale/missing compose files on first pulls.
         try:
             _run_command(["git", "-C", str(scripts_dir), "checkout", "--", "docker-compose.yml"])
         except LaunchError:
             pass
+    p2p_port, rpc_port, ws_port, peer_port, peer_internal = _prepare_ports(payload)
+    compose_src = scripts_dir / "docker-compose.yml"
+    if not compose_src.exists():
+        # As a last resort, re-clone templates into place.
+        _run_command(["git", "-C", str(scripts_dir), "checkout", "--", "docker-compose.yml"])
     if not compose_src.exists():
         raise LaunchError("docker-compose template not found; try recloning blockdag-scripts")
     compose_target = scripts_dir / f"docker-compose-{label}.yml"
