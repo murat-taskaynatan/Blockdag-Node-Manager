@@ -69,6 +69,27 @@ def _reset_launchpad_identity(scripts_dir: Path) -> None:
             pass
 
 
+def _rewrite_compose_image(compose_path: Path, image: str) -> None:
+    """Ensure compose template uses the desired image."""
+    if not compose_path or not compose_path.exists():
+        return
+    try:
+        text = compose_path.read_text()
+    except Exception:
+        return
+    pattern = re.compile(r"image:\s+blockdagnetwork/awakening:[^\s]+", re.IGNORECASE)
+    image_line = f"image: {image}"
+    if pattern.search(text):
+        text = pattern.sub(image_line, text, count=1)
+    elif "blockdagnetwork/awakening" in text:
+        text = text.replace("blockdagnetwork/awakening", image, 1)
+    else:
+        return
+    try:
+        compose_path.write_text(text)
+    except Exception:
+        pass
+
 def _ensure_install_path_ready(path: Path) -> None:
     if not path:
         return
@@ -504,13 +525,10 @@ def launch_node(payload: Dict) -> Dict:
             _run_command(["git", "-C", str(scripts_dir), "checkout", "--", "docker-compose.yml"])
         except LaunchError:
             pass
-    p2p_port, rpc_port, ws_port, peer_port, peer_internal = _prepare_ports(payload)
-    compose_src = scripts_dir / "docker-compose.yml"
-    if not compose_src.exists():
-        # As a last resort, re-clone templates into place.
-        _run_command(["git", "-C", str(scripts_dir), "checkout", "--", "docker-compose.yml"])
     if not compose_src.exists():
         raise LaunchError("docker-compose template not found; try recloning blockdag-scripts")
+    _rewrite_compose_image(compose_src, LAUNCHPAD_DEFAULT_IMAGE)
+    p2p_port, rpc_port, ws_port, peer_port, peer_internal = _prepare_ports(payload)
     compose_target = scripts_dir / f"docker-compose-{label}.yml"
     helper_script = _deploy_helper_entrypoint(scripts_dir, label)
     helper_mount = f"./{helper_script.name}:/custom-entrypoint.sh:ro"
