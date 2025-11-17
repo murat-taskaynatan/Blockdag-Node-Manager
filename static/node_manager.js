@@ -2568,6 +2568,7 @@ async function saveSettings() {
     const onlineEl = document.getElementById('statOnline');
     const offlineEl = document.getElementById('statOffline');
     const stalledEl = document.getElementById('statStalled');
+    const importingEl = document.getElementById('statImporting');
     const maxLocalEl = document.getElementById('statMaxLocal');
     const maxRemoteEl = document.getElementById('statMaxRemote');
 
@@ -2580,6 +2581,9 @@ async function saveSettings() {
       if (stalledEl) {
         stalledEl.textContent = '—';
         stalledEl.removeAttribute('title');
+      }
+      if (importingEl) {
+        importingEl.textContent = '—';
       }
       return;
     }
@@ -2601,6 +2605,10 @@ async function saveSettings() {
         importing > 0
           ? `Stalled ${stalledValue} • Importing ${importingValue}`
           : `Stalled ${stalledValue}`;
+    }
+    if (importingEl) {
+      importingEl.textContent = fmt.format(importing);
+      importingEl.title = `Importing ${fmt.format(importing)}`;
     }
     maxLocalEl.textContent = summary.max_local_height !== undefined ? fmt.format(summary.max_local_height) : '—';
     maxRemoteEl.textContent = summary.max_remote_height !== undefined ? fmt.format(summary.max_remote_height) : '—';
