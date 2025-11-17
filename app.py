@@ -4565,11 +4565,38 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
                 last_liveness = float(state.get("last_liveness", 0.0))
                 liveness_restarts = int(state.get("liveness_restarts", 0))
                 cooldown_elapsed = now - last_liveness >= LIVENESS_RECOVER_COOLDOWN_SEC
-            if recovery_required:
-                allow_restore = True
-            else:
-                allow_restore = _should_trigger_corruption_restore(stalled_reason)
-            if cooldown_elapsed and not allow_restore:
+            allow_restore = True if recovery_required else _should_trigger_corruption_restore(stalled_reason)
+            metrics_check: Dict[str, object] = {}
+            try:
+                metrics_check = ctx.sample(force=True) or {}
+            except Exception:
+                metrics_check = metrics or {}
+            healthy_now = bool(metrics_check.get("running")) and not bool(
+                metrics_check.get("stalled") or metrics_check.get("health_text")
+            )
+            if healthy_now:
+                try:
+                    app.logger.info(
+                        "Liveness aborting restore for %s (%s); node reporting healthy.",
+                        ctx.id,
+                        ctx.container or "unknown",
+                    )
+                except Exception:
+                    pass
+                with _LOG_POLICY_LOCK:
+                    state["liveness_restarts"] = 0
+                    state["last_liveness"] = now
+                return
+            if allow_restore:
+                if _trigger_restore_for_context(ctx, stalled_reason):
+                    with _LOG_POLICY_LOCK:
+                        state["last_restart"] = now
+                        state["error_streak"] = 0
+                        state["liveness_restarts"] = 0
+                        state["last_liveness"] = now
+                    return
+                return
+            if cooldown_elapsed:
                 with _LOG_POLICY_LOCK:
                     state["last_liveness"] = now
                 if liveness_restarts < LIVENESS_MAX_RESTARTS:
@@ -4588,54 +4615,19 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
                     with _LOG_POLICY_LOCK:
                         state["liveness_restarts"] = next_attempt
                     return
-                metrics_check: Dict[str, object] = {}
                 try:
-                    metrics_check = ctx.sample(force=True) or {}
+                    app.logger.info(
+                        "Liveness skipping chain restore for %s; stall reason not corruption: %s",
+                        ctx.id,
+                        stalled_reason,
+                    )
                 except Exception:
-                    metrics_check = metrics or {}
-                healthy_now = bool(metrics_check.get("running")) and not bool(
-                    metrics_check.get("stalled") or metrics_check.get("health_text")
-                )
-                if healthy_now:
-                    try:
-                        app.logger.info(
-                            "Liveness aborting restore for %s (%s); node reporting healthy.",
-                            ctx.id,
-                            ctx.container or "unknown",
-                        )
-                    except Exception:
-                        pass
-                    with _LOG_POLICY_LOCK:
-                        state["liveness_restarts"] = 0
-                        state["last_liveness"] = now
-                    return
-                if allow_restore:
-                    if _trigger_restore_for_context(ctx, stalled_reason):
-                        with _LOG_POLICY_LOCK:
-                            state["last_restart"] = now
-                            state["error_streak"] = 0
-                            state["liveness_restarts"] = 0
-                        return
-                else:
-                    try:
-                        app.logger.info(
-                            "Liveness skipping chain restore for %s; stall reason not corruption: %s",
-                            ctx.id,
-                            stalled_reason,
-                        )
-                    except Exception:
-                        pass
-                    with _LOG_POLICY_LOCK:
-                        state["liveness_restarts"] = 0
-                        state["last_liveness"] = now
-                    return
+                    pass
                 with _LOG_POLICY_LOCK:
                     state["liveness_restarts"] = 0
-                    state["last_restart"] = now
-                    state["error_streak"] = 0
+                    state["last_liveness"] = now
                 return
-            else:
-                return
+            return
     if not enable_error_restart:
         return
     reason = _derive_health_restart_reason(metrics)
