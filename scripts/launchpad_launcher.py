@@ -436,6 +436,7 @@ def _prepare_ports(config: Dict, node_number: Optional[int] = None) -> Tuple[int
         if rpc != base_rpc and rpc + 1 not in used:
             ws = rpc + 1
         peer_internal = peer
+        return p2p, rpc, ws, peer, peer_internal
         start_p2p = max(existing["p2p"]) + 1 if existing["p2p"] else base_p2p
         start_rpc = max(existing["rpc"]) + 1 if existing["rpc"] else base_rpc
         start_ws = max(existing["ws"]) + 1 if existing["ws"] else base_ws
