@@ -457,6 +457,8 @@ def _prepare_ports(config: Dict, node_number: Optional[int] = None) -> Tuple[int
             if port in used or _port_in_use(port)
         ]
         if conflict_ports:
+            if node_number:
+                return _prepare_ports(config, node_number=node_number)
             raise LaunchError("Selected ports are already in use")
         p2p = override
         rpc = base_rpc
