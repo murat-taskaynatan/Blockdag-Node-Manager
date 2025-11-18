@@ -453,6 +453,7 @@ def _render_compose(
     peer_internal: int,
     data_dir: Path,
     logs_dir: Path,
+    mining_address: str,
     helper_mount: Optional[str] = None,
 ):
     text = source.read_text()
@@ -473,6 +474,11 @@ def _render_compose(
             "--walletpass=test --health=0.0.0.0:6061 ",
             1,
         )
+    if "${MINING_ADDRESS}" in text:
+        text = text.replace("${MINING_ADDRESS}", mining_address)
+    else:
+        # Force mining address even if template had an empty placeholder.
+        text = re.sub(r"--miningaddr=\S*", f"--miningaddr={mining_address}", text)
     image_line = f"image: {LAUNCHPAD_DEFAULT_IMAGE}"
     pattern = re.compile(r"image:\s+blockdagnetwork/awakening:[^\s]+", re.IGNORECASE)
     if pattern.search(text):
@@ -557,6 +563,7 @@ def launch_node(payload: Dict) -> Dict:
         peer_internal,
         data_dir,
         logs_dir,
+        wallet,
         helper_mount,
     )
     project_name = label

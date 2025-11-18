@@ -4498,12 +4498,12 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
         metrics["health_detail"] = failsafe_reason
         metrics["recovery_required"] = bool(failsafe_recovery)
     if _logs_show_importing(ctx.container):
+        # Do not treat importing as stalled, but continue evaluating without forcing a restart
         metrics.pop("stalled_reason", None)
         metrics.pop("health_detail", None)
         metrics["stalled"] = False
         metrics["recovery_required"] = False
         metrics["health_text"] = "Importing blocks…"
-        return
     stalled_reason_text = (
         metrics.get("stalled_reason")
         or metrics.get("health_detail")

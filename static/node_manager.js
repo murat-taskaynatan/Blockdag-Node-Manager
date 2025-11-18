@@ -2837,7 +2837,8 @@ function syncCards(nodes) {
       launchpadNextIcon.hidden = !onFinalStep;
     }
     launchpadNextBtn.classList.toggle('launch-mode', onFinalStep);
-    launchpadNextBtn.disabled = onFinalStep ? !complete || waitingForPreview || alreadyLaunched : false;
+    // Only lock the launch button on the final step; stepping back clears the lock.
+    launchpadNextBtn.disabled = onFinalStep ? (!complete || waitingForPreview || alreadyLaunched) : false;
   }
 
   function syncLaunchpadPortInputs(auto = launchpadFields.autoPorts?.checked ?? false) {
