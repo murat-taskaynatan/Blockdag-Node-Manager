@@ -504,7 +504,8 @@ def _render_compose(
     mining_address: str,
     helper_mount: Optional[str] = None,
 ):
-    text = source.read_text()
+    raw_text = source.read_text()
+    text = re.sub(r"\n\s*PEER_PORT_INTERNAL:.*", "", raw_text)
     text = text.replace("blockdag-testnet-network", label)
     text = text.replace('- "38131:38131"', f'- "{p2p}:{p2p}"', 1)
     text = text.replace('- "18545:18545"', f'- "{rpc}:{rpc}"', 1)
