@@ -563,6 +563,12 @@ def _render_compose(
         text = text.replace(volume_anchor, volume_anchor + f"\n      - {helper_mount}", 1)
     target.write_text(text)
 
+    # Reset the template so future runs start from upstream
+    try:
+        _run_command(["git", "-C", str(scripts_dir), "checkout", "--", "docker-compose.yml"])
+    except LaunchError:
+        pass
+
 
 def preview_ports(payload: Dict) -> Dict[str, int]:
     """Return the resolved port mappings without starting any containers."""
