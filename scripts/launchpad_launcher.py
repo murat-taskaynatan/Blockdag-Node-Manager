@@ -526,8 +526,21 @@ def preview_ports(payload: Dict) -> Dict[str, int]:
     }
 
 
+_requires_numeric_label = re.compile(r"\d+$")
+
+
+def _validate_label(label: str) -> None:
+    if not _requires_numeric_label.search(label):
+        raise LaunchError(
+            "Use a label ending with digits"
+            " (e.g. blockdag-node18) so the launcher can reserve a predictable port block."
+        )
+
+
 def launch_node(payload: Dict) -> Dict:
-    label = _sanitize_label(payload.get("label") or "node")
+    raw_label = payload.get("label") or "node"
+    sanitized_label = _sanitize_label(raw_label)
+    _validate_label(sanitized_label)
     wallet = (payload.get("walletAddress") or "").strip()
     if not wallet:
         raise LaunchError("Wallet address is required")
