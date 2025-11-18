@@ -6,7 +6,7 @@ import re
 import socket
 import subprocess
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 LAUNCHPAD_REPO = os.getenv("BDAG_LAUNCHPAD_REPO", "https://github.com/BlockdagNetworkLabs/blockdag-scripts.git")
 LAUNCHPAD_DEFAULT_IMAGE = os.getenv("BDAG_LAUNCHPAD_IMAGE", "blockdagnetwork/awakening:v0.0.2")
@@ -393,7 +393,27 @@ def _existing_node_ports(peer_internal_hint: Optional[int]) -> Tuple[Dict[str, L
     return ports, detected_peer_internal
 
 
-def _prepare_ports(config: Dict) -> Tuple[int, int, int, int, int]:
+def _infer_node_number_from_path(path: Union[Path, str]) -> Optional[int]:
+    """Attempt to extract the numeric suffix from the install directory."""
+    if not path:
+        return None
+    try:
+        resolved = Path(path).expanduser()
+    except Exception:
+        resolved = Path(path)
+    parts = [part for part in resolved.parts if part]
+    for part in reversed(parts):
+        match = re.search(r"(\d+)$", part)
+        if not match:
+            continue
+        try:
+            return int(match.group(1))
+        except ValueError:
+            continue
+    return None
+
+
+def _prepare_ports(config: Dict, node_number: Optional[int] = None) -> Tuple[int, int, int, int, int]:
     base_p2p = _coerce_port(config.get("p2pPort"), 38130)
     base_rpc = _coerce_port(config.get("rpcPort"), 18545)
     base_ws = _coerce_port(config.get("wsPort"), base_rpc + 1)
@@ -446,28 +466,18 @@ def _render_compose(
     raw_text = source.read_text()
     text = re.sub(r"(?m)^\s*PEER_PORT_INTERNAL:.*\n?", "", raw_text)
     text = text.replace("blockdag-testnet-network", label)
-    text = text.replace('- "38131:38131"', f'- "{p2p}:{p2p}"', 1)
-    text = text.replace('- "18545:18545"', f'- "{rpc}:{rpc}"', 1)
-    text = text.replace('- "18546:18546"', f'- "{ws}:{ws}"', 1)
-    text = text.replace('- "18150:18150"', f'- "{peer}:{peer}"', 1)
-    text = re.sub(r"--rpclisten=0\.0\.0\.0:\d+", f"--rpclisten=0.0.0.0:{p2p}", text, count=1)
-    text = re.sub(r"--http\.port=\d+", f"--http.port={rpc}", text, count=1)
-    text = re.sub(r"--ws\.port=\d+", f"--ws.port={ws}", text, count=1)
-    text = re.sub(r"ws://127\.0\.0\.1:\d+", f"ws://127.0.0.1:{ws}", text, count=1)
+    text = text.replace('- "38131:38131"', f'- "{p2p}:38131"', 1)
+    text = text.replace('- "18545:18545"', f'- "{rpc}:18545"', 1)
+    text = text.replace('- "18546:18546"', f'- "{ws}:18546"', 1)
+    text = text.replace('- "18150:18150"', f'- "{peer}:{peer_internal}"', 1)
     text = text.replace("./bin/bdag/data:/bdag/data", f"./{data_dir.relative_to(source.parent)}:/bdag/data")
     text = text.replace("./bin/bdag/logs:/bdag/logs", f"./{logs_dir.relative_to(source.parent)}:/bdag/logs")
     if "HEALTH_MIN_PEERS: 1" in text:
-        text = re.sub(r"\s*PEER_PORT_INTERNAL:.*\n", "", text)
-        text = text.replace(
-            "HEALTH_MIN_PEERS: 1",
-            f"HEALTH_MIN_PEERS: 1\n      PEER_PORT_INTERNAL: {peer_internal}",
-            1,
-        )
-        text = text.replace(
-            "HEALTH_MIN_PEERS: 1",
-            f"HEALTH_MIN_PEERS: 1\n      PEER_PORT_INTERNAL: {peer_internal}",
-            1,
-        )
+        def _inject_peer(match: re.Match) -> str:
+            indent = match.group(1)
+            return f"{indent}HEALTH_MIN_PEERS: 1\n{indent}PEER_PORT_INTERNAL: {peer_internal}"
+
+        text = re.sub(r"(?m)^(\s*)HEALTH_MIN_PEERS: 1$", _inject_peer, text)
     if "--health=0.0.0.0:6061" not in text:
         text = text.replace(
             "--walletpass=test ",
@@ -485,11 +495,6 @@ def _render_compose(
         text = pattern.sub(image_line, text, count=1)
     elif "blockdagnetwork/awakening" in text:
         text = text.replace("blockdagnetwork/awakening", LAUNCHPAD_DEFAULT_IMAGE, 1)
-    text = text.replace(
-        "      HEALTH_MIN_PEERS: 1\n",
-        f"      HEALTH_MIN_PEERS: 1\n      PEER_PORT_INTERNAL: {peer_internal}\n",
-        1,
-    )
     if helper_mount:
         container_line = f"    container_name: {label}\n"
         replacement = container_line + '    entrypoint: ["/custom-entrypoint.sh"]\n'
