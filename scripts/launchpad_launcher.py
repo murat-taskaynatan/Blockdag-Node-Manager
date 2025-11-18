@@ -435,6 +435,7 @@ def _prepare_ports(config: Dict, node_number: Optional[int] = None) -> Tuple[int
         peer = _find_available_port(used, base_peer)
         if rpc != base_rpc and rpc + 1 not in used:
             ws = rpc + 1
+        peer_internal = peer
         peer_internal = base_peer
     elif config.get("autoPorts"):
         start_p2p = max(existing["p2p"]) + 1 if existing["p2p"] else base_p2p
@@ -508,7 +509,7 @@ def _render_compose(
     text = text.replace('- "38131:38131"', f'- "{p2p}:{p2p}"', 1)
     text = text.replace('- "18545:18545"', f'- "{rpc}:{rpc}"', 1)
     text = text.replace('- "18546:18546"', f'- "{ws}:{ws}"', 1)
-    text = text.replace('- "18150:18150"', f'- "{peer}:{peer_internal}"', 1)
+    text = text.replace('- "18150:18150"', f'- "{peer}:{peer}"', 1)
     text = re.sub(r"--rpclisten=0\.0\.0\.0:\d+", f"--rpclisten=0.0.0.0:{p2p}", text, count=1)
     text = re.sub(r"--http\.port=\d+", f"--http.port={rpc}", text, count=1)
     text = re.sub(r"--ws\.port=\d+", f"--ws.port={ws}", text, count=1)
@@ -516,6 +517,12 @@ def _render_compose(
     text = text.replace("./bin/bdag/data:/bdag/data", f"./{data_dir.relative_to(source.parent)}:/bdag/data")
     text = text.replace("./bin/bdag/logs:/bdag/logs", f"./{logs_dir.relative_to(source.parent)}:/bdag/logs")
     if "HEALTH_MIN_PEERS: 1" in text:
+        text = re.sub(r"\s*PEER_PORT_INTERNAL:.*\n", "", text)
+        text = text.replace(
+            "HEALTH_MIN_PEERS: 1",
+            f"HEALTH_MIN_PEERS: 1\n      PEER_PORT_INTERNAL: {peer_internal}",
+            1,
+        )
         text = text.replace(
             "HEALTH_MIN_PEERS: 1",
             f"HEALTH_MIN_PEERS: 1\n      PEER_PORT_INTERNAL: {peer_internal}",
