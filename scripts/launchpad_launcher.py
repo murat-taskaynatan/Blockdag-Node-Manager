@@ -435,6 +435,7 @@ def _prepare_ports(config: Dict, node_number: Optional[int] = None) -> Tuple[int
         peer = _find_available_port(used, base_peer)
         if rpc != base_rpc and rpc + 1 not in used:
             ws = rpc + 1
+        peer_internal = base_peer
     elif config.get("autoPorts"):
         start_p2p = max(existing["p2p"]) + 1 if existing["p2p"] else base_p2p
         start_rpc = max(existing["rpc"]) + 1 if existing["rpc"] else base_rpc
@@ -531,6 +532,11 @@ def _render_compose(
         text = pattern.sub(image_line, text, count=1)
     elif "blockdagnetwork/awakening" in text:
         text = text.replace("blockdagnetwork/awakening", LAUNCHPAD_DEFAULT_IMAGE, 1)
+    text = text.replace(
+        "      HEALTH_MIN_PEERS: 1\n",
+        f"      HEALTH_MIN_PEERS: 1\n      PEER_PORT_INTERNAL: {peer_internal}\n",
+        1,
+    )
     if helper_mount:
         container_line = f"    container_name: {label}\n"
         replacement = container_line + '    entrypoint: ["/custom-entrypoint.sh"]\n'

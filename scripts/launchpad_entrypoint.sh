@@ -48,6 +48,9 @@ else
   NODE_ARGS="$NODE_ARGS $SEED_PEERS"
 fi
 
+PEER_PORT_INTERNAL="${PEER_PORT_INTERNAL:-18150}"
+NODE_ARGS="$NODE_ARGS --p2ptcpport=$PEER_PORT_INTERNAL --p2pudpport=$PEER_PORT_INTERNAL"
+
 exec nodeworker \
   --health.liveness-timeout="${HEALTH_LIVENESS_TIMEOUT:-5m}" \
   --node-binary="$BIN" \
