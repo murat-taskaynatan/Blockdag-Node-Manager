@@ -73,8 +73,8 @@ Authentication is disabled unless you turn it on. Use **Settings → Require log
 
 ```ini
 BDAG_LOGIN_ENABLED=1
-BDAG_LOGIN_USER=manager
-BDAG_LOGIN_PASS=changeme
+BDAG_LOGIN_USER=node
+BDAG_LOGIN_PASS=blockdag
 ```
 
 `BDAG_LOGIN_ENABLED=0` or missing credentials keeps the login page hidden, which matches the experience after a clean remote install.
