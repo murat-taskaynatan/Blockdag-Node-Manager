@@ -41,31 +41,35 @@ def _current_identity() -> Tuple[Optional[str], Optional[str]]:
     return user, group
 
 
-def _reset_launchpad_identity(data_dir: Path) -> None:
+def _reset_launchpad_identity(scripts_dir: Path) -> None:
     """Remove peer identity files so each launchpad node gets a unique ID."""
-    if not data_dir:
+    if not scripts_dir:
         return
-    candidates = [
-        data_dir / name for name in NETWORK_KEY_NAMES
-    ] + [
-        data_dir / "testnet" / name for name in NETWORK_KEY_NAMES
-    ]
-    for path in candidates:
-        try:
-            if path.exists():
-                path.unlink(missing_ok=True)
-        except Exception:
-            continue
-    for pattern in BDAGETH_KEY_GLOBS:
-        try:
-            for key_path in data_dir.glob(pattern):
+    data_root = scripts_dir / "bin"
+    if not data_root.exists():
+        return
+
+    # Strip any existing libp2p identity files across all node-label subdirs (bin/<label>/bdag/data/**/network.key).
+    try:
+        for key_path in data_root.rglob("network.key"):
+            if key_path.is_file():
                 try:
-                    if key_path.is_file():
-                        key_path.unlink(missing_ok=True)
+                    key_path.unlink(missing_ok=True)
                 except Exception:
                     continue
-        except Exception:
-            pass
+    except Exception:
+        pass
+
+    # Drop bundled bdageth keystores so each launch is clean unless user overwrote them.
+    try:
+        for key_path in data_root.rglob("bdageth/keystore/*"):
+            if key_path.is_file():
+                try:
+                    key_path.unlink(missing_ok=True)
+                except Exception:
+                    continue
+    except Exception:
+        pass
 
 
 def _rewrite_compose_image(compose_path: Path, image: str) -> None:
