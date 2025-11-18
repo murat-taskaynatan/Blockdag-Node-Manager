@@ -201,6 +201,7 @@ else:
         "illegal withdrawal at block:difflayer, you can cleanup your block data base by '--cleanup'",
         "the dag data was damaged (can't find tip",
         "unknown to the objstorage provider",
+        "zero state root hash",
         "unclean shutdown detected",
     )
 
@@ -5220,9 +5221,6 @@ def _detect_stalled_reason(ctx: "NodeContext", metrics: dict, previous: Optional
 
     if ever_progress and local_height <= 0 and peers <= 0:
         return "Container restarted but local chain data reset to zero."
-    stall_uptime = 180
-    if local_height <= 0 and peers <= 0 and uptime >= stall_uptime:
-        return "Container has been running with zero height and no peers after a restart."
     if remote_height > local_height + 2 and (recent_progress or block_rate > 0 or importing):
         return None
     if importing and block_rate >= 0:
