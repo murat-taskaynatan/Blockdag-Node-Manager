@@ -266,6 +266,26 @@ def _node_paths(base_dir: Path, label: str) -> Tuple[Path, Path]:
     return data_dir, logs_dir
 
 
+def _infer_node_number_from_path(path: Path) -> Optional[int]:
+    """Guess the node number by looking at the install path or sibling nodes."""
+    last = path.name
+    match = re.search(r"(\d+)$", last)
+    if match:
+        return int(match.group(1))
+    parent = path.parent
+    numbers: List[int] = []
+    for entry in parent.iterdir() if parent.exists() else []:
+        if not entry.is_dir():
+            continue
+        m = re.search(r"(\d+)$", entry.name)
+        if m:
+            try:
+                numbers.append(int(m.group(1)))
+            except ValueError:
+                continue
+    return max(numbers) + 1 if numbers else None
+
+
 def _coerce_port(value, default: int) -> int:
     try:
         port = int(str(value).strip())
@@ -393,7 +413,7 @@ def _existing_node_ports(peer_internal_hint: Optional[int]) -> Tuple[Dict[str, L
     return ports, detected_peer_internal
 
 
-def _prepare_ports(config: Dict) -> Tuple[int, int, int, int, int]:
+def _prepare_ports(config: Dict, node_number: Optional[int] = None) -> Tuple[int, int, int, int, int]:
     base_p2p = _coerce_port(config.get("p2pPort"), 38130)
     base_rpc = _coerce_port(config.get("rpcPort"), 18545)
     base_ws = _coerce_port(config.get("wsPort"), base_rpc + 1)
@@ -415,6 +435,17 @@ def _prepare_ports(config: Dict) -> Tuple[int, int, int, int, int]:
             rpc = _find_available_port(used, rpc + 1)
         ws = _find_available_port(used, start_ws)
         peer = _find_available_port(used, start_peer)
+    elif node_number:
+        base_p2p = 38130 + max(0, node_number - 1)
+        base_rpc = 18544 + 2 * max(0, node_number - 1)
+        base_ws = base_rpc + 1
+        base_peer = 18174 + max(0, node_number - 1)
+        p2p = _find_available_port(used, base_p2p)
+        rpc = _find_available_port(used, base_rpc)
+        ws = _find_available_port(used, base_ws)
+        peer = _find_available_port(used, base_peer)
+        if rpc != base_rpc and rpc + 1 not in used:
+            ws = rpc + 1
     else:
         override = _coerce_port(external_override, base_p2p)
         manual_ws = _coerce_port(config.get("wsPort"), base_ws)
@@ -548,7 +579,8 @@ def launch_node(payload: Dict) -> Dict:
     if not compose_src.exists():
         raise LaunchError("docker-compose template not found; try recloning blockdag-scripts")
     _rewrite_compose_image(compose_src, LAUNCHPAD_DEFAULT_IMAGE)
-    p2p_port, rpc_port, ws_port, peer_port, peer_internal = _prepare_ports(payload)
+    node_number = _infer_node_number_from_path(install_path) or 1
+    p2p_port, rpc_port, ws_port, peer_port, peer_internal = _prepare_ports(payload, node_number=node_number)
     compose_target = scripts_dir / f"docker-compose-{label}.yml"
     helper_script = _deploy_helper_entrypoint(scripts_dir, label)
     helper_mount = f"./{helper_script.name}:/custom-entrypoint.sh:ro"
