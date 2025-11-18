@@ -515,6 +515,12 @@ def _render_compose(
     text = re.sub(r"ws://127\.0\.0\.1:\d+", f"ws://127.0.0.1:{ws}", text, count=1)
     text = text.replace("./bin/bdag/data:/bdag/data", f"./{data_dir.relative_to(source.parent)}:/bdag/data")
     text = text.replace("./bin/bdag/logs:/bdag/logs", f"./{logs_dir.relative_to(source.parent)}:/bdag/logs")
+    if "HEALTH_MIN_PEERS: 1" in text:
+        text = text.replace(
+            "HEALTH_MIN_PEERS: 1",
+            f"HEALTH_MIN_PEERS: 1\n      PEER_PORT_INTERNAL: {peer_internal}",
+            1,
+        )
     if "--health=0.0.0.0:6061" not in text:
         text = text.replace(
             "--walletpass=test ",
