@@ -561,6 +561,11 @@ def _render_compose(
         if volume_anchor not in text:
             raise LaunchError("Failed to inject helper entrypoint mount into docker-compose template")
         text = text.replace(volume_anchor, volume_anchor + f"\n      - {helper_mount}", 1)
+    if target.exists():
+        try:
+            target.unlink()
+        except Exception:
+            pass
     target.write_text(text)
 
     # Reset the template so future runs start from upstream
