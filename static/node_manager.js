@@ -1572,13 +1572,23 @@ const automationLogUpdated = document.getElementById('automationLogUpdated');
       const restartBtn = entry.card.querySelector('[data-action="node-restart"]');
       if (restartBtn) {
         const jobMode = String(jobDetails.mode || job?.mode || '').toLowerCase();
+        const jobTarget = jobNode || jobDetails.container || null;
+        const matchesNode =
+          jobTarget &&
+          (jobTarget === nodeId ||
+            jobTarget === entry.meta?.container ||
+            jobTarget === entry.meta?.label);
         const disableRestart =
           jobActive &&
-          ((jobMode === 'restore' && (!jobNode || jobNode === nodeId)) || jobMode === 'snapshot');
+          matchesNode &&
+          (jobMode === 'restore' || jobMode === 'snapshot');
         restartBtn.disabled = disableRestart;
-        restartBtn.classList.toggle('is-pending', disableRestart);
+        // Keep border color unchanged; only disable the button.
+        restartBtn.classList.remove('is-pending');
         if (disableRestart) {
           restartBtn.title = 'Restart disabled during snapshot/restore';
+        } else {
+          restartBtn.title = restartBtn.title || 'Restart container';
         }
       }
 
