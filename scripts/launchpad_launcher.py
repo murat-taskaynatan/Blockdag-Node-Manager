@@ -266,26 +266,6 @@ def _node_paths(base_dir: Path, label: str) -> Tuple[Path, Path]:
     return data_dir, logs_dir
 
 
-def _infer_node_number_from_path(path: Path) -> Optional[int]:
-    """Guess the node number by looking at the install path or sibling nodes."""
-    last = path.name
-    match = re.search(r"(\d+)$", last)
-    if match:
-        return int(match.group(1))
-    parent = path.parent
-    numbers: List[int] = []
-    for entry in parent.iterdir() if parent.exists() else []:
-        if not entry.is_dir():
-            continue
-        m = re.search(r"(\d+)$", entry.name)
-        if m:
-            try:
-                numbers.append(int(m.group(1)))
-            except ValueError:
-                continue
-    return max(numbers) + 1 if numbers else None
-
-
 def _coerce_port(value, default: int) -> int:
     try:
         port = int(str(value).strip())
@@ -413,57 +393,26 @@ def _existing_node_ports(peer_internal_hint: Optional[int]) -> Tuple[Dict[str, L
     return ports, detected_peer_internal
 
 
-def _prepare_ports(config: Dict, node_number: Optional[int] = None) -> Tuple[int, int, int, int, int]:
+def _prepare_ports(config: Dict) -> Tuple[int, int, int, int, int]:
     base_p2p = _coerce_port(config.get("p2pPort"), 38130)
     base_rpc = _coerce_port(config.get("rpcPort"), 18545)
     base_ws = _coerce_port(config.get("wsPort"), base_rpc + 1)
-    peer_internal_hint = _coerce_port(config.get("peerPort"), 18150)
-    existing, detected_peer_internal = _existing_node_ports(peer_internal_hint)
-    peer_internal = detected_peer_internal or peer_internal_hint or 18150
-    base_peer = min(existing["peer"]) if existing["peer"] else peer_internal
+    base_peer = _coerce_port(config.get("peerPort"), 18174)
     external_override = config.get("externalP2PPort")
     peer_external_override = config.get("externalPeerPort")
     used = _collect_used_ports()
-    if node_number:
-        base_p2p = 38130 + max(0, node_number - 1)
-        base_rpc = 18544 + 2 * max(0, node_number - 1)
-        base_ws = base_rpc + 1
-        base_peer = 18174 + max(0, node_number - 1)
-        p2p = _find_available_port(used, base_p2p)
-        rpc = _find_available_port(used, base_rpc)
-        ws = _find_available_port(used, base_ws)
-        peer = _find_available_port(used, base_peer)
-        if rpc != base_rpc and rpc + 1 not in used:
-            ws = rpc + 1
-        peer_internal = peer
-        return p2p, rpc, ws, peer, peer_internal
-        start_p2p = max(existing["p2p"]) + 1 if existing["p2p"] else base_p2p
-        start_rpc = max(existing["rpc"]) + 1 if existing["rpc"] else base_rpc
-        start_ws = max(existing["ws"]) + 1 if existing["ws"] else base_ws
-        start_peer = max(existing["peer"]) + 1 if existing["peer"] else base_peer
-        p2p = _find_available_port(used, start_p2p)
-        rpc = _find_available_port(used, start_rpc)
-        while (rpc + 1) in used:
-            rpc = _find_available_port(used, rpc + 1)
-        ws = _find_available_port(used, start_ws)
-        peer = _find_available_port(used, start_peer)
-    else:
-        override = _coerce_port(external_override, base_p2p)
-        manual_ws = _coerce_port(config.get("wsPort"), base_ws)
-        manual_peer = _coerce_port(peer_external_override, base_peer)
-        conflict_ports = [
-            port
-            for port in (override, base_rpc, manual_ws, manual_peer)
-            if port in used or _port_in_use(port)
-        ]
-        if conflict_ports:
-            if node_number:
-                return _prepare_ports(config, node_number=node_number)
-            raise LaunchError("Selected ports are already in use")
-        p2p = override
-        rpc = base_rpc
-        ws = manual_ws
-        peer = manual_peer
+    existing, _ = _existing_node_ports(18150)
+    start_p2p = max(existing["p2p"]) + 1 if existing["p2p"] else base_p2p
+    start_rpc = max(existing["rpc"]) + 1 if existing["rpc"] else base_rpc
+    start_ws = max(existing["ws"]) + 1 if existing["ws"] else base_ws
+    start_peer = max(existing["peer"]) + 1 if existing["peer"] else base_peer
+    p2p = _find_available_port(used, start_p2p)
+    rpc = _find_available_port(used, start_rpc)
+    while (rpc + 1) in used:
+        rpc = _find_available_port(used, rpc + 1)
+    ws = _find_available_port(used, start_ws)
+    peer = _find_available_port(used, start_peer)
+    peer_internal = 18150
     return p2p, rpc, ws, peer, peer_internal
 
 
