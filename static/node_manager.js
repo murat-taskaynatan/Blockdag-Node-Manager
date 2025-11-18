@@ -1569,6 +1569,19 @@ const automationLogUpdated = document.getElementById('automationLogUpdated');
         }
       }
 
+      const restartBtn = entry.card.querySelector('[data-action="node-restart"]');
+      if (restartBtn) {
+        const jobMode = String(jobDetails.mode || job?.mode || '').toLowerCase();
+        const disableRestart =
+          jobActive &&
+          ((jobMode === 'restore' && (!jobNode || jobNode === nodeId)) || jobMode === 'snapshot');
+        restartBtn.disabled = disableRestart;
+        restartBtn.classList.toggle('is-pending', disableRestart);
+        if (disableRestart) {
+          restartBtn.title = 'Restart disabled during snapshot/restore';
+        }
+      }
+
       const toggleBtn = entry.card.querySelector('[data-role="toggle"]');
       if (toggleBtn) {
         const snapshotLock = jobActive && jobNode && jobNode === nodeId;
@@ -1906,9 +1919,17 @@ const automationLogUpdated = document.getElementById('automationLogUpdated');
     }
     if (btn && btn.dataset.busy) return;
     let keepBusy = false;
+    const prevJob = state.snapshots && state.snapshots.job ? { ...state.snapshots.job } : null;
     if (btn) {
       setBusy(btn, true);
       btn.dataset.restorePending = Date.now().toString();
+      // Optimistically mark a restore job as active to disable controls immediately.
+      ensureSnapshotState().job = {
+        active: true,
+        mode: 'restore',
+        details: { node: nodeId },
+      };
+      updateSnapshotButtons();
     }
     try {
       const entry = state.nodes.get(nodeId);
@@ -1939,6 +1960,12 @@ const automationLogUpdated = document.getElementById('automationLogUpdated');
       await loadSnapshots({ silent: true });
     } catch (err) {
       setSnapshotStatus(err && err.message ? err.message : 'Failed to start restore', { level: 'error' });
+      // Revert placeholder job if the request failed.
+      if (prevJob) {
+        ensureSnapshotState().job = prevJob;
+      } else if (state.snapshots) {
+        state.snapshots.job = null;
+      }
     } finally {
       if (btn) {
         if (keepBusy) {
@@ -3175,6 +3202,19 @@ function syncCards(nodes) {
       restartBtn.addEventListener('mousedown', (event) => event.stopPropagation());
       restartBtn.addEventListener('mouseup', (event) => event.stopPropagation());
       restartBtn.title = 'Restart container';
+      // Disable restart if a snapshot/restore job is active (applies to all nodes for snapshot; scoped for restore).
+      const job = state.snapshots && state.snapshots.job ? state.snapshots.job : null;
+      const jobMode = String(job?.details?.mode || job?.mode || '').toLowerCase();
+      const jobNode = job?.details?.node || job?.node || null;
+      const jobActive = Boolean(job?.active);
+      const disableRestart =
+        jobActive &&
+        ((jobMode === 'restore' && (!jobNode || jobNode === node.id)) || jobMode === 'snapshot');
+      restartBtn.disabled = disableRestart;
+      restartBtn.classList.toggle('is-pending', disableRestart);
+      if (disableRestart) {
+        restartBtn.title = 'Restart disabled during snapshot/restore';
+      }
     }
     const snapshotBtn = details.querySelector('[data-action="node-snapshot"]');
     if (snapshotBtn) {
@@ -3405,6 +3445,20 @@ function syncCards(nodes) {
         restartBtn.title = forcedHeader.reason || 'Restart container';
       } else {
         restartBtn.title = 'Restart container';
+      }
+      const job = state.snapshots && state.snapshots.job ? state.snapshots.job : null;
+      const jobMode = String(job?.details?.mode || job?.mode || '').toLowerCase();
+      const jobNode = job?.details?.node || job?.node || null;
+      const jobActive = Boolean(job?.active);
+      const restoreActive = jobActive && jobMode === 'restore';
+      const snapshotActive = jobActive && jobMode === 'snapshot';
+      const disableRestart =
+        (restoreActive && (!jobNode || jobNode === node.id)) ||
+        snapshotActive;
+      restartBtn.disabled = disableRestart;
+      restartBtn.classList.toggle('is-pending', disableRestart);
+      if (disableRestart) {
+        restartBtn.title = 'Restart disabled during snapshot/restore';
       }
     }
 

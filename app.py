@@ -1789,7 +1789,6 @@ def _directory_size(path: Path) -> int:
 def _restore_via_docker(
     snapshot_path: Path,
     data_dir: Path,
-    backup_name: str,
     *,
     expected_total: int,
     archive_bytes: int,
@@ -1801,7 +1800,7 @@ def _restore_via_docker(
     script = (
         "set -e\n"
         "cd /volume\n"
-        f"if [ -d '{data_dir.name}' ]; then mv '{data_dir.name}' '{backup_name}'; fi\n"
+        f"rm -rf '{data_dir.name}'\n"
         f"mkdir -p '{data_dir.name}'\n"
         "progress() {\n"
         "  pid=\"$1\"\n"
@@ -3146,7 +3145,6 @@ def _run_restore_job(details: Dict[str, object]) -> None:
     restart_required = False
     snapshot_path: Optional[Path] = None
     data_dir = _normalize_path(details.get("data_dir")) if details else None
-    backup_dir: Optional[Path] = None
     job_warnings: List[str] = []
     if isinstance(details, dict):
         preflight = details.get("preflight_warnings")
@@ -3197,17 +3195,15 @@ def _run_restore_job(details: Dict[str, object]) -> None:
             except PermissionError:
                 # Parent directory will be created within docker helper if needed.
                 pass
-        timestamp = datetime.utcnow().strftime("%Y%m%d.%H%M%S")
-        backup_name = f"{data_dir.name}.pre-restore.{timestamp}"
         can_write_parent = os.access(parent_dir, os.W_OK | os.X_OK)
         can_write_existing = not data_dir.exists() or os.access(data_dir, os.W_OK | os.X_OK)
         fallback_to_docker = False
         host_extract_error: Optional[Exception] = None
+        # Always start from a clean slate by deleting existing chain data before restore.
+        if data_dir.exists():
+            shutil.rmtree(data_dir, ignore_errors=True)
         if can_write_parent and can_write_existing and not SNAPSHOT_LIGHT_MODE:
             try:
-                if data_dir.exists():
-                    backup_dir = parent_dir / backup_name
-                    shutil.move(str(data_dir), str(backup_dir))
                 data_dir.mkdir(parents=True, exist_ok=True)
                 _extract_snapshot_contents(snapshot_path, data_dir, total_bytes=expected_total, started=started)
                 # Flatten nested restores that wrapped contents in an extra directory (e.g., data/data/testnet).
@@ -3233,31 +3229,15 @@ def _run_restore_job(details: Dict[str, object]) -> None:
                     shutil.rmtree(data_dir, ignore_errors=True)
                 except Exception:
                     pass
-                if backup_dir and backup_dir.exists():
-                    try:
-                        target_restore = parent_dir / data_dir.name
-                        if target_restore.exists():
-                            shutil.rmtree(target_restore, ignore_errors=True)
-                        shutil.move(str(backup_dir), str(target_restore))
-                    except Exception as move_exc:
-                        job_warnings.append(f"Failed to restore original data directory after host error: {move_exc}")
-                    finally:
-                        backup_dir = None
         if not can_write_parent or not can_write_existing or fallback_to_docker or SNAPSHOT_LIGHT_MODE:
             _restore_via_docker(
                 snapshot_path,
                 data_dir,
-                backup_name,
                 expected_total=expected_total,
                 archive_bytes=archive_bytes,
                 started=started,
             )
-            backup_dir = parent_dir / backup_name if (parent_dir / backup_name).exists() else backup_dir
-        if backup_dir and backup_dir.exists():
-            details["backup"] = str(backup_dir)
-        identity_note = _reapply_peer_identity_from_backup(backup_dir, data_dir)
-        if not identity_note:
-            identity_note = _ensure_peer_identity(data_dir)
+        identity_note = _ensure_peer_identity(data_dir)
         if identity_note:
             details["identity_preserved"] = True
             details["identity_note"] = identity_note

@@ -41,11 +41,10 @@ def _current_identity() -> Tuple[Optional[str], Optional[str]]:
     return user, group
 
 
-def _reset_launchpad_identity(scripts_dir: Path) -> None:
+def _reset_launchpad_identity(data_dir: Path) -> None:
     """Remove peer identity files so each launchpad node gets a unique ID."""
-    if not scripts_dir:
+    if not data_dir:
         return
-    data_dir = scripts_dir / "bin" / "bdag" / "data"
     candidates = [
         data_dir / name for name in NETWORK_KEY_NAMES
     ] + [
@@ -256,6 +255,13 @@ def _sanitize_label(label: str) -> str:
     return slug or "node"
 
 
+def _node_paths(base_dir: Path, label: str) -> Tuple[Path, Path]:
+    """Return host data/log paths for a launchpad node, namespaced by label."""
+    data_dir = base_dir / "bin" / label / "bdag" / "data"
+    logs_dir = base_dir / "bin" / label / "bdag" / "logs"
+    return data_dir, logs_dir
+
+
 def _coerce_port(value, default: int) -> int:
     try:
         port = int(str(value).strip())
@@ -445,6 +451,8 @@ def _render_compose(
     ws: int,
     peer: int,
     peer_internal: int,
+    data_dir: Path,
+    logs_dir: Path,
     helper_mount: Optional[str] = None,
 ):
     text = source.read_text()
@@ -457,6 +465,8 @@ def _render_compose(
     text = text.replace("--http.port=18545", f"--http.port={rpc}")
     text = text.replace("--ws.port=18546", f"--ws.port={ws}")
     text = text.replace("ws://127.0.0.1:18546", f"ws://127.0.0.1:{ws}")
+    text = text.replace("./bin/bdag/data:/bdag/data", f"./{data_dir.relative_to(source.parent)}:/bdag/data")
+    text = text.replace("./bin/bdag/logs:/bdag/logs", f"./{logs_dir.relative_to(source.parent)}:/bdag/logs")
     if "--health=0.0.0.0:6061" not in text:
         text = text.replace(
             "--walletpass=test ",
@@ -475,7 +485,7 @@ def _render_compose(
         if container_line not in text:
             raise LaunchError("Failed to inject helper entrypoint into docker-compose template")
         text = text.replace(container_line, replacement, 1)
-        volume_anchor = "      - ./bin/bdag/logs:/bdag/logs"
+        volume_anchor = f"      - ./{logs_dir.relative_to(source.parent)}:/bdag/logs"
         if volume_anchor not in text:
             raise LaunchError("Failed to inject helper entrypoint mount into docker-compose template")
         text = text.replace(volume_anchor, volume_anchor + f"\n      - {helper_mount}", 1)
@@ -532,7 +542,10 @@ def launch_node(payload: Dict) -> Dict:
     compose_target = scripts_dir / f"docker-compose-{label}.yml"
     helper_script = _deploy_helper_entrypoint(scripts_dir, label)
     helper_mount = f"./{helper_script.name}:/custom-entrypoint.sh:ro"
-    _reset_launchpad_identity(scripts_dir)
+    data_dir, logs_dir = _node_paths(scripts_dir, label)
+    data_dir.mkdir(parents=True, exist_ok=True)
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    _reset_launchpad_identity(data_dir)
     _render_compose(
         compose_src,
         compose_target,
@@ -542,6 +555,8 @@ def launch_node(payload: Dict) -> Dict:
         ws_port,
         peer_port,
         peer_internal,
+        data_dir,
+        logs_dir,
         helper_mount,
     )
     project_name = label
