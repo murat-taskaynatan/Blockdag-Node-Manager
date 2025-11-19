@@ -435,6 +435,29 @@ const automationLogUpdated = document.getElementById('automationLogUpdated');
     return automationKindLabels[kind] || 'Automation';
   }
 
+  function automationQueueKindLabel(entry) {
+    const trigger = String(entry?.trigger || '').toLowerCase();
+    if (trigger === 'liveness') return 'Chain Recovery';
+    if (trigger === 'api') return 'API Restore';
+    if (trigger === 'manual') return 'Manual Restore';
+    return automationKindLabel('chain_restore');
+  }
+
+  function formatQueueTimestamp(entry) {
+    const stampIso = entry?.queued_at_iso;
+    if (typeof stampIso === 'string' && stampIso) {
+      const parsed = Date.parse(stampIso);
+      if (!Number.isNaN(parsed)) {
+        return fmtTime.format(new Date(parsed));
+      }
+    }
+    const queuedAt = entry?.queued_at;
+    if (typeof queuedAt === 'number' && queuedAt > 0) {
+      return fmtTime.format(new Date(queuedAt * 1000));
+    }
+    return '';
+  }
+
   function automationStatusLabel(status) {
     if (!status) return null;
     const mapping = {
@@ -444,6 +467,7 @@ const automationLogUpdated = document.getElementById('automationLogUpdated');
       completed: 'Completed',
       skipped: 'Skipped',
       error: 'Error',
+      queued: 'Queued',
     };
     return mapping[status] || status;
   }
@@ -603,13 +627,31 @@ const automationLogUpdated = document.getElementById('automationLogUpdated');
       items.forEach((entry) => {
         const li = document.createElement('li');
         li.className = 'automation-log-entry';
+
         const header = document.createElement('div');
         header.className = 'automation-log-entry__header';
-        header.textContent = (entry && entry.trigger) ? String(entry.trigger) : 'Pending restore';
+        const kindChip = document.createElement('span');
+        kindChip.className = 'automation-log-entry__kind automation-log-entry__kind--chain_restore';
+        kindChip.textContent = automationQueueKindLabel(entry);
+        const timeLabel = document.createElement('span');
+        timeLabel.textContent = formatQueueTimestamp(entry) || '—';
+        header.append(kindChip, timeLabel);
+
         const title = document.createElement('div');
         title.className = 'automation-log-entry__title';
-        title.textContent = entry?.node ? `Node ${entry.node}` : 'Pending restore';
-        li.append(header, title);
+        const label = entry?.label || entry?.node || 'Pending restore';
+        title.textContent = entry?.message || `Chain recovery queued for ${label}`;
+
+        const details = [];
+        if (label) details.push(`Node ${label}`);
+        if (entry?.reason) details.push(entry.reason);
+        const statusLabel = automationStatusLabel(entry?.status) || 'Queued';
+        details.push(statusLabel);
+        const detail = document.createElement('div');
+        detail.className = 'automation-log-entry__detail';
+        detail.textContent = details.join(' • ');
+
+        li.append(header, title, detail);
         fragment.append(li);
       });
       automationQueueList.append(fragment);

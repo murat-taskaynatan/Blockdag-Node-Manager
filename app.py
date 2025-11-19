@@ -1474,21 +1474,47 @@ _SNAPSHOT_JOB_STATE: Dict[str, object] = {
     "started": None,
     "ended": None,
 }
-_PENDING_RESTORE_QUEUE: Deque[Dict[str, Optional[str]]] = deque()
+_PENDING_RESTORE_QUEUE: Deque[Dict[str, object]] = deque()
 _PENDING_RESTORE_LOCK = threading.Lock()
 
 
-def _queue_pending_restore(node_id: Optional[str], trigger: Optional[str]) -> None:
+def _queue_pending_restore(
+    node_id: Optional[str],
+    trigger: Optional[str],
+    *,
+    reason: Optional[str] = None,
+    container: Optional[str] = None,
+) -> None:
     if not node_id:
         return
+    ctx = NODES.get(node_id)
+    label = ctx.label if ctx and ctx.label else node_id
+    resolved_container = container or (ctx.container if ctx else None)
+    trigger_label = (trigger or "").strip().lower() or "manual"
+    base_messages = {
+        "liveness": "Chain recovery queued",
+        "api": "API restore queued",
+        "manual": "Manual restore queued",
+    }
+    default_message = reason or base_messages.get(trigger_label, "Chain recovery queued")
+    entry: Dict[str, object] = {
+        "node": node_id,
+        "label": label,
+        "trigger": trigger_label,
+        "queued_at": time.time(),
+        "reason": reason,
+        "container": resolved_container,
+        "status": "queued",
+        "message": default_message,
+    }
     with _PENDING_RESTORE_LOCK:
         if any(entry.get("node") == node_id for entry in _PENDING_RESTORE_QUEUE):
             return
-        _PENDING_RESTORE_QUEUE.append({"node": node_id, "trigger": trigger, "queued_at": time.time()})
+        _PENDING_RESTORE_QUEUE.append(entry)
 
 
 def _dispatch_pending_restore() -> None:
-    entry: Optional[Dict[str, Optional[str]]] = None
+    entry: Optional[Dict[str, object]] = None
     with _PENDING_RESTORE_LOCK:
         if not _PENDING_RESTORE_QUEUE:
             return
@@ -1497,9 +1523,15 @@ def _dispatch_pending_restore() -> None:
         return
     node_id = entry.get("node")
     trigger = entry.get("trigger")
-    ok, message, _ = _start_restore_job(node_id, trigger=trigger)
+    reason = entry.get("reason")
+    ok, message, _ = _start_restore_job(node_id, trigger=trigger, reason=reason)
     if not ok and message and "already in progress" in message.lower():
-        _queue_pending_restore(node_id, trigger)
+        _queue_pending_restore(
+            node_id,
+            trigger,
+            reason=reason,
+            container=entry.get("container"),
+        )
 
 
 def _clear_liveness_restore_queue() -> int:
@@ -3389,7 +3421,12 @@ def _run_restore_job(details: Dict[str, object]) -> None:
     _dispatch_pending_restore()
 
 
-def _start_restore_job(node_id: Optional[str], *, trigger: Optional[str] = None) -> Tuple[bool, str, Dict[str, object]]:
+def _start_restore_job(
+    node_id: Optional[str],
+    *,
+    trigger: Optional[str] = None,
+    reason: Optional[str] = None,
+) -> Tuple[bool, str, Dict[str, object]]:
     details: Dict[str, object] = {}
     target_ctx: Optional["NodeContext"]
     preflight_warnings: List[str] = []
@@ -3434,6 +3471,8 @@ def _start_restore_job(node_id: Optional[str], *, trigger: Optional[str] = None)
     details["snapshot"] = snapshot_path.name
     if trigger:
         details["trigger"] = trigger
+    if reason:
+        details["reason"] = reason
     details["mode"] = "restore"
     if preflight_warnings:
         details["preflight_warnings"] = preflight_warnings
@@ -3464,7 +3503,12 @@ def _start_restore_job(node_id: Optional[str], *, trigger: Optional[str] = None)
                 }
             )
     if job_already_active:
-        _queue_pending_restore(details.get("node") or node_id, trigger)
+        _queue_pending_restore(
+            details.get("node") or node_id,
+            trigger,
+            reason=reason or details.get("reason"),
+            container=details.get("container"),
+        )
         return False, "Snapshot already in progress", _snapshot_job_snapshot()
     thread = threading.Thread(target=_run_restore_job, args=(details,), daemon=True)
     thread.start()
@@ -4403,7 +4447,7 @@ def _trigger_restore_for_context(ctx: "NodeContext", reason: str) -> bool:
     if not ctx or not ctx.id:
         return False
     try:
-        ok, message, job = _start_restore_job(ctx.id, trigger="liveness")
+        ok, message, job = _start_restore_job(ctx.id, trigger="liveness", reason=reason)
     except Exception as exc:
         try:
             app.logger.warning("Failed to trigger restore for %s: %s", ctx.id, exc)
@@ -5757,9 +5801,24 @@ def api_automation_logs():
     try:
         with _PENDING_RESTORE_LOCK:
             pending_restore_count = len(_PENDING_RESTORE_QUEUE)
-            pending_restores = [dict(item) for item in list(_PENDING_RESTORE_QUEUE)[:limit]]
+            snapshot = list(_PENDING_RESTORE_QUEUE)[:limit]
     except Exception:
-        pending_restores = []
+        snapshot = []
+    pending_restores = []
+    for raw in snapshot:
+        item = dict(raw)
+        queued_ts = item.get("queued_at")
+        if isinstance(queued_ts, (int, float)) and queued_ts > 0:
+            item["queued_at_iso"] = datetime.fromtimestamp(queued_ts, tz=timezone.utc).isoformat()
+        label = item.get("label")
+        if not label:
+            ctx = NODES.get(item.get("node"))
+            if ctx and ctx.label:
+                item["label"] = ctx.label
+            elif item.get("node"):
+                item["label"] = item["node"]
+        item.setdefault("status", "queued")
+        pending_restores.append(item)
     return jsonify(
         {
             "logs": logs,
@@ -7202,28 +7261,21 @@ def api_snapshots():
     with _AUTO_SNAPSHOT_QUEUE_LOCK:
         auto_snapshot_state["queued"] = len(_AUTO_SNAPSHOT_QUEUE)
     with _PENDING_RESTORE_LOCK:
-        restore_queue = [
-            {
-                "node": entry.get("node"),
-                "trigger": entry.get("trigger"),
-                "queued_at": entry.get("queued_at"),
-            }
-            for entry in list(_PENDING_RESTORE_QUEUE)
-        ]
-    for item in restore_queue:
+        restore_snapshot = list(_PENDING_RESTORE_QUEUE)
+    response_restore: List[Dict[str, object]] = []
+    for raw in restore_snapshot:
+        item = dict(raw)
         node_id = item.get("node")
         ctx = NODES.get(node_id) if node_id else None
-        if ctx:
-            item["label"] = ctx.label or ctx.id
-        else:
+        if ctx and ctx.label:
+            item["label"] = ctx.label
+        elif not item.get("label"):
             item["label"] = node_id
         queued_ts = item.get("queued_at")
         if isinstance(queued_ts, (int, float)) and queued_ts > 0:
             item["queued_at_iso"] = datetime.fromtimestamp(queued_ts, tz=timezone.utc).isoformat()
-    if restore_queue:
-        response_restore = restore_queue
-    else:
-        response_restore = []
+        item.setdefault("status", "queued")
+        response_restore.append(item)
     response: Dict[str, object] = {
         "snapshots": snapshots,
         "job": job,
