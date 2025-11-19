@@ -3238,6 +3238,7 @@ def _run_restore_job(details: Dict[str, object]) -> None:
                 archive_bytes=archive_bytes,
                 started=started,
             )
+        _purge_peer_identity(data_dir)
         identity_note = _ensure_peer_identity(data_dir)
         if identity_note:
             details["identity_preserved"] = True
@@ -4490,6 +4491,7 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
         state["last_check"] = now
     metrics_raw = getattr(ctx, "last_metrics", None)
     metrics = metrics_raw if isinstance(metrics_raw, dict) else {}
+    failsafe_triggered = False
     failsafe = _detect_liveness_failsafe_from_logs(ctx.container)
     if failsafe:
         failsafe_reason, failsafe_recovery = failsafe
@@ -4498,7 +4500,12 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
         metrics["health_text"] = failsafe_reason
         metrics["health_detail"] = failsafe_reason
         metrics["recovery_required"] = bool(failsafe_recovery)
-    if _logs_show_importing(ctx.container):
+        failsafe_triggered = True
+    if (
+        not failsafe_triggered
+        and metrics.get("container_running")
+        and _logs_show_importing(ctx.container)
+    ):
         # Do not treat importing as stalled, but continue evaluating without forcing a restart
         metrics.pop("stalled_reason", None)
         metrics.pop("health_detail", None)
@@ -4576,7 +4583,7 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
             healthy_now = bool(metrics_check.get("running")) and not bool(
                 metrics_check.get("stalled") or metrics_check.get("health_text")
             )
-            if healthy_now:
+            if healthy_now and not recovery_required:
                 try:
                     app.logger.info(
                         "Liveness aborting restore for %s (%s); node reporting healthy.",

@@ -41,35 +41,48 @@ def _current_identity() -> Tuple[Optional[str], Optional[str]]:
     return user, group
 
 
-def _reset_launchpad_identity(scripts_dir: Path) -> None:
+def _reset_launchpad_identity(base_path: Path) -> None:
     """Remove peer identity files so each launchpad node gets a unique ID."""
-    if not scripts_dir:
+    if not base_path:
         return
-    data_root = scripts_dir / "bin"
-    if not data_root.exists():
-        return
-
-    # Strip any existing libp2p identity files across all node-label subdirs (bin/<label>/bdag/data/**/network.key).
+    search_roots = []
     try:
-        for key_path in data_root.rglob("network.key"):
-            if key_path.is_file():
-                try:
-                    key_path.unlink(missing_ok=True)
-                except Exception:
-                    continue
+        if base_path.exists():
+            search_roots.append(base_path)
     except Exception:
         pass
+    try:
+        bin_dir = base_path / "bin"
+        if bin_dir.exists():
+            search_roots.append(bin_dir)
+    except Exception:
+        pass
+    if not search_roots:
+        return
+
+    # Strip any existing libp2p identity files under the provided tree (or its bin/ helper).
+    for root in search_roots:
+        try:
+            for key_path in root.rglob("network.key"):
+                if key_path.is_file():
+                    try:
+                        key_path.unlink(missing_ok=True)
+                    except Exception:
+                        continue
+        except Exception:
+            continue
 
     # Drop bundled bdageth keystores so each launch is clean unless user overwrote them.
-    try:
-        for key_path in data_root.rglob("bdageth/keystore/*"):
-            if key_path.is_file():
-                try:
-                    key_path.unlink(missing_ok=True)
-                except Exception:
-                    continue
-    except Exception:
-        pass
+    for root in search_roots:
+        try:
+            for key_path in root.rglob("bdageth/keystore/*"):
+                if key_path.is_file():
+                    try:
+                        key_path.unlink(missing_ok=True)
+                    except Exception:
+                        continue
+        except Exception:
+            continue
 
 
 def _rewrite_compose_image(compose_path: Path, image: str) -> None:
