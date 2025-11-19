@@ -4572,6 +4572,7 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
                 "last_restart": 0.0,
                 "last_liveness": 0.0,
                 "liveness_restarts": 0,
+                "restore_restart_attempted": False,
             },
         )
         last_check = float(state.get("last_check", 0.0))
@@ -4656,6 +4657,7 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
             if running_flag and uptime_seconds >= LIVENESS_STABLE_SEC:
                 with _LOG_POLICY_LOCK:
                     state["liveness_restarts"] = 0
+                    state["restore_restart_attempted"] = False
         if stalled_flag:
             stalled_reason = stall_reason
             recovery_required = bool(metrics.get("recovery_required"))
@@ -4684,36 +4686,36 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
                 with _LOG_POLICY_LOCK:
                     state["liveness_restarts"] = 0
                     state["last_liveness"] = now
+                    state["restore_restart_attempted"] = False
                 return
             if allow_restore:
-                restart_done = False
-                if cooldown_elapsed and liveness_restarts < LIVENESS_MAX_RESTARTS:
+                with _LOG_POLICY_LOCK:
+                    restart_attempted = bool(state.get("restore_restart_attempted"))
+                if not restart_attempted and liveness_restarts < LIVENESS_MAX_RESTARTS:
                     next_attempt = liveness_restarts + 1
-                    if _restart_container_for_policy(
+                    restart_ok = _restart_container_for_policy(
                         ctx,
                         stalled_reason,
                         source="liveness",
                         metadata_extra={"restart_count": next_attempt},
-                    ):
-                        with _LOG_POLICY_LOCK:
-                            state["last_restart"] = now
-                            state["error_streak"] = 0
-                            state["liveness_restarts"] = next_attempt
-                            state["last_liveness"] = now
-                        return
+                    )
                     with _LOG_POLICY_LOCK:
-                        state["liveness_restarts"] = next_attempt
+                        state["restore_restart_attempted"] = True
                         state["last_liveness"] = now
-                    restart_done = True
-                if not restart_done:
-                    if _trigger_restore_for_context(ctx, stalled_reason):
-                        with _LOG_POLICY_LOCK:
+                        state["liveness_restarts"] = next_attempt
+                        if restart_ok:
                             state["last_restart"] = now
                             state["error_streak"] = 0
-                            state["liveness_restarts"] = 0
-                            state["last_liveness"] = now
-                        return
                     return
+                if _trigger_restore_for_context(ctx, stalled_reason):
+                    with _LOG_POLICY_LOCK:
+                        state["last_restart"] = now
+                        state["error_streak"] = 0
+                        state["liveness_restarts"] = 0
+                        state["last_liveness"] = now
+                        state["restore_restart_attempted"] = False
+                    return
+                return
             if cooldown_elapsed:
                 with _LOG_POLICY_LOCK:
                     state["last_liveness"] = now
