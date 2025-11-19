@@ -3012,6 +3012,24 @@ def _snapshot_identity_destination(base: Optional[Path], preferred: Optional[Pat
     return (testnet_dir / "network.key") if testnet_dir else (normalized / "network.key")
 
 
+def _capture_local_peer_identity(base: Optional[Path]) -> Tuple[Optional[Path], Optional[bytes]]:
+    normalized = _normalize_path(base)
+    if not normalized:
+        return None, None
+    source_info = _snapshot_identity_source(normalized)
+    if not source_info:
+        return None, None
+    source_path, relative = source_info
+    try:
+        payload = source_path.read_bytes().strip()
+    except Exception as exc:
+        app.logger.warning("Failed to read peer identity at %s: %s", source_path, exc)
+        return None, None
+    if not payload:
+        return None, None
+    return relative, payload
+
+
 def _reapply_peer_identity_from_backup(
     backup_dir: Optional[Path], data_dir: Optional[Path]
 ) -> Optional[str]:
@@ -3099,6 +3117,28 @@ def _ensure_peer_identity(
         return None
     app.logger.info("Generated new peer identity at %s", destination)
     return f"Generated new peer identity at {destination}."
+
+
+def _restore_peer_identity_from_bytes(
+    data_dir: Optional[Path], payload: Optional[bytes], *, preferred: Optional[Path] = None
+) -> Optional[str]:
+    if not payload:
+        return None
+    destination = _snapshot_identity_destination(data_dir, preferred)
+    if not destination:
+        return None
+    try:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(payload)
+        try:
+            os.chmod(destination, 0o600)
+        except Exception:
+            pass
+    except Exception as exc:
+        app.logger.warning("Failed to restore preserved peer identity at %s: %s", destination, exc)
+        return None
+    app.logger.info("Restored preserved peer identity at %s", destination)
+    return f"Preserved peer identity by restoring {destination}."
 
 
 def _copy_identity_via_docker(source: Path, destination: Path) -> bool:
@@ -3237,6 +3277,14 @@ def _run_restore_job(details: Dict[str, object]) -> None:
     snapshot_path: Optional[Path] = None
     data_dir = _normalize_path(details.get("data_dir")) if details else None
     job_warnings: List[str] = []
+    preserved_identity_relative: Optional[Path] = None
+    preserved_identity_payload: Optional[bytes] = None
+    if data_dir:
+        preserved_identity_relative, preserved_identity_payload = _capture_local_peer_identity(data_dir)
+    if not preserved_identity_payload and container:
+        preserved_identity_payload = _read_peer_identity_from_container(container)
+        if preserved_identity_payload:
+            preserved_identity_relative = None
     if isinstance(details, dict):
         preflight = details.get("preflight_warnings")
         if isinstance(preflight, (list, tuple)):
@@ -3329,7 +3377,13 @@ def _run_restore_job(details: Dict[str, object]) -> None:
                 started=started,
             )
         _purge_peer_identity(data_dir)
-        identity_note = _ensure_peer_identity(data_dir)
+        identity_note = None
+        if preserved_identity_payload:
+            identity_note = _restore_peer_identity_from_bytes(
+                data_dir, preserved_identity_payload, preferred=preserved_identity_relative
+            )
+        if not identity_note:
+            identity_note = _ensure_peer_identity(data_dir, preferred=preserved_identity_relative)
         if identity_note:
             details["identity_preserved"] = True
             details["identity_note"] = identity_note
