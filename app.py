@@ -284,6 +284,11 @@ MEMORY_RESTART_COOLDOWN_SEC = max(
 )
 _MEMORY_RESTART_LOCK = threading.Lock()
 _MEMORY_RESTART_ACTIVE = False
+MEMORY_LIVENESS_COOLDOWN_SEC = max(
+    0.0, float(os.getenv("BDAG_MEMORY_LIVENESS_COOLDOWN_SEC", "300") or "300")
+)
+_MEMORY_LIVENESS_COOLDOWN_UNTIL = 0.0
+_MEMORY_LIVENESS_COOLDOWN_LOCK = threading.Lock()
 
 # Overclock logs buffer (UI tailing)
 _OVERCLOCK_LOGS: deque[str] = deque(maxlen=500)
@@ -312,6 +317,28 @@ def _oc_log(message: str) -> None:
         line = message
     with _OVERCLOCK_LOGS_LOCK:
         _OVERCLOCK_LOGS.append(line)
+
+
+def _activate_memory_liveness_cooldown() -> Optional[float]:
+    """Remember that liveness actions are paused after a memory-triggered restart."""
+    if MEMORY_LIVENESS_COOLDOWN_SEC <= 0:
+        return None
+    expires = time.time() + MEMORY_LIVENESS_COOLDOWN_SEC
+    global _MEMORY_LIVENESS_COOLDOWN_UNTIL
+    with _MEMORY_LIVENESS_COOLDOWN_LOCK:
+        if expires > _MEMORY_LIVENESS_COOLDOWN_UNTIL:
+            _MEMORY_LIVENESS_COOLDOWN_UNTIL = expires
+    return expires
+
+
+def _memory_liveness_cooldown_active(now: Optional[float] = None) -> bool:
+    if MEMORY_LIVENESS_COOLDOWN_SEC <= 0:
+        return False
+    if now is None:
+        now = time.time()
+    with _MEMORY_LIVENESS_COOLDOWN_LOCK:
+        suspend_until = _MEMORY_LIVENESS_COOLDOWN_UNTIL
+    return now < suspend_until
 
 
 def _automation_event(
@@ -4629,6 +4656,7 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
     if not (enable_error_restart or enable_liveness):
         return
     now = time.time()
+    memory_liveness_blocked = _memory_liveness_cooldown_active(now)
     with _LOG_POLICY_LOCK:
         state = _LOG_POLICY_STATE.setdefault(
             ctx.container,
@@ -4699,7 +4727,7 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
                 else:
                     liveness_suspended = True
 
-    if enable_liveness and not liveness_suspended:
+    if enable_liveness and not liveness_suspended and not memory_liveness_blocked:
         if _is_restore_job_active_for_container(ctx.container) or _is_snapshot_job_active_for_container(ctx.container):
             return
         stalled_flag = bool(metrics.get("stalled"))
@@ -7505,6 +7533,12 @@ def _restart_all_nodes_sequentially(cooldown_sec: float) -> None:
     if not nodes:
         return
     app.logger.info("memory-triggered restart: restarting %d node(s)", len(nodes))
+    cooldown_until = _activate_memory_liveness_cooldown()
+    if cooldown_until:
+        app.logger.info(
+            "suspending liveness auto-recover for %.0fs after memory restart",
+            MEMORY_LIVENESS_COOLDOWN_SEC,
+        )
     for ctx in nodes:
         container = (ctx.container or "").strip()
         if not container:
