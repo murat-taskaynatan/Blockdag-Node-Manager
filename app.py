@@ -171,6 +171,8 @@ _AUTO_SNAPSHOT_STATE: Dict[str, object] = {
     "last_run": 0.0,
     "last_result": None,
 }
+_AUTO_SNAPSHOT_QUEUE: Deque[Optional[str]] = deque()
+_AUTO_SNAPSHOT_QUEUE_LOCK = threading.Lock()
 
 LIVENESS_RECOVER_COOLDOWN_SEC = max(
     60.0, float(os.getenv("BDAG_LIVENESS_RECOVER_COOLDOWN_SEC", "900") or "900")
@@ -2421,6 +2423,19 @@ def _configure_auto_snapshot(settings: Dict[str, object]) -> None:
     _AUTO_SNAPSHOT_EVENT.set()
 
 
+def _auto_snapshot_enqueue(node_id: Optional[str]) -> None:
+    with _AUTO_SNAPSHOT_QUEUE_LOCK:
+        _AUTO_SNAPSHOT_QUEUE.append(node_id)
+    _AUTO_SNAPSHOT_EVENT.set()
+
+
+def _auto_snapshot_dequeue() -> Optional[Optional[str]]:
+    with _AUTO_SNAPSHOT_QUEUE_LOCK:
+        if _AUTO_SNAPSHOT_QUEUE:
+            return _AUTO_SNAPSHOT_QUEUE.popleft()
+    return None
+
+
 def _auto_snapshot_mark_result(status: str) -> None:
     now = time.time()
     with _AUTO_SNAPSHOT_LOCK:
@@ -2522,17 +2537,47 @@ def _auto_snapshot_worker() -> None:
                 _AUTO_SNAPSHOT_EVENT.clear()
             continue
         now = time.time()
-        if next_run <= 0.0:
+        preferred_node = None
+        trigger_reason = None
+        queued_request = _auto_snapshot_dequeue()
+        if queued_request is not None:
+            preferred_node = queued_request or None
+            trigger_reason = "queue"
+        elif next_run <= 0.0:
             with _AUTO_SNAPSHOT_LOCK:
                 _AUTO_SNAPSHOT_STATE["next_run"] = now + interval
             continue
-        if now >= next_run:
+        elif now >= next_run:
+            trigger_reason = "interval"
+        if trigger_reason:
             job = _snapshot_job_snapshot()
             if job.get("active"):
+                if trigger_reason != "queue":
+                    preferred_node = _select_best_snapshot_node()
+                _auto_snapshot_enqueue(preferred_node)
+                node_label = preferred_node
+                friendly = f" for {node_label}" if node_label else ""
+                _automation_event(
+                    "auto_snapshot",
+                    f"Auto snapshot deferred{friendly}",
+                    node=node_label,
+                    status="queued",
+                    metadata={"node_label": node_label, "reason": "active_job"},
+                )
                 with _AUTO_SNAPSHOT_LOCK:
                     _AUTO_SNAPSHOT_STATE["next_run"] = now + max(60.0, min(interval, 300.0))
                 continue
-            best_node = _select_best_snapshot_node()
+            best_node = preferred_node or _select_best_snapshot_node()
+            if not best_node:
+                with _AUTO_SNAPSHOT_LOCK:
+                    _AUTO_SNAPSHOT_STATE["next_run"] = now + max(AUTO_SNAPSHOT_RETRY_SEC, 120.0)
+                _automation_event(
+                    "auto_snapshot",
+                    "Auto snapshot skipped",
+                    status="skipped",
+                    metadata={"message": "No eligible nodes available", "node_label": None},
+                )
+                continue
             ok, message, job = _start_snapshot_job(best_node, mode="auto_snapshot", trigger="auto", quiesce_overlay=True)
             with _AUTO_SNAPSHOT_LOCK:
                 if ok:
@@ -2542,7 +2587,7 @@ def _auto_snapshot_worker() -> None:
             job_details = job.get("details") if isinstance(job, dict) else {}
             if not isinstance(job_details, dict):
                 job_details = {}
-            node_label = (job_details or {}).get("label") or (job_details or {}).get("node")
+            node_label = (job_details or {}).get("label") or (job_details or {}).get("node") or best_node
             container = (job_details or {}).get("container")
             if ok:
                 _automation_event(
@@ -7154,6 +7199,8 @@ def api_snapshots():
             "last_run": last_run if last_run > 0.0 else None,
             "last_result": _AUTO_SNAPSHOT_STATE.get("last_result"),
         }
+    with _AUTO_SNAPSHOT_QUEUE_LOCK:
+        auto_snapshot_state["queued"] = len(_AUTO_SNAPSHOT_QUEUE)
     response: Dict[str, object] = {
         "snapshots": snapshots,
         "job": job,
