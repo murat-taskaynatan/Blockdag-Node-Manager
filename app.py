@@ -1456,6 +1456,9 @@ _CORRUPTION_RESTORE_KEYWORDS: Tuple[str, ...] = (
     "unclean shutdown detected",
 )
 
+_RESTARTABLE_CORRUPTION_KEYWORDS = ("zero state root hash",)
+
+
 def _should_trigger_corruption_restore(reason: Optional[str]) -> bool:
     if not reason:
         return False
@@ -1463,6 +1466,15 @@ def _should_trigger_corruption_restore(reason: Optional[str]) -> bool:
     if not text:
         return False
     return any(keyword in text for keyword in _CORRUPTION_RESTORE_KEYWORDS)
+
+
+def _should_attempt_restart_for_reason(reason: Optional[str]) -> bool:
+    if not reason:
+        return False
+    text = str(reason).strip().lower()
+    if not text:
+        return False
+    return any(keyword in text for keyword in _RESTARTABLE_CORRUPTION_KEYWORDS)
 
 _SNAPSHOT_DIR_LOCK = threading.Lock()
 _SNAPSHOT_JOB_LOCK = threading.Lock()
@@ -4666,6 +4678,8 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
                 liveness_restarts = int(state.get("liveness_restarts", 0))
                 cooldown_elapsed = now - last_liveness >= LIVENESS_RECOVER_COOLDOWN_SEC
             allow_restore = True if recovery_required else _should_trigger_corruption_restore(stalled_reason)
+            restart_allowed_reason = _should_attempt_restart_for_reason(stalled_reason)
+            container_running_flag = bool(metrics.get("container_running"))
             metrics_check: Dict[str, object] = {}
             try:
                 metrics_check = ctx.sample(force=True) or {}
@@ -4691,7 +4705,13 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
             if allow_restore:
                 with _LOG_POLICY_LOCK:
                     restart_attempted = bool(state.get("restore_restart_attempted"))
-                if not restart_attempted and liveness_restarts < LIVENESS_MAX_RESTARTS:
+                restart_allowed = (
+                    restart_allowed_reason
+                    and not container_running_flag
+                    and not running_flag
+                    and not restart_attempted
+                )
+                if restart_allowed and liveness_restarts < LIVENESS_MAX_RESTARTS:
                     next_attempt = liveness_restarts + 1
                     restart_ok = _restart_container_for_policy(
                         ctx,
