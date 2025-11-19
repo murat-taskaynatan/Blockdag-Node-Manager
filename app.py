@@ -1480,7 +1480,6 @@ _CORRUPTION_RESTORE_KEYWORDS: Tuple[str, ...] = (
     "cleanup your block data base by '--cleanup'",
     "unknown to the objstorage provider",
     "unclean shutdown detected",
-    "db.engine choice was pebble but found pre-existing leveldb database",
 )
 
 _RESTARTABLE_CORRUPTION_KEYWORDS = ("zero state root hash",)
