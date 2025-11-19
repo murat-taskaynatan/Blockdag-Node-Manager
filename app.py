@@ -4597,14 +4597,34 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
                     state["last_liveness"] = now
                 return
             if allow_restore:
-                if _trigger_restore_for_context(ctx, stalled_reason):
+                restart_done = False
+                if cooldown_elapsed and liveness_restarts < LIVENESS_MAX_RESTARTS:
+                    next_attempt = liveness_restarts + 1
+                    if _restart_container_for_policy(
+                        ctx,
+                        stalled_reason,
+                        source="liveness",
+                        metadata_extra={"restart_count": next_attempt},
+                    ):
+                        with _LOG_POLICY_LOCK:
+                            state["last_restart"] = now
+                            state["error_streak"] = 0
+                            state["liveness_restarts"] = next_attempt
+                            state["last_liveness"] = now
+                        return
                     with _LOG_POLICY_LOCK:
-                        state["last_restart"] = now
-                        state["error_streak"] = 0
-                        state["liveness_restarts"] = 0
+                        state["liveness_restarts"] = next_attempt
                         state["last_liveness"] = now
+                    restart_done = True
+                if not restart_done:
+                    if _trigger_restore_for_context(ctx, stalled_reason):
+                        with _LOG_POLICY_LOCK:
+                            state["last_restart"] = now
+                            state["error_streak"] = 0
+                            state["liveness_restarts"] = 0
+                            state["last_liveness"] = now
+                        return
                     return
-                return
             if cooldown_elapsed:
                 with _LOG_POLICY_LOCK:
                     state["last_liveness"] = now
