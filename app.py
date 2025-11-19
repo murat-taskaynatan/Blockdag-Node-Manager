@@ -1484,7 +1484,7 @@ def _queue_pending_restore(node_id: Optional[str], trigger: Optional[str]) -> No
     with _PENDING_RESTORE_LOCK:
         if any(entry.get("node") == node_id for entry in _PENDING_RESTORE_QUEUE):
             return
-        _PENDING_RESTORE_QUEUE.append({"node": node_id, "trigger": trigger})
+        _PENDING_RESTORE_QUEUE.append({"node": node_id, "trigger": trigger, "queued_at": time.time()})
 
 
 def _dispatch_pending_restore() -> None:
@@ -7201,11 +7201,37 @@ def api_snapshots():
         }
     with _AUTO_SNAPSHOT_QUEUE_LOCK:
         auto_snapshot_state["queued"] = len(_AUTO_SNAPSHOT_QUEUE)
+    with _PENDING_RESTORE_LOCK:
+        restore_queue = [
+            {
+                "node": entry.get("node"),
+                "trigger": entry.get("trigger"),
+                "queued_at": entry.get("queued_at"),
+            }
+            for entry in list(_PENDING_RESTORE_QUEUE)
+        ]
+    for item in restore_queue:
+        node_id = item.get("node")
+        ctx = NODES.get(node_id) if node_id else None
+        if ctx:
+            item["label"] = ctx.label or ctx.id
+        else:
+            item["label"] = node_id
+        queued_ts = item.get("queued_at")
+        if isinstance(queued_ts, (int, float)) and queued_ts > 0:
+            item["queued_at_iso"] = datetime.fromtimestamp(queued_ts, tz=timezone.utc).isoformat()
+    if restore_queue:
+        response_restore = restore_queue
+    else:
+        response_restore = []
     response: Dict[str, object] = {
         "snapshots": snapshots,
         "job": job,
         "directory": str(SNAPSHOT_DIR),
-        "automation": {"auto_snapshot": auto_snapshot_state},
+        "automation": {
+            "auto_snapshot": auto_snapshot_state,
+            "restore_queue": response_restore,
+        },
     }
     message = job.get("message") if isinstance(job, dict) else None
     if message:
