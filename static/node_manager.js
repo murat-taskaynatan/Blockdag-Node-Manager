@@ -3520,9 +3520,6 @@ function syncCards(nodes) {
     setStat(card, '.stat-peers', stats.peers);
     setPeerId(card, stats.peer_id, stats.peer_ports);
     updateUptime(card, stats.uptime_seconds);
-    const dockerImage = stats.container_image || '';
-    const imageLabel = dockerImage ? formatDockerImageLabel(dockerImage) : '';
-    setTextStat(card, '.stat-image', { display: imageLabel, title: dockerImage });
     const toggleBtn = card.querySelector('[data-role="toggle"]');
     updateStartStopButton(toggleBtn, displayContainerRunning, {
       effectiveRunning: displayEffectiveRunning,
@@ -3555,40 +3552,6 @@ function syncCards(nodes) {
     }
   }
 
-  function formatDockerImageLabel(value) {
-    if (!value) return '';
-    const idx = value.indexOf('/');
-    if (idx >= 0 && idx < value.length - 1) {
-      return value.slice(idx + 1);
-    }
-    return value;
-  }
-
-  function setTextStat(card, selector, value) {
-    const el = card.querySelector(selector);
-    if (!el) return;
-    let displayValue;
-    let titleValue;
-    if (value && typeof value === 'object') {
-      displayValue = value.display;
-      titleValue = value.title;
-    } else {
-      displayValue = value;
-      titleValue = value;
-    }
-    if (!displayValue) {
-      el.textContent = '—';
-      el.removeAttribute('title');
-      return;
-    }
-    const text = String(displayValue);
-    el.textContent = text;
-    if (titleValue) {
-      el.title = String(titleValue);
-    } else {
-      el.removeAttribute('title');
-    }
-  }
 
   function setPeerId(card, value, ports) {
     const el = card.querySelector('.stat-peer-id');
