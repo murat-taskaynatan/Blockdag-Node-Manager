@@ -112,7 +112,7 @@ const automationLogPane = document.getElementById('automationLogPane');
 const automationQueuePane = document.getElementById('automationQueuePane');
 const automationTabs = Array.from(document.querySelectorAll('[data-automation-tab]'));
 const automationLogUpdated = document.getElementById('automationLogUpdated');
-  const updateChip = document.getElementById('updateChip');
+  const updateIndicator = document.getElementById('updateIndicator');
   const localAppVersion = (typeof window !== 'undefined' && window.__APP_VERSION__) ? window.__APP_VERSION__ : '—';
   const walletAddressValue = document.getElementById('walletAddressValue');
   const walletBalanceValue = document.getElementById('walletBalanceValue');
@@ -2475,21 +2475,13 @@ async function loadSettings() {
     }
   }
 
-  function renderUpdateChip(text, variant) {
-    if (!updateChip) return;
-    updateChip.textContent = text;
-    updateChip.className = 'version-chip';
-    if (variant) updateChip.classList.add(`version-chip--${variant}`);
-  }
-
   async function loadUpdateStatus(options = {}) {
-    if (!updateChip) return;
+    if (!updateIndicator) return;
     const { force = false } = options;
-    renderUpdateChip('Checking updates…', 'loading');
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), 6000);
     try {
-      const res = await fetch(`/api/node-manager/version${force ? '?force=1' : ''}`, { cache: 'no-store' });
+      const res = await fetch(`/api/node-manager/version${force ? '?force=1' : ''}`, { cache: 'no-store', signal: controller.signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const payload = await res.json();
       const latest = payload?.latest_version || null;
@@ -2500,14 +2492,17 @@ async function loadSettings() {
       state.updateStatus.updateAvailable = available;
       state.updateStatus.error = null;
       if (available) {
-        renderUpdateChip(`Update available · ${latest}`, 'new');
+        const hrefBase = 'https://github.com/murat-taskaynatan/Blockdag-Node-Manager/releases';
+        updateIndicator.href = latest ? `${hrefBase}/tag/${latest}` : hrefBase;
+        updateIndicator.title = `Update available: ${latest || 'latest'} (opens GitHub)`;
+        updateIndicator.setAttribute('aria-label', `Update available ${latest || ''}`.trim());
+        updateIndicator.classList.add('is-visible');
       } else {
-        renderUpdateChip(`Up to date · ${local}`, 'ok');
+        updateIndicator.classList.remove('is-visible');
       }
     } catch (err) {
       state.updateStatus.error = err?.message || 'unknown';
-      const timedOut = err?.name === 'AbortError';
-      renderUpdateChip(timedOut ? 'Update check timed out' : 'Update check failed', 'error');
+      updateIndicator.classList.remove('is-visible');
     } finally {
       window.clearTimeout(timer);
     }
