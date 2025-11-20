@@ -105,14 +105,23 @@
   @media (max-width:640px){
     .summary-tabs{gap:4px;padding:2px}
     .summary-tab{padding:6px 8px;font-size:12px}
-    .summary-actions{width:100%}
+    summary.fleet-summary{flex-direction:column;align-items:flex-start}
+    .summary-left{min-width:0;flex-basis:100%}
+    .summary-actions{width:100%;align-items:stretch}
+    .summary-actions .button-row{justify-content:flex-start}
+    .summary-actions .icon-btn{flex:1 1 48%;min-width:135px}
+    .summary-sync-chips{width:100%}
     .fleet-grid{grid-template-columns:1fr}
     .fleet-card{margin:0}
     .chart-tabs{flex-wrap:wrap}
     .chart-tabs .summary-tab{flex:1 0 45%;margin-bottom:4px}
-    .node-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+    .node-stats{grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
     .node-logs{margin-top:12px}
     .launchpad-basics-row{gap:10px}
+  }
+  @media (max-width:480px){
+    .summary-actions .icon-btn{flex:1 1 100%}
+    .node-stats{grid-template-columns:minmax(0,1fr)}
   }
   .system-grid{display:grid;gap:12px;margin-top:12px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
   .system-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:6px;min-height:120px}
@@ -300,10 +309,10 @@
   .fleet-grid{display:grid;gap:14px}
   details.fleet-card{background:var(--card);border-radius:16px;box-shadow:0 4px 16px rgba(0,0,0,.2);padding:0;border:1px solid rgba(255,255,255,.04)}
   .fleet-card[open]{animation:pop .25s ease}
-  summary.fleet-summary{list-style:none;margin:0;padding:16px 18px;border-bottom:1px solid rgba(255,255,255,.04);display:flex;align-items:center;justify-content:space-between;cursor:pointer}
+  summary.fleet-summary{list-style:none;margin:0;padding:16px 18px;border-bottom:1px solid rgba(255,255,255,.04);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;cursor:pointer}
   summary.fleet-summary::-webkit-details-marker{display:none}
   .summary-main{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}
-  .summary-left{display:flex;flex-direction:column;gap:8px}
+  .summary-left{display:flex;flex-direction:column;gap:8px;flex:1 1 320px;min-width:260px}
   .summary-status-line{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted);flex-wrap:wrap}
   .summary-sync-chips{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
   .summary-status-chip{display:inline-flex;align-items:center;gap:6px;position:relative}
@@ -321,8 +330,8 @@
   .summary-health-chip.health-offline::before{background:var(--bad)}
   .node-name{font-size:18px;font-weight:600}
   .node-meta{font-size:13px;color:var(--muted)}
-  .summary-actions{display:flex;flex-direction:column;align-items:center;gap:8px}
-  .summary-actions .button-row{display:flex;align-items:center;gap:14px}
+  .summary-actions{display:flex;flex-direction:column;align-items:flex-end;gap:8px;min-width:200px}
+  .summary-actions .button-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
   .sync-pill{display:inline-flex;align-items:center;justify-content:center;padding:4px 12px;border-radius:999px;font-weight:600;font-size:12px;letter-spacing:.05em;text-transform:none;transition:background .2s,color .2s}
   .sync-pill--progress{background:rgba(255,255,255,.08);color:var(--muted)}
   .sync-pill--progress.is-ok{background:rgba(37,211,102,.12);color:var(--ok)}
@@ -394,8 +403,8 @@
   .icon-btn[disabled]{opacity:.5;cursor:default}
   .fleet-body{padding:0 18px 18px;display:grid;gap:12px}
   .node-status{min-height:12px;margin-bottom:-5px;font-size:12px;color:var(--muted)}
-  .node-stats{display:flex;gap:8px;justify-content:space-between;overflow:hidden;flex-wrap:nowrap;padding-bottom:4px}
-  .node-stats .kv{background:rgba(255,255,255,.03);padding:10px 12px;border-radius:12px;flex:1 1 auto;min-width:0;max-width:calc(25ch + 24px);display:flex;flex-direction:column;}
+  .node-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;padding-bottom:4px}
+  .node-stats .kv{background:rgba(255,255,255,.03);padding:10px 12px;border-radius:12px;min-width:0;display:flex;flex-direction:column;}
   .node-stats .k{font-size:11px}
   .node-stats .v{font-size:18px;margin-top:4px}
   .node-stats .stat-eta{font-size:16px}
