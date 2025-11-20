@@ -557,8 +557,8 @@ def _validate_label(label: str) -> None:
 
 def launch_node(payload: Dict) -> Dict:
     raw_label = payload.get("label") or "node"
-    sanitized_label = _sanitize_label(raw_label)
-    _validate_label(sanitized_label)
+    label = _sanitize_label(raw_label)
+    _validate_label(label)
     wallet = (payload.get("walletAddress") or "").strip()
     if not wallet:
         raise LaunchError("Wallet address is required")
