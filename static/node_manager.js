@@ -114,6 +114,7 @@ const automationTabs = Array.from(document.querySelectorAll('[data-automation-ta
 const automationLogUpdated = document.getElementById('automationLogUpdated');
   const updateIndicator = document.getElementById('updateIndicator');
   const localAppVersion = (typeof window !== 'undefined' && window.__APP_VERSION__) ? window.__APP_VERSION__ : '—';
+  const initialLatestVersion = (typeof window !== 'undefined' && window.__APP_LATEST__) ? window.__APP_LATEST__ : null;
   const walletAddressValue = document.getElementById('walletAddressValue');
   const walletBalanceValue = document.getElementById('walletBalanceValue');
   const walletTotalValue = document.getElementById('walletTotalValue');

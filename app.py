@@ -5731,10 +5731,24 @@ def logout():
 @app.route("/")
 @app.route("/node-manager")
 def node_manager_view():
+    latest_info: Dict[str, object] = {}
+    try:
+        latest_info = _fetch_latest_tag(force=True, local_version=APP_VERSION)
+    except Exception:
+        latest_info = {}
+    latest_tag = latest_info.get("tag")
+    try:
+        latest_key = _version_key(latest_tag)
+        local_key = _version_key(APP_VERSION)
+        update_available = bool(latest_key and latest_key > local_key)
+    except Exception:
+        update_available = False
     return render_template(
         "node_manager.html",
         app_version=APP_VERSION,
         app_version_display=APP_VERSION,
+        app_latest_version=latest_tag,
+        app_update_available=update_available,
         cache_buster=int(time.time()),
     )
 
