@@ -458,8 +458,13 @@
   .version-badge strong{color:#c8cbd4;font-weight:700}
   .update-indicator{display:none;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:linear-gradient(135deg,#16c784,#0c9c5a);color:#041109;font-weight:800;font-size:11px;text-decoration:none;box-shadow:0 6px 14px rgba(0,0,0,.35),0 0 0 1px rgba(255,255,255,.08);transition:transform .18s ease,box-shadow .18s ease}
   .update-indicator.is-visible{display:inline-flex}
-  .update-indicator:hover{transform:translateY(-1px);box-shadow:0 10px 20px rgba(0,0,0,.4),0 0 0 1px rgba(255,255,255,.12)}
+  .update-indicator:hover{transform:translateY(-1px);box-shadow:0 10px 20px rgba(0,0,0,.4),0 0 0 1px rgba(255,255,255,.12);animation:updatePulse 1.4s ease-in-out infinite}
   .update-indicator:active{transform:translateY(0)}
+  @keyframes updatePulse{
+    0%{transform:translateY(-1px) scale(1)}
+    50%{transform:translateY(-1px) scale(1.12)}
+    100%{transform:translateY(-1px) scale(1)}
+  }
 </style>
 
 <div class="wrap">
