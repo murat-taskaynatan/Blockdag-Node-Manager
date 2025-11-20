@@ -526,8 +526,9 @@ def _render_compose(
     target.write_text(text)
 
     # Reset the template so future runs start from upstream
+    source_dir = source.parent
     try:
-        _run_command(["git", "-C", str(scripts_dir), "checkout", "--", "docker-compose.yml"])
+        _run_command(["git", "-C", str(source_dir), "checkout", "--", "docker-compose.yml"])
     except LaunchError:
         pass
 
