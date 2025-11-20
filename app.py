@@ -5611,9 +5611,9 @@ APP_VERSION = os.getenv("BDAG_MANAGER_VERSION", "v1.6.6").strip() or "v1.6.6"
 _LATEST_UPDATE_CHECK: Dict[str, object] = {"tag": None, "fetched": 0.0, "source": None, "error": None}
 
 
-def _version_key(value: Optional[str]) -> Tuple[int, ...]:
+def _version_key(value: Optional[str]) -> Tuple[Tuple[int, ...], str]:
     if not value:
-        return tuple()
+        return tuple(), ""
     cleaned = str(value).strip()
     if cleaned.lower().startswith("v"):
         cleaned = cleaned[1:]
@@ -5626,7 +5626,7 @@ def _version_key(value: Optional[str]) -> Tuple[int, ...]:
             key.append(int(part))
         except ValueError:
             continue
-    return tuple(key)
+    return tuple(key), str(value or "")
 
 
 def _fetch_latest_tag(force: bool = False, local_version: Optional[str] = None) -> Dict[str, object]:
@@ -5647,32 +5647,41 @@ def _fetch_latest_tag(force: bool = False, local_version: Optional[str] = None) 
         ("tags", "https://api.github.com/repos/murat-taskaynatan/Blockdag-Node-Manager/tags?per_page=1"),
     ]
     headers = {"Accept": "application/vnd.github+json"}
-    latest_tag: Optional[str] = None
+    best_tag: Optional[str] = None
+    best_key: Tuple[Tuple[int, ...], str] = (tuple(), "")
     source: Optional[str] = None
     error: Optional[str] = None
+    errors: List[str] = []
 
     for label, url in endpoints:
         try:
             resp = requests.get(url, timeout=4, headers=headers)
             if resp.status_code != 200:
-                error = f"{label} HTTP {resp.status_code}"
+                errors.append(f"{label} HTTP {resp.status_code}")
                 continue
             payload = resp.json()
+            candidate_tag: Optional[str] = None
             if label == "release":
-                latest_tag = (payload.get("tag_name") or payload.get("name") or "").strip() or None
+                candidate_tag = (payload.get("tag_name") or payload.get("name") or "").strip() or None
             else:
                 items = payload if isinstance(payload, list) else []
                 if items:
-                    latest_tag = (items[0].get("name") or "").strip() or None
-            if latest_tag:
+                    candidate_tag = (items[0].get("name") or "").strip() or None
+            if not candidate_tag:
+                continue
+            candidate_key = _version_key(candidate_tag)
+            if not best_tag or candidate_key > best_key:
+                best_tag = candidate_tag
+                best_key = candidate_key
                 source = label
                 error = None
-                break
         except Exception as exc:
-            error = str(exc)
+            errors.append(str(exc))
             continue
 
-    _LATEST_UPDATE_CHECK.update({"tag": latest_tag, "fetched": now, "source": source, "error": error})
+    if error is None and best_tag is None and errors:
+        error = errors[-1]
+    _LATEST_UPDATE_CHECK.update({"tag": best_tag, "fetched": now, "source": source, "error": error})
     return dict(_LATEST_UPDATE_CHECK)
 
 
