@@ -5629,10 +5629,17 @@ def _version_key(value: Optional[str]) -> Tuple[int, ...]:
     return tuple(key)
 
 
-def _fetch_latest_tag(force: bool = False) -> Dict[str, object]:
+def _fetch_latest_tag(force: bool = False, local_version: Optional[str] = None) -> Dict[str, object]:
     now = time.time()
     cached_age = now - float(_LATEST_UPDATE_CHECK.get("fetched") or 0.0)
-    if not force and cached_age < 300.0:
+    cached_tag = _LATEST_UPDATE_CHECK.get("tag")
+    cached_key = _version_key(cached_tag)
+    local_key = _version_key(local_version or APP_VERSION)
+    ttl = 300.0
+    # When cached tag is not newer than local, refresh more aggressively to catch new releases.
+    if cached_key and local_key and cached_key <= local_key:
+        ttl = 60.0
+    if not force and cached_age < ttl:
         return dict(_LATEST_UPDATE_CHECK)
 
     endpoints = [
@@ -5944,7 +5951,7 @@ def api_system():
 @app.route("/api/node-manager/version")
 def api_node_manager_version():
     force = request.args.get("force") in {"1", "true", "yes"}
-    latest_info = _fetch_latest_tag(force=force)
+    latest_info = _fetch_latest_tag(force=force, local_version=APP_VERSION)
     latest_tag = latest_info.get("tag")
     latest_key = _version_key(latest_tag)
     local_key = _version_key(APP_VERSION)
