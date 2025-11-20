@@ -5608,6 +5608,65 @@ def _resolve_node(node_id: Optional[str]) -> NodeContext:
 # API endpoints
 # ---------------------------------------------------------------------------
 APP_VERSION = os.getenv("BDAG_MANAGER_VERSION", "v1.6.5").strip() or "v1.6.5"
+_LATEST_UPDATE_CHECK: Dict[str, object] = {"tag": None, "fetched": 0.0, "source": None, "error": None}
+
+
+def _version_key(value: Optional[str]) -> Tuple[int, ...]:
+    if not value:
+        return tuple()
+    cleaned = str(value).strip()
+    if cleaned.lower().startswith("v"):
+        cleaned = cleaned[1:]
+    parts = re.split(r"[^\d]+", cleaned)
+    key: List[int] = []
+    for part in parts:
+        if not part:
+            continue
+        try:
+            key.append(int(part))
+        except ValueError:
+            continue
+    return tuple(key)
+
+
+def _fetch_latest_tag(force: bool = False) -> Dict[str, object]:
+    now = time.time()
+    cached_age = now - float(_LATEST_UPDATE_CHECK.get("fetched") or 0.0)
+    if not force and cached_age < 300.0:
+        return dict(_LATEST_UPDATE_CHECK)
+
+    endpoints = [
+        ("release", "https://api.github.com/repos/murat-taskaynatan/Blockdag-Node-Manager/releases/latest"),
+        ("tags", "https://api.github.com/repos/murat-taskaynatan/Blockdag-Node-Manager/tags?per_page=1"),
+    ]
+    headers = {"Accept": "application/vnd.github+json"}
+    latest_tag: Optional[str] = None
+    source: Optional[str] = None
+    error: Optional[str] = None
+
+    for label, url in endpoints:
+        try:
+            resp = requests.get(url, timeout=4, headers=headers)
+            if resp.status_code != 200:
+                error = f"{label} HTTP {resp.status_code}"
+                continue
+            payload = resp.json()
+            if label == "release":
+                latest_tag = (payload.get("tag_name") or payload.get("name") or "").strip() or None
+            else:
+                items = payload if isinstance(payload, list) else []
+                if items:
+                    latest_tag = (items[0].get("name") or "").strip() or None
+            if latest_tag:
+                source = label
+                error = None
+                break
+        except Exception as exc:
+            error = str(exc)
+            continue
+
+    _LATEST_UPDATE_CHECK.update({"tag": latest_tag, "fetched": now, "source": source, "error": error})
+    return dict(_LATEST_UPDATE_CHECK)
 
 
 @app.route("/healthz")
@@ -5880,6 +5939,26 @@ def api_system():
     if temp:
         payload["temperature"] = temp
     return jsonify(payload)
+
+
+@app.route("/api/node-manager/version")
+def api_node_manager_version():
+    force = request.args.get("force") in {"1", "true", "yes"}
+    latest_info = _fetch_latest_tag(force=force)
+    latest_tag = latest_info.get("tag")
+    latest_key = _version_key(latest_tag)
+    local_key = _version_key(APP_VERSION)
+    update_available = bool(latest_key and latest_key > local_key)
+    return jsonify(
+        {
+            "local_version": APP_VERSION,
+            "latest_version": latest_tag,
+            "update_available": update_available,
+            "source": latest_info.get("source"),
+            "fetched_at": latest_info.get("fetched"),
+            "error": latest_info.get("error"),
+        }
+    )
 
 
 @app.route("/api/node-manager/logs")

@@ -22,6 +22,7 @@ const state = {
     snapshotStatus: { text: '', level: '', manual: false },
     snapshotCountdown: null,
     overlayStatus: { items: [], byNode: new Map() },
+    updateStatus: { latest: null, updateAvailable: false, error: null, local: null },
     automationLogs: {
       items: [],
       expanded: false,
@@ -111,6 +112,8 @@ const automationLogPane = document.getElementById('automationLogPane');
 const automationQueuePane = document.getElementById('automationQueuePane');
 const automationTabs = Array.from(document.querySelectorAll('[data-automation-tab]'));
 const automationLogUpdated = document.getElementById('automationLogUpdated');
+  const updateChip = document.getElementById('updateChip');
+  const localAppVersion = (typeof window !== 'undefined' && window.__APP_VERSION__) ? window.__APP_VERSION__ : '—';
   const walletAddressValue = document.getElementById('walletAddressValue');
   const walletBalanceValue = document.getElementById('walletBalanceValue');
   const walletTotalValue = document.getElementById('walletTotalValue');
@@ -2469,6 +2472,39 @@ async function loadSettings() {
       renderSystemStats(payload || {});
     } catch (err) {
       console.error('[system] failed to load', err);
+    }
+  }
+
+  function renderUpdateChip(text, variant) {
+    if (!updateChip) return;
+    updateChip.textContent = text;
+    updateChip.className = 'version-chip';
+    if (variant) updateChip.classList.add(`version-chip--${variant}`);
+  }
+
+  async function loadUpdateStatus(options = {}) {
+    if (!updateChip) return;
+    const { force = false } = options;
+    renderUpdateChip('Checking updates…', 'loading');
+    try {
+      const res = await fetch(`/api/node-manager/version${force ? '?force=1' : ''}`, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const payload = await res.json();
+      const latest = payload?.latest_version || null;
+      const local = payload?.local_version || localAppVersion || '—';
+      const available = Boolean(payload?.update_available && latest);
+      state.updateStatus.latest = latest;
+      state.updateStatus.local = local;
+      state.updateStatus.updateAvailable = available;
+      state.updateStatus.error = null;
+      if (available) {
+        renderUpdateChip(`Update available · ${latest}`, 'new');
+      } else {
+        renderUpdateChip(`Up to date · ${local}`, 'ok');
+      }
+    } catch (err) {
+      state.updateStatus.error = err?.message || 'unknown';
+      renderUpdateChip('Update check failed', 'error');
     }
   }
 
@@ -5372,6 +5408,7 @@ function syncCards(nodes) {
     await loadNodes();
     await refreshMetrics();
     await loadSystem();
+    await loadUpdateStatus();
     startSystemPolling();
     await loadSnapshots({ silent: true });
     startSnapshotHeartbeat();
@@ -5379,6 +5416,7 @@ function syncCards(nodes) {
     await refreshMetrics();
     // Chart removed per request; skipping auto-prime visualization
     setInterval(refreshMetrics, 5000);
+    setInterval(() => { void loadUpdateStatus(); }, 5 * 60 * 1000);
   }
 
   async function loadOcLogs() {

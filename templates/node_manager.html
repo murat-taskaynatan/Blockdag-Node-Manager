@@ -453,8 +453,14 @@
     .setting-control{width:100%;justify-content:flex-start}
     .chart-canvas canvas{height:200px}
   }
-  .version-badge{position:fixed;right:16px;bottom:16px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:4px 10px;font-size:10px;font-weight:600;color:#7d7d7d;backdrop-filter:blur(6px)}
-  .version-badge strong{color:#8f8f8f;font-weight:600}
+  .version-stack{position:fixed;right:16px;bottom:16px;display:flex;flex-direction:column;gap:6px;align-items:flex-end;z-index:40}
+  .version-chip{padding:7px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.05);backdrop-filter:blur(10px);font-size:11px;font-weight:700;color:#dfe5f3;box-shadow:0 8px 30px rgba(0,0,0,.22);transition:transform .16s ease,opacity .16s ease,border-color .2s ease,background .2s ease}
+  .version-chip.version-chip--new{border-color:#5de2a5;background:rgba(93,226,165,.12);color:#e9fff4}
+  .version-chip.version-chip--ok{color:#b8bbc4}
+  .version-chip.version-chip--error{border-color:#ff9f80;background:rgba(255,159,128,.16);color:#ffe1d6}
+  .version-chip.version-chip--loading{opacity:.8}
+  .version-badge{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:6px 12px;font-size:11px;font-weight:700;color:#7d7d7d;backdrop-filter:blur(6px)}
+  .version-badge strong{color:#8f8f8f;font-weight:700}
 </style>
 
 <div class="wrap">
@@ -1193,5 +1199,9 @@
 </template>
 
 <script src="{{ url_for('static', filename='chart.umd.min.js') }}"></script>
+<script>window.__APP_VERSION__ = "{{ app_version }}";</script>
 <script src="{{ url_for('static', filename='node_manager.js') }}?v={{ app_version }}-{{ cache_buster }}"></script>
-        <div class="version-badge"><strong>{{ app_version_display or 'v1.6.5' }}</strong></div>
+<div class="version-stack">
+  <div class="version-chip" id="updateChip" aria-live="polite">Checking updates…</div>
+  <div class="version-badge" id="versionBadge"><strong>{{ app_version_display or 'v1.6.5' }}</strong></div>
+</div>
