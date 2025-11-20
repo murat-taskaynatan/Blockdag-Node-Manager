@@ -2486,6 +2486,8 @@ async function loadSettings() {
     if (!updateChip) return;
     const { force = false } = options;
     renderUpdateChip('Checking updates…', 'loading');
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 6000);
     try {
       const res = await fetch(`/api/node-manager/version${force ? '?force=1' : ''}`, { cache: 'no-store' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -2504,7 +2506,10 @@ async function loadSettings() {
       }
     } catch (err) {
       state.updateStatus.error = err?.message || 'unknown';
-      renderUpdateChip('Update check failed', 'error');
+      const timedOut = err?.name === 'AbortError';
+      renderUpdateChip(timedOut ? 'Update check timed out' : 'Update check failed', 'error');
+    } finally {
+      window.clearTimeout(timer);
     }
   }
 
