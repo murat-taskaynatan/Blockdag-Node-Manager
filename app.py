@@ -2419,7 +2419,8 @@ def _snapshot_health_check(
         info["wait_seconds"] = wait_seconds
         info["next_allowed_unix"] = time.time() + wait_seconds
         return False, reason, info
-    enforce_sync = mode_name != "restore"
+    # Only gate on sync progress for automated snapshots; manual runs may proceed regardless of sync %
+    enforce_sync = mode_name not in {"restore", "manual", "manual_snapshot"}
     progress = metrics.get("sync_progress")
     try:
         progress_val = float(progress) if progress is not None else None
@@ -7411,6 +7412,7 @@ def api_snapshots_create():
     quiesce_overlay = _coerce_bool(body.get("quiesce_overlay"), True)
     ok, message, job = _start_snapshot_job(
         str(node_id) if node_id else None,
+        mode="manual_snapshot",
         quiesce_overlay=quiesce_overlay,
     )
     if not ok:
