@@ -750,7 +750,7 @@ DEFAULT_SETTINGS: Dict[str, object] = {
     "auto_restart_mem_threshold": 0,
     "auto_snapshot_enabled": False,
     "auto_snapshot_hours": 0,
-    "display_wallet_balance": _coerce_bool(os.getenv("BDAG_WALLET_DISPLAY", "0"), False),
+    "display_wallet_balance": _coerce_bool(os.getenv("BDAG_WALLET_DISPLAY", "1"), True),
     "snapshot_max": SNAPSHOT_MAX_DEFAULT,
     "snapshot_dir": os.getenv("BDAG_SNAPSHOT_DIR", SNAPSHOT_DIR_DEFAULT_PATH),
     "cpu_temp_path": "/mnt/hgfs/vmshared/cpu_temp.txt",

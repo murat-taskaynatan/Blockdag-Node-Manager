@@ -315,7 +315,7 @@ const automationLogUpdated = document.getElementById('automationLogUpdated');
     auto_restart_mem_threshold: 0,
     auto_snapshot_enabled: false,
     auto_snapshot_hours: 0,
-    display_wallet_balance: false,
+    display_wallet_balance: true,
     snapshot_max: 0,
     cpu_temp_path: '',
     login_gate_enabled: false,
