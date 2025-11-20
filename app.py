@@ -5644,7 +5644,8 @@ def _fetch_latest_tag(force: bool = False, local_version: Optional[str] = None) 
 
     endpoints = [
         ("release", "https://api.github.com/repos/murat-taskaynatan/Blockdag-Node-Manager/releases/latest"),
-        ("tags", "https://api.github.com/repos/murat-taskaynatan/Blockdag-Node-Manager/tags?per_page=1"),
+        # Fetch several tags so we can choose the newest semver even if GitHub ordering shifts.
+        ("tags", "https://api.github.com/repos/murat-taskaynatan/Blockdag-Node-Manager/tags?per_page=20"),
     ]
     headers = {"Accept": "application/vnd.github+json"}
     best_tag: Optional[str] = None
@@ -5663,18 +5664,25 @@ def _fetch_latest_tag(force: bool = False, local_version: Optional[str] = None) 
             candidate_tag: Optional[str] = None
             if label == "release":
                 candidate_tag = (payload.get("tag_name") or payload.get("name") or "").strip() or None
+                if candidate_tag:
+                    candidate_key = _version_key(candidate_tag)
+                    if not best_tag or candidate_key > best_key:
+                        best_tag = candidate_tag
+                        best_key = candidate_key
+                        source = label
+                        error = None
             else:
                 items = payload if isinstance(payload, list) else []
-                if items:
-                    candidate_tag = (items[0].get("name") or "").strip() or None
-            if not candidate_tag:
-                continue
-            candidate_key = _version_key(candidate_tag)
-            if not best_tag or candidate_key > best_key:
-                best_tag = candidate_tag
-                best_key = candidate_key
-                source = label
-                error = None
+                for item in items:
+                    candidate_tag = (item.get("name") or "").strip() or None
+                    if not candidate_tag:
+                        continue
+                    candidate_key = _version_key(candidate_tag)
+                    if not best_tag or candidate_key > best_key:
+                        best_tag = candidate_tag
+                        best_key = candidate_key
+                        source = label
+                        error = None
         except Exception as exc:
             errors.append(str(exc))
             continue
