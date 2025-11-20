@@ -287,7 +287,10 @@
   .wallet-history li .time{color:var(--muted);font-weight:400;font-size:11px}
   .wallet-empty{font-size:12px;color:var(--muted);padding:12px;border:1px dashed rgba(255,255,255,.14);border-radius:12px;text-align:center}
   .wallet-card.is-disabled{opacity:.55}
-  .summary-stats{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:10px}
+  .summary-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+  @media (min-width:900px){
+    .summary-stats{grid-template-columns:repeat(8,minmax(0,1fr))}
+  }
   .summary-stats .kv{min-width:0}
   .kv{background:rgba(255,255,255,.04);border-radius:12px;padding:10px 12px}
   .kv .k{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em;line-height:1.2}
@@ -520,10 +523,6 @@
             <div class="kv">
               <div class="k">Importing</div>
               <div class="v" id="statImporting">—</div>
-            </div>
-            <div class="kv">
-              <div class="k">No Peers</div>
-              <div class="v" id="statNoPeers">—</div>
             </div>
             <div class="kv">
               <div class="k">Highest Local Height</div>
