@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.6.5 - 2025-11-20
+
+- Manual snapshot jobs bypass the sync-progress guard so operators can capture backups even while a node is still catching up; manual invocations now tag jobs with `mode=manual_snapshot`.
+- Dropped the deprecated `https://rpc.bdagscan.com` endpoint from the default RPC list so remote calls prefer the Awakening hosts plus the relay fallback.
+- Version strings and installer defaults now point to `v1.6.5`, keeping fresh installs aligned with the current release.
+
 ## v1.5.7 - 2025-11-15
 
 - Liveness failsafe detection now watches for the “node never became ready” and “worker stopped” log sequences that precede stuck BDAG launches, so the watchdog can suspend until the container is truly unhealthy before escalating.

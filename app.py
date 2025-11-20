@@ -3013,11 +3013,28 @@ def _snapshot_post_restore_sanity(data_dir: Optional[Path]) -> List[str]:
 
 def _snapshot_identity_source(base: Optional[Path]) -> Optional[Tuple[Path, Path]]:
     normalized = _normalize_path(base)
-    if not normalized or not normalized.exists():
+    if not normalized:
+        return None
+    try:
+        if not normalized.exists():
+            return None
+    except OSError as exc:
+        try:
+            app.logger.warning("Skipping peer identity discovery at %s: %s", normalized, exc)
+        except Exception:
+            pass
         return None
     for relative in _SNAPSHOT_IDENTITY_RELATIVE_PATHS:
         candidate = normalized / relative
-        if candidate.exists():
+        try:
+            exists = candidate.exists()
+        except OSError as exc:
+            try:
+                app.logger.warning("Skipping peer identity path %s: %s", candidate, exc)
+            except Exception:
+                pass
+            continue
+        if exists:
             try:
                 rel = candidate.relative_to(normalized)
             except Exception:
