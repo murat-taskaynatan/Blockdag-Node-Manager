@@ -554,13 +554,11 @@ def _normalize_remote_url(url: Optional[str]) -> str:
 PRIMARY_REMOTE_RPC_BASE = _normalize_remote_url("https://rpc.awakening.bdagscan.com")
 LEGACY_REMOTE_RPC_BASES = [
     _normalize_remote_url("http://13.245.135.249:18545"),
-    _normalize_remote_url("https://rpc.bdagscan.com"),
     _normalize_remote_url("https://relay.awakening.bdagscan.com"),
 ]
 
 DEFAULT_REMOTE_RPC_BASES = [
     PRIMARY_REMOTE_RPC_BASE,
-    _normalize_remote_url("https://rpc.bdagscan.com"),
     *[base for base in LEGACY_REMOTE_RPC_BASES if base != PRIMARY_REMOTE_RPC_BASE],
 ]
 
