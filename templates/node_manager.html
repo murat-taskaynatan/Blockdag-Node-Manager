@@ -309,10 +309,10 @@
   .fleet-grid{display:grid;gap:14px}
   details.fleet-card{background:var(--card);border-radius:16px;box-shadow:0 4px 16px rgba(0,0,0,.2);padding:0;border:1px solid rgba(255,255,255,.04)}
   .fleet-card[open]{animation:pop .25s ease}
-  summary.fleet-summary{list-style:none;margin:0;padding:16px 18px;border-bottom:1px solid rgba(255,255,255,.04);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;cursor:pointer}
+  summary.fleet-summary{list-style:none;margin:0;padding:16px 18px;border-bottom:1px solid rgba(255,255,255,.04);display:flex;align-items:center;justify-content:space-between;cursor:pointer}
   summary.fleet-summary::-webkit-details-marker{display:none}
   .summary-main{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}
-  .summary-left{display:flex;flex-direction:column;gap:8px;flex:1 1 320px;min-width:260px}
+  .summary-left{display:flex;flex-direction:column;gap:8px}
   .summary-status-line{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted);flex-wrap:wrap}
   .summary-sync-chips{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
   .summary-status-chip{display:inline-flex;align-items:center;gap:6px;position:relative}
@@ -330,8 +330,8 @@
   .summary-health-chip.health-offline::before{background:var(--bad)}
   .node-name{font-size:18px;font-weight:600}
   .node-meta{font-size:13px;color:var(--muted)}
-  .summary-actions{display:flex;flex-direction:column;align-items:flex-end;gap:8px;min-width:200px}
-  .summary-actions .button-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+  .summary-actions{display:flex;flex-direction:column;align-items:center;gap:8px}
+  .summary-actions .button-row{display:flex;align-items:center;gap:14px}
   .sync-pill{display:inline-flex;align-items:center;justify-content:center;padding:4px 12px;border-radius:999px;font-weight:600;font-size:12px;letter-spacing:.05em;text-transform:none;transition:background .2s,color .2s}
   .sync-pill--progress{background:rgba(255,255,255,.08);color:var(--muted)}
   .sync-pill--progress.is-ok{background:rgba(37,211,102,.12);color:var(--ok)}
