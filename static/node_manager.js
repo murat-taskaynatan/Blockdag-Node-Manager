@@ -5408,7 +5408,7 @@ function syncCards(nodes) {
     await loadNodes();
     await refreshMetrics();
     await loadSystem();
-    await loadUpdateStatus();
+    await loadUpdateStatus({ force: true });
     startSystemPolling();
     await loadSnapshots({ silent: true });
     startSnapshotHeartbeat();
