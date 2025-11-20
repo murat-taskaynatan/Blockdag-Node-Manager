@@ -2646,8 +2646,7 @@ async function saveSettings() {
     const countEl = document.getElementById('statNodeCount');
     const onlineEl = document.getElementById('statOnline');
     const offlineEl = document.getElementById('statOffline');
-    const stalledEl = document.getElementById('statStalled');
-    const importingEl = document.getElementById('statImporting');
+    const stalledImportEl = document.getElementById('statStalledImporting');
     const maxLocalEl = document.getElementById('statMaxLocal');
     const maxRemoteEl = document.getElementById('statMaxRemote');
 
@@ -2657,12 +2656,9 @@ async function saveSettings() {
       summaryBadge.textContent = '—';
       summaryBadge.removeAttribute('title');
       countEl.textContent = onlineEl.textContent = offlineEl.textContent = maxLocalEl.textContent = maxRemoteEl.textContent = '—';
-      if (stalledEl) {
-        stalledEl.textContent = '—';
-        stalledEl.removeAttribute('title');
-      }
-      if (importingEl) {
-        importingEl.textContent = '—';
+      if (stalledImportEl) {
+        stalledImportEl.textContent = '—';
+        stalledImportEl.removeAttribute('title');
       }
       return;
     }
@@ -2676,18 +2672,11 @@ async function saveSettings() {
     countEl.textContent = fmt.format(count);
     onlineEl.textContent = fmt.format(online);
     offlineEl.textContent = fmt.format(offline);
-    if (stalledEl) {
+    if (stalledImportEl) {
       const stalledValue = fmt.format(stalled);
-      stalledEl.textContent = stalledValue;
       const importingValue = fmt.format(importing);
-      stalledEl.title =
-        importing > 0
-          ? `Stalled ${stalledValue} • Importing ${importingValue}`
-          : `Stalled ${stalledValue}`;
-    }
-    if (importingEl) {
-      importingEl.textContent = fmt.format(importing);
-      importingEl.title = `Importing ${fmt.format(importing)}`;
+      stalledImportEl.textContent = `${stalledValue} / ${importingValue}`;
+      stalledImportEl.title = `Stalled ${stalledValue} • Importing ${importingValue}`;
     }
     maxLocalEl.textContent = summary.max_local_height !== undefined ? fmt.format(summary.max_local_height) : '—';
     maxRemoteEl.textContent = summary.max_remote_height !== undefined ? fmt.format(summary.max_remote_height) : '—';
