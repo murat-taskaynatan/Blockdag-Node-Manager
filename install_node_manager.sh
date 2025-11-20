@@ -127,6 +127,21 @@ sudo mkdir -p "$INSTALL_DIR/data"
 sudo chown "$SERVICE_USER":"$SERVICE_GROUP" "$INSTALL_DIR/data"
 sudo mkdir -p "$SNAPSHOT_DIR_DEFAULT"
 sudo chown "$SERVICE_USER":"$SERVICE_GROUP" "$SNAPSHOT_DIR_DEFAULT"
+OC_SUDOERS="/etc/sudoers.d/blockdag-node-manager"
+OC_SCRIPT="$INSTALL_DIR/scripts/tune_nvme_node.sh"
+if [[ -f "$OC_SCRIPT" ]]; then
+  echo "Ensuring passwordless sudo for $SERVICE_USER to run $OC_SCRIPT (sudoers entry: $OC_SUDOERS)"
+  sudo bash -c "printf 'Cmnd_Alias BDAG_OVERCLOCK=%s\n%s ALL=(ALL) NOPASSWD:BDAG_OVERCLOCK\n' '$OC_SCRIPT' '$SERVICE_USER' > '$OC_SUDOERS'"
+  sudo chmod 440 "$OC_SUDOERS"
+  if sudo visudo -cf "$OC_SUDOERS" >/dev/null 2>&1; then
+    :
+  else
+    echo "Warning: visudo validation failed for $OC_SUDOERS; reverting file" >&2
+    sudo rm -f "$OC_SUDOERS"
+  fi
+else
+  echo "Warning: $OC_SCRIPT missing; skipping sudoers entry for overclock helper."
+fi
 
 echo "[3/10] Preparing Python environment"
 "$PYTHON_BIN" -m venv "$INSTALL_DIR/.venv"
