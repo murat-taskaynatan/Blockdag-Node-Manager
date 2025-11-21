@@ -3673,21 +3673,27 @@ function syncCards(nodes) {
     return parts.join(' ');
   }
 
-  function averageHeightRate(labels, localSeries, windowSec = 300) {
+  function averageHeightRate(labels, localSeries, peersSeries = null, windowSec = 300) {
     const len = Math.min(
       Array.isArray(labels) ? labels.length : 0,
       Array.isArray(localSeries) ? localSeries.length : 0,
     );
     if (len < 2) return null;
     const samples = [];
+    let lastValIncluded = null;
     for (let idx = len - 1; idx >= 0 && samples.length < 20; idx -= 1) {
       const ts = Number(labels[idx]);
       const rawVal = localSeries[idx];
       if (rawVal === null || rawVal === undefined) continue;
       const val = Number(rawVal);
+      const hasPeerSample = Array.isArray(peersSeries) && idx < peersSeries.length;
+      const peerCount = hasPeerSample ? peersSeries[idx] : null;
       if (!Number.isFinite(ts) || !Number.isFinite(val) || val <= 0) continue;
+      if (hasPeerSample && (!Number.isFinite(peerCount) || peerCount <= 0)) continue;
+      if (lastValIncluded !== null && val === lastValIncluded) continue;
       if (samples.length && samples[samples.length - 1].ts === ts) continue;
       samples.push({ ts, val });
+      lastValIncluded = val;
     }
     if (samples.length < 2) return null;
     const latest = samples[0];
@@ -3706,6 +3712,10 @@ function syncCards(nodes) {
     if (!Number.isFinite(delta) || delta <= 0) return null;
     const rate = delta / dtSec;
     if (!Number.isFinite(rate) || rate <= 0) return null;
+    if (rate < 0.1) {
+      // Treat extremely slow progress as “no rate” so ETA renders as pending instead of days.
+      return null;
+    }
     return rate;
   }
 
@@ -3736,7 +3746,13 @@ function syncCards(nodes) {
         hint: 'Local height matches remote height.',
       };
     }
-    const rate = averageHeightRate(metrics.labels, metrics.local);
+    let rate = averageHeightRate(metrics.labels, metrics.local, metrics.peers_series);
+    if (!Number.isFinite(rate) || rate <= 0) {
+      const directRate = Number(metrics.block_rate_per_sec);
+      if (Number.isFinite(directRate) && directRate > 0.1) {
+        rate = directRate;
+      }
+    }
     if (!Number.isFinite(rate) || rate <= 0) {
       const peers = Number(metrics.peers);
       if (!Number.isFinite(peers) || peers <= 0) {
@@ -4468,7 +4484,7 @@ function syncCards(nodes) {
       } else {
         state.lastProgress.set(nodeId, progress);
       }
-      let rate = averageHeightRate(metrics.labels, metrics.local);
+      let rate = averageHeightRate(metrics.labels, metrics.local, metrics.peers_series);
       if (Number.isFinite(rate)) {
         state.lastRates.set(nodeId, rate);
       } else {
