@@ -1215,11 +1215,6 @@
 </template>
 
 <script src="{{ url_for('static', filename='chart.umd.min.js') }}"></script>
-<script>
-  window.__APP_VERSION__ = "{{ app_version }}";
-  window.__APP_LATEST__ = "{{ app_latest_version or '' }}";
-</script>
-<script src="{{ url_for('static', filename='node_manager.js') }}?v={{ app_version }}-{{ cache_buster }}"></script>
 <div class="version-stack">
   <div class="version-badge" id="versionBadge">
     <strong>{{ app_version_display or 'v1.6.6' }}</strong>
@@ -1235,3 +1230,8 @@
     >⬇</a>
   </div>
 </div>
+<script>
+  window.__APP_VERSION__ = "{{ app_version }}";
+  window.__APP_LATEST__ = "{{ app_latest_version or '' }}";
+</script>
+<script src="{{ url_for('static', filename='node_manager.js') }}?v={{ app_version }}-{{ cache_buster }}"></script>
