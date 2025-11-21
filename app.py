@@ -3615,7 +3615,7 @@ def _start_restore_job(
             reason=reason or details.get("reason"),
             container=details.get("container"),
         )
-        return False, "Snapshot already in progress", _snapshot_job_snapshot()
+        return False, "Snapshot already in progress; queued chain data restore", _snapshot_job_snapshot()
     thread = threading.Thread(target=_run_restore_job, args=(details,), daemon=True)
     thread.start()
     label = details.get("label") or details.get("node")
@@ -4588,6 +4588,27 @@ def _trigger_restore_for_context(ctx: "NodeContext", reason: str) -> bool:
             metadata={"reason": reason},
         )
         return True
+    message = message or ""
+    queued = "queued" in message.lower()
+    if queued:
+        try:
+            app.logger.info(
+                "Liveness auto-recover queued restore for node %s (%s): %s",
+                ctx.id,
+                ctx.container or "unknown",
+                message,
+            )
+        except Exception:
+            pass
+        _automation_event(
+            "chain_restore",
+            f"Chain data recovery queued for {ctx.id}",
+            node=ctx.id,
+            container=ctx.container or None,
+            status="queued",
+            metadata={"reason": reason, "error": message},
+        )
+        return True
     try:
         app.logger.warning(
             "Liveness auto-recover failed to start restore for node %s (%s): %s",
@@ -4597,7 +4618,6 @@ def _trigger_restore_for_context(ctx: "NodeContext", reason: str) -> bool:
         )
     except Exception:
         pass
-    message = message or ""
     friendly_error = message
     already_running = "already in progress" in message.lower()
     if already_running:

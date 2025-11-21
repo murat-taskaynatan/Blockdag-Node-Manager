@@ -490,6 +490,9 @@ const automationLogUpdated = document.getElementById('automationLogUpdated');
     if (filter === 'memory_restart') {
       return isMemoryRestart(entry);
     }
+    if (filter === 'auto_restart' && isMemoryRestart(entry)) {
+      return false;
+    }
     return kind === filter;
   }
 
