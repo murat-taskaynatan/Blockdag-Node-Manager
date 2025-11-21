@@ -49,7 +49,7 @@ ensure_packages() {
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_DIR="${SOURCE_DIR:-$SCRIPT_DIR}"
 REPO_URL="${REPO_URL:-https://github.com/murat-taskaynatan/Blockdag-Node-Manager.git}"
-REPO_REF="${REPO_REF:-${REPO_BRANCH:-v1.6.5}}"
+REPO_REF="${REPO_REF:-${REPO_BRANCH:-v1.6.8}}"
 
 need_cmd "$PYTHON_BIN"
 ensure_packages python3 python3-venv python3-pip rsync fio
