@@ -1433,6 +1433,7 @@ SNAPSHOT_HEALTH_MIN_SYNC_PROGRESS = max(
 )
 SNAPSHOT_HEALTH_MIN_UPTIME_SEC = max(0, int(os.getenv("BDAG_SNAPSHOT_MIN_UPTIME_SEC", "120") or "120"))
 SNAPSHOT_HEALTH_MIN_PEERS = max(0, int(os.getenv("BDAG_SNAPSHOT_MIN_PEERS", "1") or "1"))
+SNAPSHOT_STOP_WAIT_SEC = max(10, int(os.getenv("BDAG_SNAPSHOT_STOP_WAIT_SEC", "90") or "90"))
 SNAPSHOT_HEALTH_LOG_TAIL = max(50, min(int(os.getenv("BDAG_SNAPSHOT_LOG_TAIL", "200") or "200"), 1000))
 _SNAPSHOT_IDENTITY_RELATIVE_PATHS: Tuple[Path, ...] = (
     Path("network.key"),
@@ -2113,6 +2114,19 @@ def _stop_container(name: Optional[str], timeout: int = 90) -> bool:
         raise RuntimeError((exc.stderr or exc.stdout or str(exc)).strip())
 
 
+def _wait_for_container_stop(name: Optional[str], timeout: int = SNAPSHOT_STOP_WAIT_SEC, interval: float = 1.0) -> None:
+    """Ensure a container is fully stopped before proceeding with snapshot work."""
+    if not name or not DOCKER_BIN:
+        return
+    deadline = time.time() + max(1, timeout)
+    while time.time() < deadline:
+        exists, running, _ = _container_state(name)
+        if not exists or not running:
+            return
+        time.sleep(max(interval, 0.1))
+    raise RuntimeError(f"Container {name} is still running after {timeout}s; aborting snapshot for safety")
+
+
 def _start_container(name: Optional[str], retries: int = 3, retry_delay: float = 5.0) -> bool:
     if not name or not DOCKER_BIN:
         return False
@@ -2741,6 +2755,7 @@ def _run_snapshot_job(details: Dict[str, object]) -> None:
         if container and DOCKER_BIN:
             try:
                 restart_required = _stop_container(container)
+                _wait_for_container_stop(container, timeout=SNAPSHOT_STOP_WAIT_SEC)
             except Exception as exc:
                 raise RuntimeError(f"Failed to stop container {container}: {exc}")
             if restart_required:
@@ -2818,7 +2833,44 @@ def _run_snapshot_job(details: Dict[str, object]) -> None:
             try:
                 _run_command_with_progress(command, dest_path, total_bytes=total_bytes, started=start_time)
             except RuntimeError as exc:
-                raise RuntimeError(str(exc))
+                err_text = str(exc).lower()
+                transient_missing = "no such file or directory" in err_text or "error exit delayed" in err_text
+                if not transient_missing:
+                    raise RuntimeError(str(exc))
+                if dest_path.exists():
+                    try:
+                        dest_path.unlink()
+                    except Exception:
+                        pass
+                restart_time = time.time()
+                _snapshot_progress_update(
+                    {
+                        "bytes_written": 0,
+                        "total_bytes": total_bytes,
+                        "pct": 0.0 if total_bytes else None,
+                        "speed_bytes": 0.0,
+                        "eta_seconds": None,
+                        "updated": restart_time,
+                        "started": restart_time,
+                        "path": str(dest_path),
+                    }
+                )
+                fallback_command = [
+                    "tar",
+                    "--warning=no-file-changed",
+                    "--ignore-failed-read",
+                    "--exclude=overlay-backup",
+                    "--exclude=overlay-backup/*",
+                    "-cf",
+                    str(dest_path),
+                    "-C",
+                    str(source_dir),
+                    ".",
+                ]
+                try:
+                    _run_command_with_progress(fallback_command, dest_path, total_bytes=total_bytes, started=restart_time)
+                except RuntimeError as fallback_exc:
+                    raise RuntimeError(str(fallback_exc))
         else:
             parent = source_dir.parent
             arcname = source_dir.name
