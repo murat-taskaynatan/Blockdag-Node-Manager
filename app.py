@@ -1035,7 +1035,8 @@ def _resolve_container_rpc_base(info: dict, env: Dict[str, str]) -> Optional[str
         ports = info.get("HostConfig", {}).get("PortBindings") or {}
     candidates: Dict[str, str] = {}
     fallback_url: Optional[str] = None
-    preferred_ports = ("38155", "38131", "18593", "18545", "8545", "4545")
+    # Prefer EVM RPC ports first so eth_blockNumber succeeds; fall back to legacy RPC ports.
+    preferred_ports = ("18545", "8545", "18593", "38155", "38131", "4545")
     for port_key, bindings in ports.items():
         if not isinstance(port_key, str) or "/tcp" not in port_key:
             continue
@@ -1053,8 +1054,6 @@ def _resolve_container_rpc_base(info: dict, env: Dict[str, str]) -> Optional[str
         candidates.setdefault(container_port, url)
         if fallback_url is None:
             fallback_url = url
-        if container_port in {"38155", "38131"}:
-            return url
     for preferred in preferred_ports:
         if preferred in candidates:
             return candidates[preferred]
