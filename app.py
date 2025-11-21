@@ -5606,7 +5606,7 @@ def _resolve_node(node_id: Optional[str]) -> NodeContext:
 # ---------------------------------------------------------------------------
 # API endpoints
 # ---------------------------------------------------------------------------
-APP_VERSION = os.getenv("BDAG_MANAGER_VERSION", "v1.6.6").strip() or "v1.6.6"
+APP_VERSION = os.getenv("BDAG_MANAGER_VERSION", "v1.6.7").strip() or "v1.6.7"
 _LATEST_UPDATE_CHECK: Dict[str, object] = {"tag": None, "fetched": 0.0, "source": None, "error": None}
 
 
