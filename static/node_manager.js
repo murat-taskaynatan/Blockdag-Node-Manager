@@ -2184,7 +2184,7 @@ const automationLogUpdated = document.getElementById('automationLogUpdated');
     if (progressChip) {
       const hasProgress = Number.isFinite(progress);
       const progressValue = hasProgress ? progress : null;
-      const progressText = hasProgress ? `${progressValue.toFixed(1)}%` : '—';
+      const progressText = hasProgress ? `${progressValue.toFixed(2)}%` : '—';
       progressChip.textContent = `Synced ${progressText}`;
       progressChip.classList.remove('is-ok', 'is-warn', 'is-danger');
       if (hasProgress) {
