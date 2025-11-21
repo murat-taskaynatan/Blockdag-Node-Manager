@@ -203,7 +203,6 @@ else:
         "illegal withdrawal at block:difflayer, you can cleanup your block data base by '--cleanup'",
         "the dag data was damaged (can't find tip",
         "unknown to the objstorage provider",
-        "unclean shutdown detected",
     )
 
 LIVENESS_FAILSAFE_RESTART_PATTERNS = (

@@ -1043,19 +1043,25 @@ const automationLogUpdated = document.getElementById('automationLogUpdated');
       ? length
       : Math.max(localSeries.length, remoteSeries.length);
     const output = [];
+    let lastLocal = null;
     let lastRemote = null;
     for (let idx = 0; idx < targetLength; idx += 1) {
       const localRaw = localSeries[idx];
       const remoteRaw = remoteSeries[idx];
-      const localVal = Number(localRaw);
+      const localValRaw = Number(localRaw);
       const remoteValRaw = Number(remoteRaw);
-      const hasLocal = Number.isFinite(localVal);
-      const hasRemote = Number.isFinite(remoteValRaw);
+      const hasLocal = Number.isFinite(localValRaw) && localValRaw > 0;
+      const hasRemote = Number.isFinite(remoteValRaw) && remoteValRaw > 0;
+      // Carry forward last known positive heights so zero/blank samples don't crater the chart.
+      const localVal = hasLocal ? localValRaw : lastLocal;
       const remoteVal = hasRemote ? remoteValRaw : lastRemote;
+      if (hasLocal) {
+        lastLocal = localValRaw;
+      }
       if (hasRemote) {
         lastRemote = remoteValRaw;
       }
-      if (!hasLocal || !Number.isFinite(remoteVal)) {
+      if (!Number.isFinite(localVal) || !Number.isFinite(remoteVal)) {
         output.push(null);
         continue;
       }
