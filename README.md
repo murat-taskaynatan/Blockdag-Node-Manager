@@ -110,7 +110,7 @@ Once nginx terminates TLS, the Node Manager login page (and all other routes) ar
 
 ### Automatic Recovery
 
-Liveness auto-recovery now seeds two env overrides on fresh installs: `BDAG_LIVENESS_RECOVER_COOLDOWN_SEC=240` to cap the waiting period between liveness interventions at four minutes, and `BDAG_LIVENESS_MAX_RESTARTS=2` so the guard escalates to a snapshot restore after only two failed restarts. Adjust those values in `node-manager.env` if your fleet needs a different cadence.
+Liveness auto-recovery seeds two env overrides on fresh installs: `BDAG_LIVENESS_RECOVER_COOLDOWN_SEC=240` to cap the waiting period between liveness interventions at four minutes, and `BDAG_LIVENESS_MAX_RESTARTS=2` so the guard escalates to a snapshot restore after only two failed restarts. Adjust those values in `node-manager.env` if your fleet needs a different cadence.
 
 The settings form also exposes a memory-pressure auto-restart: enable the toggle and enter a percent value (e.g., `90`) so the manager will restart every discovered node sequentially (60 s between restarts) when host memory usage climbs above that threshold. Use it as a safety valve when the OS starts to swap.
 
