@@ -108,6 +108,13 @@ SSL is handled by nginx on the host. The installer drops a node_manager vhost in
    
 Once nginx terminates TLS, the Node Manager login page (and all other routes) are served at your domain. Because the app doesn’t need to know about TLS, no extra Flask settings are required the cookie/session code works the same whether nginx connects via plain HTTP or HTTPS on the front end.
 
+### Automatic Recovery
+
+Liveness auto-recovery now seeds two env overrides on fresh installs: `BDAG_LIVENESS_RECOVER_COOLDOWN_SEC=240` to cap the waiting period between liveness interventions at four minutes, and `BDAG_LIVENESS_MAX_RESTARTS=2` so the guard escalates to a snapshot restore after only two failed restarts. Adjust those values in `node-manager.env` if your fleet needs a different cadence.
+
+The settings form also exposes a memory-pressure auto-restart: enable the toggle and enter a percent value (e.g., `90`) so the manager will restart every discovered node sequentially (60 s between restarts) when host memory usage climbs above that threshold. Use it as a safety valve when the OS starts to swap.
+
+
 ## Production Install
 Use the bundled helper to deploy under `/opt/blockdag-node-manager` with systemd integration:
 
@@ -126,12 +133,6 @@ HOST=0.0.0.0 PORT=8080 INSTALL_DIR=/opt/bdag-manager ./install_node_manager.sh
 ```
 
 All runtime overrides are stored in `/etc/blockdag-node-manager/node-manager.env`.
-
-### Automatic Recovery
-
-Liveness auto-recovery now seeds two env overrides on fresh installs: `BDAG_LIVENESS_RECOVER_COOLDOWN_SEC=240` to cap the waiting period between liveness interventions at four minutes, and `BDAG_LIVENESS_MAX_RESTARTS=2` so the guard escalates to a snapshot restore after only two failed restarts. Adjust those values in `node-manager.env` if your fleet needs a different cadence.
-
-The settings form also exposes a memory-pressure auto-restart: enable the toggle and enter a percent value (e.g., `90`) so the manager will restart every discovered node sequentially (60 s between restarts) when host memory usage climbs above that threshold. Use it as a safety valve when the OS starts to swap.
 
 Need a zero-touch install on a fresh host or update to the latest version? Use the remote installer:
 
