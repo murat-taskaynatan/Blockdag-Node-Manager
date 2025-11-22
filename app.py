@@ -5546,10 +5546,10 @@ def _detect_stalled_reason(ctx: "NodeContext", metrics: dict, previous: Optional
 
     if ever_progress and local_height <= 0 and peers <= 0:
         return "Container restarted but local chain data reset to zero."
-    if remote_height > local_height + 2 and (recent_progress or block_rate > 0 or importing):
-        return None
-    if importing and block_rate >= 0:
-        return None
+    if remote_height > local_height + 2:
+        # Allow importing to continue if we see forward progress or block production
+        if recent_progress or block_rate > 0:
+            return None
     if not recent_progress and block_rate <= 0 and peers <= 0:
         stagnant_ms = 120_000
         if now_ms and recent_ts:
