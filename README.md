@@ -126,7 +126,7 @@ The installer automatically stops and removes any previous `blockdag-node-manage
 
 By default the service binds to `0.0.0.0:8081`; adjust `HOST`/`PORT` in `/etc/blockdag-node-manager/node-manager.env` or export them before running the installer if you need different bindings.
 
-The script can be customised via environment variables, e.g.:
+The script can be customized via environment variables, e.g.:
 
 ```bash
 HOST=0.0.0.0 PORT=8080 INSTALL_DIR=/opt/bdag-manager ./install_node_manager.sh
