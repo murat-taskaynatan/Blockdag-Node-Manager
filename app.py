@@ -5886,6 +5886,7 @@ def api_node_manager_metrics():
     else:
         node_ids = list(NODES.keys())
     response = {}
+    summary_nodes: List[dict] = []
     force_flag = (request.args.get("force") or "").strip().lower()
     force_refresh = force_flag in {"1", "true", "yes", "on"}
     now = time.time()
@@ -5900,7 +5901,19 @@ def api_node_manager_metrics():
         if force_refresh or stale:
             payload["pending_sample"] = True
         response[ctx.id] = payload
-    return jsonify({"nodes": response, "timestamp": time.time()})
+        summary_nodes.append(
+            {
+                "id": ctx.id,
+                "label": ctx.label,
+                "container": ctx.container,
+                "status": payload,
+            }
+        )
+    try:
+        summary = _fleet_summary(summary_nodes if summary_nodes else [])
+    except Exception as exc:
+        summary = {"error": str(exc), "timestamp": time.time()}
+    return jsonify({"nodes": response, "timestamp": time.time(), "summary": summary})
 
 
 def _collect_shared_temperature() -> Optional[Dict[str, object]]:

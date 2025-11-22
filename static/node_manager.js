@@ -479,7 +479,12 @@ const automationLogUpdated = document.getElementById('automationLogUpdated');
   function isMemoryRestart(entry) {
     if (!entry || String(entry.kind || '').toLowerCase() !== 'auto_restart') return false;
     const source = String(entry?.meta?.source || '').toLowerCase();
-    return source === 'memory';
+    const reason = String(entry?.meta?.reason || '').toLowerCase();
+    const message = String(entry?.message || '').toLowerCase();
+    if (source.includes('memory')) return true;
+    if (reason.includes('memory')) return true;
+    if (message.includes('memory')) return true;
+    return false;
   }
 
   function automationLogMatchesFilter(entry) {
@@ -4418,6 +4423,9 @@ function syncCards(nodes) {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const payload = await res.json();
       applyMetrics(payload.nodes || {});
+      if (payload.summary && typeof payload.summary === 'object') {
+        renderSummary(payload.summary);
+      }
     } catch (err) {
       console.error('[fleet] metrics refresh failed', err);
     }
