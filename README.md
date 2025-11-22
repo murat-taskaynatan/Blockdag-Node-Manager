@@ -22,9 +22,12 @@ BlockDAG Node Manager is a lightweight Flask application that discovers, monitor
 - Mining state detection and health categorisation (steady, syncing, downloading, stalled, etc.).
 - Liveness failsafe patterns split into two buckets so automation can decide whether to restart or restore:
   - Restart triggers: node never became ready; worker stopped; liveness probe exceeded timeout/failed; forcing shutdown via health URL; watchExecuted dial failures; chain shutdown.
-  - Recovery triggers: chain DB cleanup required; block state/env errors (e.g., “can’t find cur block state”, “bdag chain env error”); illegal withdrawal; damaged DAG tip; zero state root hash or rewind failures indicating corrupt state; unknown objstorage provider; unclean shutdown.
+  - Recovery triggers: chain DB cleanup required; block state/env errors (e.g., “can’t find cur block state”, “bdag chain env error”); illegal withdrawal; damaged DAG tip; zero state root hash or rewind failures indicating corrupt state;     unknown objstorage provider; unclean shutdown.
 - Safe Docker controls for starting, stopping, and restarting containers directly from the UI.
 - REST API suitable for automation via `/api/node-manager/*`.
+- Automation: Streamlined workflows auto-trigger builds/deploys on key events, with configurable schedules, guardrails, templated task
+  runners, and automatic retries (with backoff) plus expanded structured logging (timestamps, request IDs, severity), improved retention and searchability with centralized filtering by
+  service/level/timeframe, and real-time alerts on critical patterns for faster incident response.
 
 Log View
 <br>
@@ -105,6 +108,13 @@ SSL is handled by nginx on the host. The installer drops a node_manager vhost in
    
 Once nginx terminates TLS, the Node Manager login page (and all other routes) are served at your domain. Because the app doesn’t need to know about TLS, no extra Flask settings are required the cookie/session code works the same whether nginx connects via plain HTTP or HTTPS on the front end.
 
+### Automatic Recovery
+
+Liveness auto-recovery seeds two env overrides on fresh installs: `BDAG_LIVENESS_RECOVER_COOLDOWN_SEC=240` to cap the waiting period between liveness interventions at four minutes, and `BDAG_LIVENESS_MAX_RESTARTS=2` so the guard escalates to a snapshot restore after only two failed restarts. Adjust those values in `node-manager.env` if your fleet needs a different cadence.
+
+The settings form also exposes a memory-pressure auto-restart: enable the toggle and enter a percent value (e.g., `90`) so the manager will restart every discovered node sequentially (60 s between restarts) when host memory usage climbs above that threshold. Use it as a safety valve when the OS starts to swap.
+
+
 ## Production Install
 Use the bundled helper to deploy under `/opt/blockdag-node-manager` with systemd integration:
 
@@ -116,23 +126,13 @@ The installer automatically stops and removes any previous `blockdag-node-manage
 
 By default the service binds to `0.0.0.0:8081`; adjust `HOST`/`PORT` in `/etc/blockdag-node-manager/node-manager.env` or export them before running the installer if you need different bindings.
 
-The script can be customised via environment variables, e.g.:
+The script can be customized via environment variables, e.g.:
 
 ```bash
 HOST=0.0.0.0 PORT=8080 INSTALL_DIR=/opt/bdag-manager ./install_node_manager.sh
 ```
 
 All runtime overrides are stored in `/etc/blockdag-node-manager/node-manager.env`.
-
-After each `git push origin main`, run `./scripts/sync_opt_install.sh` from this repo. It updates the local clone, reruns `install_node_manager.sh`, and restarts the service so `/opt/blockdag-node-manager` always mirrors the latest `main` build.
-
-### Restore offline/stalled nodes sequentially
-
-When multiple nodes are offline or stalled, use `./scripts/restore_offline_nodes.sh` to trigger a restore job for each node one by one with a cooldown between jobs (`RESTORE_COOLDOWN_SEC`, default 90 s). The script calls `/api/snapshots/restore` for every node that reports `running==false` or `stalled==true`, then polls `/api/snapshots` until each job completes—showing the active node name and progress percentage before moving on. Export `BASE_URL` if the manager is bound to a non-default host/port.
-
-Liveness auto-recovery now seeds two env overrides on fresh installs: `BDAG_LIVENESS_RECOVER_COOLDOWN_SEC=240` to cap the waiting period between liveness interventions at four minutes, and `BDAG_LIVENESS_MAX_RESTARTS=2` so the guard escalates to a snapshot restore after only two failed restarts. Adjust those values in `node-manager.env` if your fleet needs a different cadence.
-
-The settings form also exposes a memory-pressure auto-restart: enable the toggle and enter a percent value (e.g., `90`) so the manager will restart every discovered node sequentially (60 s between restarts) when host memory usage climbs above that threshold. Use it as a safety valve when the OS starts to swap.
 
 Need a zero-touch install on a fresh host or update to the latest version? Use the remote installer:
 
