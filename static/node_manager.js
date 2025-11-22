@@ -3281,14 +3281,17 @@ function syncCards(nodes) {
       restartBtn.addEventListener('mousedown', (event) => event.stopPropagation());
       restartBtn.addEventListener('mouseup', (event) => event.stopPropagation());
       restartBtn.title = 'Restart container';
-      // Disable restart if a snapshot/restore job is active (applies to all nodes for snapshot; scoped for restore).
+      // Disable restart only when a snapshot/restore job targets this node.
       const job = state.snapshots && state.snapshots.job ? state.snapshots.job : null;
       const jobMode = String(job?.details?.mode || job?.mode || '').toLowerCase();
       const jobNode = job?.details?.node || job?.node || null;
+      const jobContainer = job?.details?.container || job?.container || null;
       const jobActive = Boolean(job?.active);
+      const matchesNode =
+        (jobNode && (jobNode === node.id || jobNode === node.container)) ||
+        (jobContainer && (jobContainer === node.id || jobContainer === node.container));
       const disableRestart =
-        jobActive &&
-        ((jobMode === 'restore' && (!jobNode || jobNode === node.id)) || jobMode === 'snapshot');
+        jobActive && matchesNode && (jobMode === 'restore' || jobMode === 'snapshot');
       restartBtn.disabled = disableRestart;
       restartBtn.classList.toggle('is-pending', disableRestart);
       if (disableRestart) {
@@ -3528,12 +3531,15 @@ function syncCards(nodes) {
       const job = state.snapshots && state.snapshots.job ? state.snapshots.job : null;
       const jobMode = String(job?.details?.mode || job?.mode || '').toLowerCase();
       const jobNode = job?.details?.node || job?.node || null;
+      const jobContainer = job?.details?.container || job?.container || null;
       const jobActive = Boolean(job?.active);
       const restoreActive = jobActive && jobMode === 'restore';
       const snapshotActive = jobActive && jobMode === 'snapshot';
+      const matchesNode =
+        (jobNode && (jobNode === node.id || jobNode === node.container)) ||
+        (jobContainer && (jobContainer === node.id || jobContainer === node.container));
       const disableRestart =
-        (restoreActive && (!jobNode || jobNode === node.id)) ||
-        snapshotActive;
+        jobActive && matchesNode && (restoreActive || snapshotActive);
       restartBtn.disabled = disableRestart;
       restartBtn.classList.toggle('is-pending', disableRestart);
       if (disableRestart) {
