@@ -187,6 +187,10 @@ LIVENESS_RESUME_MAX_DELTA = max(
 LIVENESS_STABLE_SEC = max(
     30.0, float(os.getenv("BDAG_LIVENESS_STABLE_SEC", "300") or "300")
 )
+# Maximum time a "resume_on_healthy" suspension can block liveness before auto-clearing
+LIVENESS_SUSPEND_MAX_SEC = max(
+    300.0, float(os.getenv("BDAG_LIVENESS_SUSPEND_MAX_SEC", "1800") or "1800")
+)
 _liveness_patterns_raw = [
     part.strip().lower()
     for part in str(os.getenv("BDAG_LIVENESS_RECOVER_PATTERNS", "") or "").split(",")
@@ -4379,6 +4383,7 @@ def _suspend_liveness(container: Optional[str], seconds: float, *, resume_on_hea
         state["liveness_suspend"] = {
             "until": effective_until,
             "resume_on_healthy": bool(record.get("resume_on_healthy")) or resume_on_healthy,
+            "created_at": record.get("created_at", now),
         }
     try:
         app.logger.info(
@@ -4798,13 +4803,28 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
             resume_on_healthy = bool(suspension.get("resume_on_healthy"))
             until_raw = suspension.get("until")
             until = float(until_raw) if isinstance(until_raw, (int, float)) else float("inf")
+            created_at_raw = suspension.get("created_at")
+            created_at = float(created_at_raw) if isinstance(created_at_raw, (int, float)) else now
+            stale = (now - created_at) >= LIVENESS_SUSPEND_MAX_SEC
             if resume_on_healthy:
                 if _liveness_resume_ready(metrics):
                     with _LOG_POLICY_LOCK:
                         state.pop("liveness_suspend", None)
                         state["liveness_restarts"] = 0
                 else:
-                    liveness_suspended = True
+                    if stale:
+                        with _LOG_POLICY_LOCK:
+                            state.pop("liveness_suspend", None)
+                        try:
+                            app.logger.info(
+                                "Clearing stale liveness suspension for %s after %.0fs",
+                                ctx.container or ctx.id,
+                                now - created_at,
+                            )
+                        except Exception:
+                            pass
+                    else:
+                        liveness_suspended = True
             else:
                 if until != float("inf") and now >= until:
                     with _LOG_POLICY_LOCK:
