@@ -1638,10 +1638,9 @@ const automationLogUpdated = document.getElementById('automationLogUpdated');
           (jobTarget === nodeId ||
             jobTarget === entry.meta?.container ||
             jobTarget === entry.meta?.label);
-        const disableRestart =
-          jobActive &&
-          matchesNode &&
-          (jobMode === 'restore' || jobMode === 'snapshot');
+        const isSnapshotMode = jobMode.includes('snapshot');
+        const isRestoreMode = jobMode.includes('restore');
+        const disableRestart = jobActive && matchesNode && (isRestoreMode || isSnapshotMode);
         restartBtn.disabled = disableRestart;
         // Keep border color unchanged; only disable the button.
         restartBtn.classList.remove('is-pending');
