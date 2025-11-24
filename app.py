@@ -4847,7 +4847,22 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
                 else:
                     liveness_suspended = True
 
-    if enable_liveness and not liveness_suspended and not memory_liveness_blocked:
+    if enable_liveness and memory_liveness_blocked:
+        stalled_flag = bool(
+            metrics.get("stalled")
+            or metrics.get("recovery_required")
+            or _should_trigger_corruption_restore(stalled_reason_text)
+        )
+        if stalled_flag and not _is_restore_job_active_for_container(ctx.container):
+            _queue_pending_restore(
+                ctx.id,
+                "liveness",
+                reason=f"deferred during memory cooldown: {stalled_reason_text or 'memory cooldown'}",
+                container=ctx.container,
+            )
+        return
+
+    if enable_liveness and not liveness_suspended:
         if _is_restore_job_active_for_container(ctx.container) or _is_snapshot_job_active_for_container(ctx.container):
             return
         stalled_flag = bool(metrics.get("stalled"))
