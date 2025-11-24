@@ -203,7 +203,6 @@ else:
         "chain db: need to thoroughly clean up old data",
         "bdag chain env error",
         "can't find cur block state",
-        "zero state root hash",
         "illegal withdrawal at block",
         "illegal withdrawal at block:difflayer, you can cleanup your block data base by '--cleanup'",
         "the dag data was damaged (can't find tip",
