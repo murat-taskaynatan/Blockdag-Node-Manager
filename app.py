@@ -1532,6 +1532,9 @@ def _queue_pending_restore(
     ctx = NODES.get(node_id)
     label = ctx.label if ctx and ctx.label else node_id
     resolved_container = container or (ctx.container if ctx else None)
+    # Do not queue if a restore is already active for this container.
+    if _is_restore_job_active_for_container(resolved_container):
+        return
     trigger_label = (trigger or "").strip().lower() or "manual"
     base_messages = {
         "liveness": "Chain recovery queued",
@@ -1550,7 +1553,15 @@ def _queue_pending_restore(
         "message": default_message,
     }
     with _PENDING_RESTORE_LOCK:
-        if any(entry.get("node") == node_id for entry in _PENDING_RESTORE_QUEUE):
+        if any(
+            entry.get("node") == node_id
+            or (
+                resolved_container
+                and entry.get("container")
+                and entry.get("container") == resolved_container
+            )
+            for entry in _PENDING_RESTORE_QUEUE
+        ):
             return
         _PENDING_RESTORE_QUEUE.append(entry)
 
