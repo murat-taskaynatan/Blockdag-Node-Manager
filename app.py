@@ -4757,6 +4757,7 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
                 "last_liveness": 0.0,
                 "liveness_restarts": 0,
                 "restore_restart_attempted": False,
+                "ever_healthy": False,
             },
         )
         last_check = float(state.get("last_check", 0.0))
@@ -4857,6 +4858,7 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
                 with _LOG_POLICY_LOCK:
                     state["liveness_restarts"] = 0
                     state["restore_restart_attempted"] = False
+                    state["ever_healthy"] = True
         if stalled_flag:
             stalled_reason = stall_reason
             recovery_required = bool(metrics.get("recovery_required"))
@@ -4864,6 +4866,7 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
                 last_liveness = float(state.get("last_liveness", 0.0))
                 liveness_restarts = int(state.get("liveness_restarts", 0))
                 cooldown_elapsed = now - last_liveness >= LIVENESS_RECOVER_COOLDOWN_SEC
+                ever_healthy = bool(state.get("ever_healthy"))
             allow_restore = True if recovery_required else _should_trigger_corruption_restore(stalled_reason)
             restart_allowed_reason = _should_attempt_restart_for_reason(stalled_reason)
             container_running_flag = bool(metrics.get("container_running"))
@@ -4942,6 +4945,18 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
                     with _LOG_POLICY_LOCK:
                         state["liveness_restarts"] = next_attempt
                     return
+                # If we've never reached a healthy state and we've exhausted restart attempts,
+                # treat this as a boot-loop and trigger a restore even without a matching pattern.
+                if not ever_healthy and liveness_restarts >= LIVENESS_MAX_RESTARTS:
+                    restore_reason = f"boot loop without healthy state: {stalled_reason}"
+                    if _trigger_restore_for_context(ctx, restore_reason):
+                        with _LOG_POLICY_LOCK:
+                            state["last_restart"] = now
+                            state["error_streak"] = 0
+                            state["liveness_restarts"] = 0
+                            state["last_liveness"] = now
+                            state["restore_restart_attempted"] = False
+                        return
                 try:
                     app.logger.info(
                         "Liveness skipping chain restore for %s; stall reason not corruption: %s",
