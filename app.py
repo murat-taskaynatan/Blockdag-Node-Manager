@@ -221,6 +221,7 @@ LIVENESS_FAILSAFE_RESTART_PATTERNS = (
     "watchexecuted: dial ws failed",
     "block chain is shutdown",
     "shutdown complete",
+    "failed to process update graph state",
 )
 LIVENESS_FAILSAFE_PATTERNS = tuple(
     dict.fromkeys(LIVENESS_FAILSAFE_RESTART_PATTERNS + LIVENESS_FAILSAFE_RECOVERY_PATTERNS)
