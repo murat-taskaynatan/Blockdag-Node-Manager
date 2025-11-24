@@ -1479,6 +1479,7 @@ _CORRUPTION_RESTORE_KEYWORDS: Tuple[str, ...] = (
     "bdag chain env error",
     "can't find cur block state",
     "zero state root hash",
+    "object size mismatch",
     "illegal withdrawal at block",
     "cleanup your block data base by '--cleanup'",
     "unknown to the objstorage provider",
