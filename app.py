@@ -203,6 +203,7 @@ else:
         "chain db: need to thoroughly clean up old data",
         "bdag chain env error",
         "can't find cur block state",
+        "zero state root hash",
         "illegal withdrawal at block",
         "illegal withdrawal at block:difflayer, you can cleanup your block data base by '--cleanup'",
         "the dag data was damaged (can't find tip",
@@ -1477,6 +1478,7 @@ _CORRUPTION_RESTORE_KEYWORDS: Tuple[str, ...] = (
     "can't find tip",
     "bdag chain env error",
     "can't find cur block state",
+    "zero state root hash",
     "illegal withdrawal at block",
     "cleanup your block data base by '--cleanup'",
     "unknown to the objstorage provider",
@@ -4945,6 +4947,17 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
                     with _LOG_POLICY_LOCK:
                         state["liveness_restarts"] = next_attempt
                     return
+                # If we've exhausted restart attempts on a restartable error, escalate to restore.
+                if restart_allowed_reason:
+                    restore_reason = f"exhausted restart attempts: {stalled_reason}"
+                    if _trigger_restore_for_context(ctx, restore_reason):
+                        with _LOG_POLICY_LOCK:
+                            state["last_restart"] = now
+                            state["error_streak"] = 0
+                            state["liveness_restarts"] = 0
+                            state["last_liveness"] = now
+                            state["restore_restart_attempted"] = False
+                        return
                 # If we've never reached a healthy state and we've exhausted restart attempts,
                 # treat this as a boot-loop and trigger a restore even without a matching pattern.
                 if not ever_healthy and liveness_restarts >= LIVENESS_MAX_RESTARTS:
