@@ -1536,12 +1536,12 @@ def _queue_pending_restore(
     if _is_restore_job_active_for_container(resolved_container):
         return
     trigger_label = (trigger or "").strip().lower() or "manual"
-    base_messages = {
+    base_messages: Dict[str, str] = {
         "liveness": "Chain recovery queued",
         "api": "API restore queued",
         "manual": "Manual restore queued",
     }
-    default_message = reason or base_messages.get(trigger_label, "Chain recovery queued")
+    default_message = base_messages.get(trigger_label, "Chain recovery queued")
     entry: Dict[str, object] = {
         "node": node_id,
         "label": label,
