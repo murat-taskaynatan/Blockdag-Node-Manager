@@ -4887,6 +4887,8 @@ def _trigger_restore_for_context(ctx: "NodeContext", reason: str) -> bool:
             status="started",
             metadata={"reason": reason},
         )
+        if ctx.container:
+            _set_post_restore_cooldown(ctx.container, time.time() + LIVENESS_POST_RESTORE_COOLDOWN_SEC)
         return True
     message = message or ""
     queued = "queued" in message.lower()
@@ -4908,6 +4910,8 @@ def _trigger_restore_for_context(ctx: "NodeContext", reason: str) -> bool:
             status="queued",
             metadata={"reason": reason, "error": message},
         )
+        if ctx.container:
+            _set_post_restore_cooldown(ctx.container, time.time() + LIVENESS_POST_RESTORE_COOLDOWN_SEC)
         return True
     try:
         app.logger.warning(
@@ -4924,6 +4928,8 @@ def _trigger_restore_for_context(ctx: "NodeContext", reason: str) -> bool:
         friendly_error = "Another restore is already in progress"
         user_message = f"Chain data recovery deferred for {ctx.id}"
         status = "skipped"
+        if ctx.container:
+            _set_post_restore_cooldown(ctx.container, time.time() + LIVENESS_POST_RESTORE_COOLDOWN_SEC)
     else:
         user_message = f"Chain data recovery failed for {ctx.id}"
         status = "failed"
