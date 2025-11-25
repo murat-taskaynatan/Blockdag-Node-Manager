@@ -3865,6 +3865,18 @@ def _start_restore_job(
             details["data_dir"] = str(target_ctx.chain_data_dir)
         if target_ctx.label:
             details["label"] = target_ctx.label
+        # If liveness queued this restore but the node is already healthy, skip.
+        if (trigger or "").strip().lower() == "liveness" and _is_ctx_healthy(target_ctx):
+            message = f"Node {target_ctx.id} reporting healthy; skipping liveness restore."
+            _automation_event(
+                "chain_restore",
+                message,
+                node=target_ctx.id,
+                container=target_ctx.container,
+                status="skipped",
+                metadata={"reason": "node healthy"},
+            )
+            return False, message, _snapshot_job_snapshot()
         health_ok, guard_message, health_payload = _snapshot_health_check(target_ctx, mode="restore")
         if isinstance(health_payload, dict):
             health_info = health_payload
@@ -4800,6 +4812,27 @@ def _logs_show_importing(container: Optional[str]) -> bool:
             if marker in normalized:
                 return True
     return False
+
+
+def _is_ctx_healthy(ctx: Optional["NodeContext"]) -> bool:
+    """Determine if a node context is currently healthy."""
+    if not ctx:
+        return False
+    metrics: Dict[str, object] = {}
+    try:
+        metrics = ctx.sample(force=True) or {}
+    except Exception:
+        metrics = ctx.last_metrics or {}
+    running = bool(metrics.get("running") or metrics.get("container_running"))
+    stalled = bool(metrics.get("stalled"))
+    health_text = str(metrics.get("health_text") or metrics.get("health_detail") or "").strip().lower()
+    if not running:
+        return False
+    if stalled:
+        return False
+    if health_text:
+        return False
+    return True
 
 
 def _log_refresh_worker() -> None:
