@@ -614,6 +614,8 @@ _WALLET_REFRESH_LOCK = threading.Lock()
 _wallet_refresh_pending = False
 WALLET_HISTORY_PATH = (Path(__file__).resolve().parent / "data" / "wallet_history.json")
 WALLET_HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+LIVENESS_COOLDOWN_PATH = (Path(__file__).resolve().parent / "data" / "liveness_cooldown.json")
+LIVENESS_COOLDOWN_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 
 def _load_wallet_history() -> None:
@@ -657,6 +659,88 @@ def _persist_wallet_history() -> None:
         pass
 
 
+def _persist_liveness_cooldowns() -> None:
+    now = time.time()
+    with _LOG_POLICY_LOCK:
+        payload = {
+            container: float(state.get("liveness_post_restore_until", 0.0))
+            for container, state in _LOG_POLICY_STATE.items()
+            if isinstance(state, dict)
+            and isinstance(state.get("liveness_post_restore_until"), (int, float))
+            and float(state.get("liveness_post_restore_until", 0.0)) > now
+        }
+    try:
+        if payload:
+            temp_path = LIVENESS_COOLDOWN_PATH.with_suffix(".tmp")
+            temp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            temp_path.replace(LIVENESS_COOLDOWN_PATH)
+        elif LIVENESS_COOLDOWN_PATH.exists():
+            LIVENESS_COOLDOWN_PATH.unlink()
+    except Exception:
+        pass
+
+
+def _load_liveness_cooldowns() -> None:
+    if not LIVENESS_COOLDOWN_PATH.exists():
+        return
+    try:
+        raw = LIVENESS_COOLDOWN_PATH.read_text(encoding="utf-8")
+        data = json.loads(raw)
+    except Exception:
+        return
+    if not isinstance(data, dict):
+        return
+    now = time.time()
+    with _LOG_POLICY_LOCK:
+        for container, ts_raw in data.items():
+            try:
+                ts = float(ts_raw)
+            except (TypeError, ValueError):
+                continue
+            if ts <= now:
+                continue
+            state = _LOG_POLICY_STATE.setdefault(
+                container,
+                {
+                    "last_check": 0.0,
+                    "error_streak": 0,
+                    "last_restart": 0.0,
+                    "last_liveness": 0.0,
+                    "liveness_restarts": 0,
+                    "restore_restart_attempted": False,
+                    "ever_healthy": False,
+                    "liveness_post_restore_until": 0.0,
+                },
+            )
+            if float(state.get("liveness_post_restore_until", 0.0)) < ts:
+                state["liveness_post_restore_until"] = ts
+
+
+def _set_post_restore_cooldown(container: Optional[str], until: float) -> None:
+    if not container:
+        return
+    try:
+        target = max(0.0, float(until))
+    except (TypeError, ValueError):
+        target = 0.0
+    with _LOG_POLICY_LOCK:
+        state = _LOG_POLICY_STATE.setdefault(
+            container,
+            {
+                "last_check": 0.0,
+                "error_streak": 0,
+                "last_restart": 0.0,
+                "last_liveness": 0.0,
+                "liveness_restarts": 0,
+                "restore_restart_attempted": False,
+                "ever_healthy": False,
+                "liveness_post_restore_until": 0.0,
+            },
+        )
+        state["liveness_post_restore_until"] = target
+    _persist_liveness_cooldowns()
+
+
 def _schedule_wallet_refresh(*, force: bool = False) -> None:
     global _wallet_refresh_pending
     with _WALLET_REFRESH_LOCK:
@@ -667,6 +751,7 @@ def _schedule_wallet_refresh(*, force: bool = False) -> None:
 
 
 _load_wallet_history()
+_load_liveness_cooldowns()
 
 # ---------------------------------------------------------------------------
 # General helpers
@@ -3695,11 +3780,8 @@ def _start_restore_job(
     message = f"Snapshot restore started for {label}" if label else "Snapshot restore started"
     if (trigger or "").strip().lower() == "liveness":
         container_name = details.get("container")
-        with _LOG_POLICY_LOCK:
-            if container_name and container_name in _LOG_POLICY_STATE:
-                _LOG_POLICY_STATE[container_name]["liveness_post_restore_until"] = (
-                    time.time() + LIVENESS_POST_RESTORE_COOLDOWN_SEC
-                )
+        if container_name:
+            _set_post_restore_cooldown(container_name, time.time() + LIVENESS_POST_RESTORE_COOLDOWN_SEC)
     return True, message, _snapshot_job_snapshot()
 
 
@@ -4379,6 +4461,7 @@ def _purge_policy_state(container: Optional[str]) -> None:
         keys = [key for key in _RECENT_LOGS_CACHE.keys() if key[0] == container]
         for key in keys:
             _RECENT_LOGS_CACHE.pop(key, None)
+    _persist_liveness_cooldowns()
 
 
 def _suspend_liveness(container: Optional[str], seconds: float, *, resume_on_healthy: bool = False) -> None:
@@ -4776,6 +4859,7 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
         return
     now = time.time()
     memory_liveness_blocked = _memory_liveness_cooldown_active(now)
+    cooldown_expired = False
     with _LOG_POLICY_LOCK:
         state = _LOG_POLICY_STATE.setdefault(
             ctx.container,
@@ -4798,6 +4882,7 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
         liveness_restore_cooldown = enable_liveness and post_restore_until > now
         if post_restore_until and now >= post_restore_until:
             state["liveness_post_restore_until"] = 0.0
+            cooldown_expired = True
     metrics_raw = getattr(ctx, "last_metrics", None)
     metrics = metrics_raw if isinstance(metrics_raw, dict) else {}
     failsafe_triggered = False
@@ -4829,6 +4914,8 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
     )
     if _is_importing_reason(stalled_reason_text):
         return
+    if cooldown_expired:
+        _persist_liveness_cooldowns()
     if enable_liveness and liveness_restore_cooldown:
         try:
             app.logger.info(
@@ -5012,13 +5099,14 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
                         )
                     except Exception:
                         pass
+                    post_restore_target = now + LIVENESS_POST_RESTORE_COOLDOWN_SEC
                     with _LOG_POLICY_LOCK:
                         state["last_restart"] = now
                         state["error_streak"] = 0
                         state["liveness_restarts"] = 0
                         state["last_liveness"] = now
                         state["restore_restart_attempted"] = False
-                        state["liveness_post_restore_until"] = now + LIVENESS_POST_RESTORE_COOLDOWN_SEC
+                    _set_post_restore_cooldown(ctx.container, post_restore_target)
                     return
                 return
             if cooldown_elapsed:
@@ -5044,26 +5132,28 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
                 if restart_allowed_reason:
                     restore_reason = f"exhausted restart attempts: {stalled_reason}"
                     if _trigger_restore_for_context(ctx, restore_reason):
+                        post_restore_target = now + LIVENESS_POST_RESTORE_COOLDOWN_SEC
                         with _LOG_POLICY_LOCK:
                             state["last_restart"] = now
                             state["error_streak"] = 0
                             state["liveness_restarts"] = 0
                             state["last_liveness"] = now
                             state["restore_restart_attempted"] = False
-                            state["liveness_post_restore_until"] = now + LIVENESS_POST_RESTORE_COOLDOWN_SEC
+                        _set_post_restore_cooldown(ctx.container, post_restore_target)
                         return
                 # If we've never reached a healthy state and we've exhausted restart attempts,
                 # treat this as a boot-loop and trigger a restore even without a matching pattern.
                 if not ever_healthy and liveness_restarts >= LIVENESS_MAX_RESTARTS:
                     restore_reason = f"boot loop without healthy state: {stalled_reason}"
                     if _trigger_restore_for_context(ctx, restore_reason):
+                        post_restore_target = now + LIVENESS_POST_RESTORE_COOLDOWN_SEC
                         with _LOG_POLICY_LOCK:
                             state["last_restart"] = now
                             state["error_streak"] = 0
                             state["liveness_restarts"] = 0
                             state["last_liveness"] = now
                             state["restore_restart_attempted"] = False
-                            state["liveness_post_restore_until"] = now + LIVENESS_POST_RESTORE_COOLDOWN_SEC
+                        _set_post_restore_cooldown(ctx.container, post_restore_target)
                         return
                 try:
                     app.logger.info(
