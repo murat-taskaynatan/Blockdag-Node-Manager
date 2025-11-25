@@ -5013,6 +5013,7 @@ def _is_snapshot_job_active_for_container(container: Optional[str]) -> bool:
 
 
 def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
+    global _GLOBAL_LIVENESS_COOLDOWN_UNTIL
     if not ctx or not ctx.container or not DOCKER_BIN:
         return
     enable_error_restart = bool(settings.get("auto_restart_on_error"))
