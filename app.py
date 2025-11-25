@@ -4749,6 +4749,10 @@ def _detect_liveness_failsafe_from_logs(container: Optional[str]) -> Optional[Tu
     ignore_markers = (
         "side chain depth too large",
     )
+    fatal_markers: Tuple[Tuple[str, bool], ...] = (
+        ("illegal withdrawal at block", True),
+        ("can't find cur block state", True),
+    )
     lines = _get_recent_logs(LOG_ERROR_TAIL, container)
     if not lines:
         return None
@@ -4758,6 +4762,9 @@ def _detect_liveness_failsafe_from_logs(container: Optional[str]) -> Optional[Tu
             continue
         if any(marker in normalized for marker in ignore_markers):
             continue
+        for marker, needs_restore in fatal_markers:
+            if marker in normalized:
+                return line.strip(), needs_restore
         for pattern in LIVENESS_FAILSAFE_RESTART_PATTERNS:
             if pattern and pattern in normalized:
                 return line.strip(), False
