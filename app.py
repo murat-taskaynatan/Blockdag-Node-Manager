@@ -4509,12 +4509,17 @@ def _detect_liveness_failsafe_from_logs(container: Optional[str]) -> Optional[Tu
     """Return the most recent failsafe line and whether recovery (vs restart) is required."""
     if not container or not DOCKER_BIN or not LIVENESS_FAILSAFE_PATTERNS:
         return None
+    ignore_markers = (
+        "side chain depth too large",
+    )
     lines = _get_recent_logs(LOG_ERROR_TAIL, container)
     if not lines:
         return None
     for line in reversed(lines):
         normalized = line.strip().lower()
         if not normalized:
+            continue
+        if any(marker in normalized for marker in ignore_markers):
             continue
         for pattern in LIVENESS_FAILSAFE_RESTART_PATTERNS:
             if pattern and pattern in normalized:
