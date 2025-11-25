@@ -273,6 +273,7 @@ LOG_REFRESH_WAIT_SEC = max(0.2, min(LOG_REFRESH_INTERVAL_SEC, 2.0))
 ANSI_ESCAPE_RE = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
 _LOG_POLICY_LOCK = threading.Lock()
 _LOG_POLICY_STATE: Dict[str, Dict[str, object]] = {}
+_GLOBAL_LIVENESS_COOLDOWN_UNTIL = 0.0
 _RECENT_LOGS_CACHE: Dict[Tuple[str, int], Dict[str, object]] = {}
 _PEER_PORT_CACHE: Dict[str, Tuple[Optional[int], Optional[int], float]] = {}
 _PEER_PORT_CACHE_LOCK = threading.Lock()
@@ -725,6 +726,7 @@ def _get_snapshot_integrity(name: str) -> Optional[Dict[str, object]]:
 def _persist_liveness_cooldowns() -> None:
     now = time.time()
     with _LOG_POLICY_LOCK:
+        global_until = float(_GLOBAL_LIVENESS_COOLDOWN_UNTIL)
         payload = {
             container: float(state.get("liveness_post_restore_until", 0.0))
             for container, state in _LOG_POLICY_STATE.items()
@@ -732,6 +734,8 @@ def _persist_liveness_cooldowns() -> None:
             and isinstance(state.get("liveness_post_restore_until"), (int, float))
             and float(state.get("liveness_post_restore_until", 0.0)) > now
         }
+        if global_until > now:
+            payload["__global__"] = global_until
     try:
         if payload:
             temp_path = LIVENESS_COOLDOWN_PATH.with_suffix(".tmp")
@@ -755,12 +759,17 @@ def _load_liveness_cooldowns() -> None:
         return
     now = time.time()
     with _LOG_POLICY_LOCK:
+        global_val = float(_GLOBAL_LIVENESS_COOLDOWN_UNTIL)
         for container, ts_raw in data.items():
             try:
                 ts = float(ts_raw)
             except (TypeError, ValueError):
                 continue
             if ts <= now:
+                continue
+            if container == "__global__":
+                if ts > global_val:
+                    _GLOBAL_LIVENESS_COOLDOWN_UNTIL = ts
                 continue
             state = _LOG_POLICY_STATE.setdefault(
                 container,
@@ -801,6 +810,18 @@ def _set_post_restore_cooldown(container: Optional[str], until: float) -> None:
             },
         )
         state["liveness_post_restore_until"] = target
+    _persist_liveness_cooldowns()
+
+
+def _set_global_post_restore_cooldown(until: float) -> None:
+    try:
+        target = max(0.0, float(until))
+    except (TypeError, ValueError):
+        target = 0.0
+    with _LOG_POLICY_LOCK:
+        global _GLOBAL_LIVENESS_COOLDOWN_UNTIL
+        if target > _GLOBAL_LIVENESS_COOLDOWN_UNTIL:
+            _GLOBAL_LIVENESS_COOLDOWN_UNTIL = target
     _persist_liveness_cooldowns()
 
 
@@ -3816,6 +3837,9 @@ def _run_restore_job(details: Dict[str, object]) -> None:
                     "restart": details.get("restart"),
                 },
             )
+            if trigger_label == "liveness" and container:
+                _set_post_restore_cooldown(container, time.time() + LIVENESS_POST_RESTORE_COOLDOWN_SEC)
+                _set_global_post_restore_cooldown(time.time() + LIVENESS_POST_RESTORE_COOLDOWN_SEC)
     _dispatch_pending_restore()
 
 
@@ -4992,6 +5016,7 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
     memory_liveness_blocked = _memory_liveness_cooldown_active(now)
     cooldown_expired = False
     with _LOG_POLICY_LOCK:
+        global_cooldown_until = float(_GLOBAL_LIVENESS_COOLDOWN_UNTIL)
         state = _LOG_POLICY_STATE.setdefault(
             ctx.container,
             {
@@ -5013,6 +5038,9 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
         liveness_restore_cooldown = enable_liveness and post_restore_until > now
         if post_restore_until and now >= post_restore_until:
             state["liveness_post_restore_until"] = 0.0
+            cooldown_expired = True
+        if global_cooldown_until and now >= global_cooldown_until:
+            _GLOBAL_LIVENESS_COOLDOWN_UNTIL = 0.0
             cooldown_expired = True
     metrics_raw = getattr(ctx, "last_metrics", None)
     metrics = metrics_raw if isinstance(metrics_raw, dict) else {}
@@ -5057,6 +5085,40 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
             )
         except Exception:
             pass
+        enable_liveness = False
+    global_liveness_cooldown = enable_liveness and global_cooldown_until > now
+    if global_liveness_cooldown:
+        stalled_flag = bool(
+            metrics.get("stalled")
+            or metrics.get("recovery_required")
+            or _should_trigger_corruption_restore(stalled_reason_text)
+        )
+        if stalled_flag and not _is_restore_job_active_for_container(ctx.container):
+            _queue_pending_restore(
+                ctx.id,
+                "liveness",
+                reason=f"deferred during global post-restore cooldown: {stalled_reason_text or 'post-restore cooldown'}",
+                container=ctx.container,
+            )
+            try:
+                app.logger.info(
+                    "Liveness deferring restore for %s (%s) during global cooldown; reason=%s",
+                    ctx.id,
+                    ctx.container or "unknown",
+                    stalled_reason_text or "global post-restore cooldown",
+                )
+            except Exception:
+                pass
+        else:
+            try:
+                app.logger.info(
+                    "Liveness cooling down after any restore (global) for %s (%s); %.0fs remaining",
+                    ctx.id,
+                    ctx.container or "unknown",
+                    global_cooldown_until - now,
+                )
+            except Exception:
+                pass
         enable_liveness = False
     liveness_suspended = False
     suspension: Optional[Dict[str, object]] = None
