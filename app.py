@@ -191,6 +191,9 @@ LIVENESS_STABLE_SEC = max(
 LIVENESS_SUSPEND_MAX_SEC = max(
     300.0, float(os.getenv("BDAG_LIVENESS_SUSPEND_MAX_SEC", "1800") or "1800")
 )
+LIVENESS_POST_RESTORE_COOLDOWN_SEC = max(
+    0.0, float(os.getenv("BDAG_LIVENESS_POST_RESTORE_COOLDOWN_SEC", "300") or "300")
+)
 _liveness_patterns_raw = [
     part.strip().lower()
     for part in str(os.getenv("BDAG_LIVENESS_RECOVER_PATTERNS", "") or "").split(",")
@@ -3690,6 +3693,13 @@ def _start_restore_job(
     thread.start()
     label = details.get("label") or details.get("node")
     message = f"Snapshot restore started for {label}" if label else "Snapshot restore started"
+    if (trigger or "").strip().lower() == "liveness":
+        container_name = details.get("container")
+        with _LOG_POLICY_LOCK:
+            if container_name and container_name in _LOG_POLICY_STATE:
+                _LOG_POLICY_STATE[container_name]["liveness_post_restore_until"] = (
+                    time.time() + LIVENESS_POST_RESTORE_COOLDOWN_SEC
+                )
     return True, message, _snapshot_job_snapshot()
 
 
@@ -4772,12 +4782,17 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
                 "liveness_restarts": 0,
                 "restore_restart_attempted": False,
                 "ever_healthy": False,
+                "liveness_post_restore_until": 0.0,
             },
         )
         last_check = float(state.get("last_check", 0.0))
         if now - last_check < LOG_ERROR_CHECK_SEC:
             return
         state["last_check"] = now
+        post_restore_until = float(state.get("liveness_post_restore_until", 0.0))
+        liveness_restore_cooldown = enable_liveness and post_restore_until > now
+        if post_restore_until and now >= post_restore_until:
+            state["liveness_post_restore_until"] = 0.0
     metrics_raw = getattr(ctx, "last_metrics", None)
     metrics = metrics_raw if isinstance(metrics_raw, dict) else {}
     failsafe_triggered = False
@@ -4809,6 +4824,17 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
     )
     if _is_importing_reason(stalled_reason_text):
         return
+    if enable_liveness and liveness_restore_cooldown:
+        try:
+            app.logger.info(
+                "Liveness cooling down after restore for %s (%s); %.0fs remaining",
+                ctx.id,
+                ctx.container or "unknown",
+                state.get("liveness_post_restore_until", 0.0) - now,
+            )
+        except Exception:
+            pass
+        enable_liveness = False
     liveness_suspended = False
     suspension: Optional[Dict[str, object]] = None
     if enable_liveness:
@@ -4987,6 +5013,7 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
                         state["liveness_restarts"] = 0
                         state["last_liveness"] = now
                         state["restore_restart_attempted"] = False
+                        state["liveness_post_restore_until"] = now + LIVENESS_POST_RESTORE_COOLDOWN_SEC
                     return
                 return
             if cooldown_elapsed:
@@ -5018,6 +5045,7 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
                             state["liveness_restarts"] = 0
                             state["last_liveness"] = now
                             state["restore_restart_attempted"] = False
+                            state["liveness_post_restore_until"] = now + LIVENESS_POST_RESTORE_COOLDOWN_SEC
                         return
                 # If we've never reached a healthy state and we've exhausted restart attempts,
                 # treat this as a boot-loop and trigger a restore even without a matching pattern.
@@ -5030,6 +5058,7 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
                             state["liveness_restarts"] = 0
                             state["last_liveness"] = now
                             state["restore_restart_attempted"] = False
+                            state["liveness_post_restore_until"] = now + LIVENESS_POST_RESTORE_COOLDOWN_SEC
                         return
                 try:
                     app.logger.info(
