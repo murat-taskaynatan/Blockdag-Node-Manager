@@ -3601,6 +3601,7 @@ def _start_snapshot_job(
 
 def _run_restore_job(details: Dict[str, object]) -> None:
     container = (details or {}).get("container") if details else None
+    trigger_label = (details.get("trigger") or "").strip().lower() if details else ""
     restart_required = False
     snapshot_path: Optional[Path] = None
     data_dir = _normalize_path(details.get("data_dir")) if details else None
@@ -3797,6 +3798,8 @@ def _run_restore_job(details: Dict[str, object]) -> None:
                 }
             )
         if status == "completed":
+            if trigger_label == "liveness" and container:
+                _set_post_restore_cooldown(container, time.time() + LIVENESS_POST_RESTORE_COOLDOWN_SEC)
             label = details.get("label") or details.get("node")
             completion_message = (
                 f"Chain data recovery completed for {label}" if label else (message or "Chain data recovery completed")
@@ -3909,10 +3912,6 @@ def _start_restore_job(
     thread.start()
     label = details.get("label") or details.get("node")
     message = f"Snapshot restore started for {label}" if label else "Snapshot restore started"
-    if (trigger or "").strip().lower() == "liveness":
-        container_name = details.get("container")
-        if container_name:
-            _set_post_restore_cooldown(container_name, time.time() + LIVENESS_POST_RESTORE_COOLDOWN_SEC)
     return True, message, _snapshot_job_snapshot()
 
 
@@ -4867,6 +4866,7 @@ def _trigger_restore_for_context(ctx: "NodeContext", reason: str) -> bool:
             status="failed",
             metadata={"reason": reason, "error": str(exc)},
         )
+        # Cooldown now starts after the restore completes (set in _run_restore_job).
         return False
     if ok:
         try:
@@ -4887,8 +4887,6 @@ def _trigger_restore_for_context(ctx: "NodeContext", reason: str) -> bool:
             status="started",
             metadata={"reason": reason},
         )
-        if ctx.container:
-            _set_post_restore_cooldown(ctx.container, time.time() + LIVENESS_POST_RESTORE_COOLDOWN_SEC)
         return True
     message = message or ""
     queued = "queued" in message.lower()
@@ -4910,8 +4908,6 @@ def _trigger_restore_for_context(ctx: "NodeContext", reason: str) -> bool:
             status="queued",
             metadata={"reason": reason, "error": message},
         )
-        if ctx.container:
-            _set_post_restore_cooldown(ctx.container, time.time() + LIVENESS_POST_RESTORE_COOLDOWN_SEC)
         return True
     try:
         app.logger.warning(
@@ -4928,8 +4924,6 @@ def _trigger_restore_for_context(ctx: "NodeContext", reason: str) -> bool:
         friendly_error = "Another restore is already in progress"
         user_message = f"Chain data recovery deferred for {ctx.id}"
         status = "skipped"
-        if ctx.container:
-            _set_post_restore_cooldown(ctx.container, time.time() + LIVENESS_POST_RESTORE_COOLDOWN_SEC)
     else:
         user_message = f"Chain data recovery failed for {ctx.id}"
         status = "failed"
