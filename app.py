@@ -614,6 +614,10 @@ _WALLET_REFRESH_LOCK = threading.Lock()
 _wallet_refresh_pending = False
 WALLET_HISTORY_PATH = (Path(__file__).resolve().parent / "data" / "wallet_history.json")
 WALLET_HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+SNAPSHOT_INTEGRITY_PATH = (Path(__file__).resolve().parent / "data" / "snapshot_integrity.json")
+SNAPSHOT_INTEGRITY_PATH.parent.mkdir(parents=True, exist_ok=True)
+_SNAPSHOT_INTEGRITY_LOCK = threading.Lock()
+_SNAPSHOT_INTEGRITY: Dict[str, dict] = {}
 LIVENESS_COOLDOWN_PATH = (Path(__file__).resolve().parent / "data" / "liveness_cooldown.json")
 LIVENESS_COOLDOWN_PATH.parent.mkdir(parents=True, exist_ok=True)
 
@@ -657,6 +661,65 @@ def _persist_wallet_history() -> None:
         temp_path.replace(WALLET_HISTORY_PATH)
     except Exception:
         pass
+
+
+def _persist_snapshot_integrity() -> None:
+    with _SNAPSHOT_INTEGRITY_LOCK:
+        payload = dict(_SNAPSHOT_INTEGRITY)
+    try:
+        temp_path = SNAPSHOT_INTEGRITY_PATH.with_suffix(".tmp")
+        temp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        temp_path.replace(SNAPSHOT_INTEGRITY_PATH)
+    except Exception:
+        pass
+
+
+def _load_snapshot_integrity() -> None:
+    if not SNAPSHOT_INTEGRITY_PATH.exists():
+        return
+    try:
+        raw = SNAPSHOT_INTEGRITY_PATH.read_text(encoding="utf-8")
+        data = json.loads(raw)
+    except Exception:
+        return
+    if not isinstance(data, dict):
+        return
+    with _SNAPSHOT_INTEGRITY_LOCK:
+        _SNAPSHOT_INTEGRITY.clear()
+        for name, payload in data.items():
+            if not isinstance(name, str) or not isinstance(payload, dict):
+                continue
+            _SNAPSHOT_INTEGRITY[name] = payload
+
+
+def _record_snapshot_integrity(name: str, payload: Dict[str, object]) -> None:
+    if not name:
+        return
+    record = dict(payload or {})
+    record.setdefault("checked_at", time.time())
+    with _SNAPSHOT_INTEGRITY_LOCK:
+        _SNAPSHOT_INTEGRITY[name] = record
+    _persist_snapshot_integrity()
+
+
+def _remove_snapshot_integrity(name: str) -> None:
+    if not name:
+        return
+    removed = False
+    with _SNAPSHOT_INTEGRITY_LOCK:
+        if name in _SNAPSHOT_INTEGRITY:
+            _SNAPSHOT_INTEGRITY.pop(name, None)
+            removed = True
+    if removed:
+        _persist_snapshot_integrity()
+
+
+def _get_snapshot_integrity(name: str) -> Optional[Dict[str, object]]:
+    if not name:
+        return None
+    with _SNAPSHOT_INTEGRITY_LOCK:
+        payload = _SNAPSHOT_INTEGRITY.get(name)
+        return dict(payload) if isinstance(payload, dict) else None
 
 
 def _persist_liveness_cooldowns() -> None:
@@ -751,6 +814,7 @@ def _schedule_wallet_refresh(*, force: bool = False) -> None:
 
 
 _load_wallet_history()
+_load_snapshot_integrity()
 _load_liveness_cooldowns()
 
 # ---------------------------------------------------------------------------
@@ -1941,6 +2005,56 @@ def _extract_snapshot_contents(
         tar.close()
 
 
+def _snapshot_integrity_check(snapshot_path: Path) -> Dict[str, object]:
+    result: Dict[str, object] = {
+        "ok": False,
+        "error": None,
+        "sst_count": 0,
+        "sst_zero": 0,
+        "entry_count": 0,
+        "bytes": 0,
+        "duration_sec": None,
+    }
+    started = time.time()
+    if not snapshot_path or not snapshot_path.exists():
+        result["error"] = "snapshot file not found"
+        return result
+    try:
+        tar = tarfile.open(snapshot_path, "r:*")
+    except Exception as exc:
+        result["error"] = f"unable to open archive: {exc}"
+        return result
+    try:
+        for member in tar:
+            if not isinstance(member, tarfile.TarInfo):
+                continue
+            if not member.isfile():
+                continue
+            result["entry_count"] += 1
+            size = int(member.size or 0)
+            result["bytes"] += size
+            name = (member.name or "").lower()
+            if name.endswith(".sst"):
+                result["sst_count"] += 1
+                if size <= 0:
+                    result["sst_zero"] += 1
+        result["duration_sec"] = max(time.time() - started, 0.0)
+        if result["sst_count"] <= 0:
+            result["error"] = "no SST files found in archive"
+        elif result["sst_zero"] > 0:
+            result["error"] = f"{result['sst_zero']} SST files are zero bytes"
+        else:
+            result["ok"] = True
+    except Exception as exc:
+        result["error"] = str(exc)
+    finally:
+        try:
+            tar.close()
+        except Exception:
+            pass
+    return result
+
+
 def _directory_size(path: Path) -> int:
     total = 0
     if not path.exists():
@@ -2389,13 +2503,15 @@ def list_snapshots() -> List[dict]:
             stat = path.stat()
         except OSError:
             continue
-        snapshots.append(
-            {
-                "name": path.name,
-                "size": stat.st_size,
-                "modified": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
-            }
-        )
+        entry = {
+            "name": path.name,
+            "size": stat.st_size,
+            "modified": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(),
+        }
+        integrity = _get_snapshot_integrity(path.name)
+        if integrity:
+            entry["integrity"] = integrity
+        snapshots.append(entry)
     return snapshots
 
 
@@ -2409,11 +2525,14 @@ def _prune_snapshots() -> None:
             continue
         target = _normalize_path(SNAPSHOT_DIR / name)
         if not target or not target.exists():
+            _remove_snapshot_integrity(name)
             continue
         try:
             target.unlink()
         except Exception:
             app.logger.warning("Failed to prune snapshot %s", name, exc_info=True)
+        else:
+            _remove_snapshot_integrity(name)
 
 
 def _stage_snapshot_source(data_dir: Path, snapshot_dir: Path) -> Path:
@@ -2847,6 +2966,7 @@ def _update_snapshot_dir(new_dir: Path) -> bool:
 def _run_snapshot_job(details: Dict[str, object]) -> None:
     dest_name: Optional[str] = None
     dest_path: Optional[Path] = None
+    integrity_info: Optional[Dict[str, object]] = None
     container = (details or {}).get("container") if details else None
     quiesce_overlay = bool(details.get("quiesce_overlay", True)) if details else True
     restart_required = False
@@ -3033,6 +3153,17 @@ def _run_snapshot_job(details: Dict[str, object]) -> None:
                         raise RuntimeError(str(fallback_exc))
                 else:
                     raise
+        if dest_path:
+            integrity_info = _snapshot_integrity_check(dest_path)
+            _record_snapshot_integrity(dest_name or dest_path.name, integrity_info)
+            details["integrity"] = integrity_info
+            if not integrity_info.get("ok"):
+                warning = (
+                    f"Snapshot integrity check failed for {dest_name or dest_path.name}: "
+                    f"{integrity_info.get('error') or 'unknown error'}"
+                )
+                with _SNAPSHOT_JOB_LOCK:
+                    _SNAPSHOT_JOB_STATE.setdefault("warnings", []).append(warning)
         message = f"Snapshot saved as {dest_name}"
         flushed = details.get("overlays") if isinstance(details, dict) else None
         if flushed:
@@ -7872,6 +8003,18 @@ def api_snapshots_create():
 @app.route("/api/snapshots/scan", methods=["POST"])
 def api_snapshots_scan():
     directory = _ensure_snapshot_dir()
+    # Populate integrity info for snapshots that haven't been checked yet.
+    snapshots = list_snapshots()
+    for entry in snapshots:
+        name = entry.get("name")
+        if not name or entry.get("integrity"):
+            continue
+        target = _normalize_path(directory / name)
+        if not target or not target.exists():
+            continue
+        info = _snapshot_integrity_check(target)
+        _record_snapshot_integrity(name, info)
+    snapshots = list_snapshots()
     message = (
         f"Snapshot directory set to {directory}. Update the path under Settings to choose a different location."
     )
@@ -7880,7 +8023,7 @@ def api_snapshots_scan():
             "ok": True,
             "message": message,
             "directory": str(SNAPSHOT_DIR),
-            "snapshots": list_snapshots(),
+            "snapshots": snapshots,
         }
     )
 
@@ -7920,6 +8063,7 @@ def api_snapshots_delete():
         normalized_target.unlink()
     except Exception as exc:
         return jsonify({"ok": False, "error": str(exc)}), 500
+    _remove_snapshot_integrity(name)
     return jsonify(
         {
             "ok": True,
