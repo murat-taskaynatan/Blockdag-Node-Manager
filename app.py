@@ -4854,6 +4854,15 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
             or _should_trigger_corruption_restore(stalled_reason_text)
         )
         if stalled_flag and not _is_restore_job_active_for_container(ctx.container):
+            try:
+                app.logger.info(
+                    "Liveness deferring restore for %s (%s) during memory cooldown; reason=%s",
+                    ctx.id,
+                    ctx.container or "unknown",
+                    stalled_reason_text or "memory cooldown",
+                )
+            except Exception:
+                pass
             _queue_pending_restore(
                 ctx.id,
                 "liveness",
@@ -4932,6 +4941,19 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
                 )
                 if restart_allowed and liveness_restarts < LIVENESS_MAX_RESTARTS:
                     next_attempt = liveness_restarts + 1
+                    try:
+                        app.logger.info(
+                            "Liveness initiating restart for %s (%s); reason=%s restart_count=%s stalled=%s running=%s ever_healthy=%s",
+                            ctx.id,
+                            ctx.container or "unknown",
+                            stalled_reason,
+                            next_attempt,
+                            stalled_flag,
+                            running_flag,
+                            ever_healthy,
+                        )
+                    except Exception:
+                        pass
                     restart_ok = _restart_container_for_policy(
                         ctx,
                         stalled_reason,
@@ -4947,6 +4969,18 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
                             state["error_streak"] = 0
                     return
                 if _trigger_restore_for_context(ctx, stalled_reason):
+                    try:
+                        app.logger.info(
+                            "Liveness initiating restore for %s (%s); reason=%s stalled=%s running=%s ever_healthy=%s",
+                            ctx.id,
+                            ctx.container or "unknown",
+                            stalled_reason,
+                            stalled_flag,
+                            running_flag,
+                            ever_healthy,
+                        )
+                    except Exception:
+                        pass
                     with _LOG_POLICY_LOCK:
                         state["last_restart"] = now
                         state["error_streak"] = 0

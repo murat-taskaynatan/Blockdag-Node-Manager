@@ -1,1 +1,92 @@
-[]
+[
+  {
+    "id": "blockdag-testnet-network-1",
+    "label": "Node1",
+    "container": "blockdag-testnet-network"
+  },
+  {
+    "id": "blockdag-testnet-network-2",
+    "label": "Node2",
+    "container": "blockdag-testnet-network-2"
+  },
+  {
+    "id": "blockdag-testnet-network-3",
+    "label": "Node3",
+    "container": "blockdag-testnet-network-3"
+  },
+  {
+    "id": "blockdag-testnet-network-4",
+    "label": "Node4",
+    "container": "blockdag-testnet-network-4"
+  },
+  {
+    "id": "blockdag-testnet-network-5",
+    "label": "Node5",
+    "container": "blockdag-testnet-network-5"
+  },
+  {
+    "id": "blockdag-testnet-network-6",
+    "label": "Node6",
+    "container": "blockdag-testnet-network-6"
+  },
+  {
+    "id": "blockdag-testnet-network-7",
+    "label": "Node7",
+    "container": "blockdag-testnet-network-7"
+  },
+  {
+    "id": "blockdag-testnet-network-8",
+    "label": "Node8",
+    "container": "blockdag-testnet-network-8"
+  },
+  {
+    "id": "blockdag-testnet-network-9",
+    "label": "Node9",
+    "container": "blockdag-testnet-network-9"
+  },
+  {
+    "id": "blockdag-testnet-network-10",
+    "label": "Node10",
+    "container": "blockdag-testnet-network-10"
+  },
+  {
+    "id": "blockdag-testnet-network-11",
+    "label": "Node11",
+    "container": "blockdag-testnet-network-11"
+  },
+  {
+    "id": "blockdag-testnet-network-12",
+    "label": "Node12",
+    "container": "blockdag-testnet-network-12"
+  },
+  {
+    "id": "blockdag-testnet-network-13",
+    "label": "Node13",
+    "container": "blockdag-testnet-network-13"
+  },
+  {
+    "id": "blockdag-testnet-network-14",
+    "label": "Node14",
+    "container": "blockdag-testnet-network-14"
+  },
+  {
+    "id": "blockdag-testnet-network-15",
+    "label": "Node15",
+    "container": "blockdag-testnet-network-15"
+  },
+  {
+    "id": "blockdag-testnet-network-16",
+    "label": "Node16",
+    "container": "blockdag-testnet-network-16"
+  },
+  {
+    "id": "blockdag-testnet-network-17",
+    "label": "Node17",
+    "container": "blockdag-testnet-network-17"
+  },
+  {
+    "id": "blockdag-testnet-network-18",
+    "label": "Node18",
+    "container": "blockdag-testnet-network-18"
+  }
+]
