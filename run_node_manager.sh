@@ -30,6 +30,9 @@ if [[ ! -x "$VENV_BIN/waitress-serve" ]]; then
   fi
   deactivate
 fi
+if [[ -d "$INSTALL_DIR/.venv" ]]; then
+  chown -R "${SUDO_USER:-$(id -un)}":"${SUDO_USER:-$(id -gn)}" "$INSTALL_DIR/.venv" 2>/dev/null || true
+fi
 ARGS=("--listen=${HOST}:${PORT}" "--threads=${WAITRESS_THREADS}" "--backlog=${WAITRESS_BACKLOG}")
 if [[ -n "$WAITRESS_CONNECTION_LIMIT" && "$WAITRESS_CONNECTION_LIMIT" != "0" ]]; then
   ARGS+=("--connection-limit=${WAITRESS_CONNECTION_LIMIT}")
