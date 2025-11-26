@@ -2500,7 +2500,12 @@ function updateSettingsStatus(message, options = {}) {
     if (!aboutVersion) return;
     const localVersion = state.updateStatus.local || localAppVersion || '—';
     aboutVersion.textContent = localVersion;
-    // Additional About controls removed for now
+    const available = !!state.updateStatus.updateAvailable;
+    const chip = document.getElementById('aboutUpdateChip');
+    if (chip) {
+      chip.hidden = !available;
+      chip.style.display = available ? 'inline-flex' : 'none';
+    }
   }
 
   async function runSelfUpdate() {

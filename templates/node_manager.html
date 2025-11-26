@@ -1118,7 +1118,10 @@
         <div class="summary-pane" data-summary-pane="about" hidden>
           <div class="snapshot-card" style="gap:12px">
             <h3 style="margin:0"></h3>
-            <div style="font-size:13px;color:var(--muted)">Version: <strong id="aboutVersion">—</strong></div>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--muted)">
+              <span>Version: <strong id="aboutVersion">—</strong></span>
+              <span class="pill" id="aboutUpdateChip" hidden style="background:rgba(255,183,77,.18);color:#ffb74d">Update available</span>
+            </div>
           </div>
         </div>
         <div class="summary-pane" data-summary-pane="snapshots" hidden>
