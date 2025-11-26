@@ -5095,8 +5095,13 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
         metrics["recovery_required"] = bool(failsafe_recovery)
         failsafe_triggered = True
         if "worker stopped" in str(failsafe_reason or "").lower():
+            # Treat worker exits as offline, not stalled
             metrics["running"] = False
             metrics["container_running"] = False
+            metrics["stalled"] = False
+            metrics["stalled_reason"] = "worker stopped"
+            metrics["health_text"] = "worker stopped (offline)"
+            metrics["health_detail"] = "worker stopped (offline)"
     if (
         not failsafe_triggered
         and metrics.get("container_running")
