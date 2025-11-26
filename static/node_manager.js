@@ -2584,6 +2584,9 @@ function updateSettingsStatus(message, options = {}) {
       setAboutStatus(ok ? 'Install completed.' : `Install failed (code ${Number.isFinite(code) ? code : '?'})`, { error: !ok });
       if (ok) {
         await loadUpdateStatus({ force: true });
+        window.setTimeout(() => {
+          window.location.reload();
+        }, 800);
       }
     } catch (err) {
       state.about.log = err?.message || 'Install failed.';
