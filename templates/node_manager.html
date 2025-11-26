@@ -665,6 +665,18 @@
             </label>
             <label class="setting-row">
               <div class="setting-text">
+                <span class="setting-title">Remote RPC endpoint</span>
+                <span class="setting-desc">Choose the reference RPC used for remote height/delta comparisons.</span>
+              </div>
+              <div class="setting-control">
+                <select id="settingRemoteRpcProfile" name="remote_rpc_profile" data-setting-key="remote_rpc_profile" data-setting-type="select-one">
+                  <option value="ip">IP endpoint (13.245.135.249:18545)</option>
+                  <option value="https">HTTPS endpoint (rpc.awakening.bdagscan.com)</option>
+                </select>
+              </div>
+            </label>
+            <label class="setting-row">
+              <div class="setting-text">
                 <span class="setting-title">Show wallet panel</span>
                 <span class="setting-desc">Enable the Wallet tab and display balance/history using the detected or override address.</span>
               </div>

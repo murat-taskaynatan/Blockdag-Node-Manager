@@ -319,6 +319,7 @@ const automationLogUpdated = document.getElementById('automationLogUpdated');
     display_wallet_balance: true,
     snapshot_max: 0,
     cpu_temp_path: '',
+    remote_rpc_profile: 'ip',
     login_gate_enabled: false,
     login_user: '',
     login_pass: '',
@@ -2463,6 +2464,11 @@ function updateSettingsStatus(message, options = {}) {
         const safeValue = Number.isFinite(value) && value >= 0 ? value : Number(defaultSettings[key] || 0);
         input.value = safeValue;
         state.settings[key] = safeValue;
+      } else if (type === 'select-one') {
+        const raw = merged[key];
+        const value = typeof raw === 'string' ? raw : raw == null ? '' : String(raw);
+        input.value = value;
+        state.settings[key] = value;
       } else if (type === 'text') {
         const raw = merged[key];
         const value = typeof raw === 'string' ? raw : raw == null ? '' : String(raw);

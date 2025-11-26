@@ -560,11 +560,19 @@ def _normalize_remote_url(url: Optional[str]) -> str:
 
 
 PRIMARY_REMOTE_RPC_BASE = _normalize_remote_url("http://13.245.135.249:18545")
+ALT_REMOTE_RPC_BASE = _normalize_remote_url("https://rpc.awakening.bdagscan.com")
 LEGACY_REMOTE_RPC_BASES: List[str] = []
+
+REMOTE_RPC_PROFILES = {
+    "ip": PRIMARY_REMOTE_RPC_BASE,
+    "https": ALT_REMOTE_RPC_BASE,
+}
 
 DEFAULT_REMOTE_RPC_BASES = [
     PRIMARY_REMOTE_RPC_BASE,
 ]
+
+ACTIVE_REMOTE_BASES = DEFAULT_REMOTE_RPC_BASES[:]
 
 
 def _parse_remote_rpc_bases(raw) -> List[str]:
@@ -930,6 +938,7 @@ DEFAULT_SETTINGS: Dict[str, object] = {
     "snapshot_max": SNAPSHOT_MAX_DEFAULT,
     "snapshot_dir": os.getenv("BDAG_SNAPSHOT_DIR", SNAPSHOT_DIR_DEFAULT_PATH),
     "cpu_temp_path": "/mnt/hgfs/vmshared/cpu_temp.txt",
+    "remote_rpc_profile": "ip",
     "wallet_address": "",
     # Overclock preferences (persist UI selections)
     "overclock_data_path": "/home/node/blockdag",
@@ -971,6 +980,7 @@ def _apply_runtime_settings(settings: Dict[str, object]) -> None:
     global LOGIN_USER
     global LOGIN_PASS
     global LOGIN_ENABLED
+    global ACTIVE_REMOTE_BASES
     snapshot_limit = settings.get("snapshot_max")
     if isinstance(snapshot_limit, int) and snapshot_limit >= 0:
         SNAPSHOT_MAX = snapshot_limit
@@ -1025,6 +1035,13 @@ def _apply_runtime_settings(settings: Dict[str, object]) -> None:
                     pass
                 SNAPSHOT_DIR = candidate
                 break
+
+    profile = str(settings.get("remote_rpc_profile") or "ip").strip().lower()
+    if profile in REMOTE_RPC_PROFILES:
+        ACTIVE_REMOTE_BASES = [_normalize_remote_url(REMOTE_RPC_PROFILES[profile])]
+    else:
+        ACTIVE_REMOTE_BASES = DEFAULT_REMOTE_BASES[:]
+    DEFAULT_NODE_SETTINGS["remote_rpc_bases"] = ACTIVE_REMOTE_BASES[:]
 
     login_user = str(settings.get("login_user") or "").strip() or _ENV_LOGIN_USER
     login_pass = str(settings.get("login_pass") or "").strip() or _ENV_LOGIN_PASS
@@ -4392,7 +4409,7 @@ class NodeContext:
         if not remote_candidates and merged.get("remote_rpc_base"):
             remote_candidates = [merged.get("remote_rpc_base")]
         remote_bases = _parse_remote_rpc_bases(remote_candidates)
-        self.remote_rpc_bases = remote_bases or DEFAULT_NODE_SETTINGS["remote_rpc_bases"][:]
+        self.remote_rpc_bases = remote_bases or ACTIVE_REMOTE_BASES[:]
         self.remote_rpc_method = merged.get("remote_rpc_method") or DEFAULT_NODE_SETTINGS["remote_rpc_method"]
         self.remote_rpc_timeout = float(
             merged.get("remote_rpc_timeout", DEFAULT_NODE_SETTINGS["remote_rpc_timeout"])
