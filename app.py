@@ -3282,10 +3282,6 @@ def _run_snapshot_job(details: Dict[str, object]) -> None:
         if flushed:
             message += f" (overlays flushed: {', '.join(flushed)})"
         status = "completed"
-        # Post-snapshot sanity check on the captured archive to catch obvious corruption.
-        sanity_warnings = _snapshot_post_restore_sanity(data_dir)
-        if sanity_warnings:
-            details["post_snapshot_warnings"] = sanity_warnings
         if SNAPSHOT_MAX > 0:
             _prune_snapshots()
     except Exception as exc:
@@ -3838,10 +3834,6 @@ def _run_restore_job(details: Dict[str, object]) -> None:
         label = details.get("label") or details.get("node")
         if label:
             message = f"Snapshot {snapshot_path.name} restored to {label}"
-        sanity_warnings = _snapshot_post_restore_sanity(data_dir)
-        if sanity_warnings:
-            details["post_restore_warnings"] = sanity_warnings
-            job_warnings.extend(sanity_warnings)
         status = "completed"
         _prune_pre_restore_backups(data_dir)
     except Exception as exc:
