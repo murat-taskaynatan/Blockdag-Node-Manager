@@ -122,6 +122,7 @@ echo "[2/10] Syncing files to $INSTALL_DIR"
 sudo mkdir -p "$INSTALL_DIR"
 sudo chown "$SERVICE_USER":"$SERVICE_GROUP" "$INSTALL_DIR"
 rsync -a --delete \
+  --filter='protect .venv/' \
   --exclude='.git/' \
   --exclude='.venv/' \
   "$SOURCE_DIR/" "$INSTALL_DIR/"
@@ -149,7 +150,9 @@ else
 fi
 
 echo "[3/10] Preparing Python environment"
-"$PYTHON_BIN" -m venv "$INSTALL_DIR/.venv"
+if [[ ! -d "$INSTALL_DIR/.venv" ]]; then
+  "$PYTHON_BIN" -m venv "$INSTALL_DIR/.venv"
+fi
 source "$INSTALL_DIR/.venv/bin/activate"
 pip install --upgrade pip >/dev/null
 if [[ -f "$INSTALL_DIR/requirements.txt" ]]; then
