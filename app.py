@@ -6818,6 +6818,20 @@ def api_node_manager_self_update():
         return jsonify({"error": str(exc)}), 500
 
 
+@app.route("/api/node-manager/self-update/log", methods=["GET"])
+def api_node_manager_self_update_log():
+    """Return the current contents of the self-update log for UI streaming."""
+    log_path = Path("/tmp/node-manager-self-update.log")
+    try:
+        if not log_path.exists():
+            return jsonify({"log": "", "mtime": None, "missing": True})
+        text = log_path.read_text(encoding="utf-8", errors="replace")
+        mtime = log_path.stat().st_mtime
+        return jsonify({"log": text, "mtime": mtime, "missing": False})
+    except Exception as exc:  # pragma: no cover - defensive
+        return jsonify({"log": "", "error": str(exc)}), 500
+
+
 @app.route("/api/node-manager/logs")
 def api_node_manager_logs():
     node_id = request.args.get("node") or None

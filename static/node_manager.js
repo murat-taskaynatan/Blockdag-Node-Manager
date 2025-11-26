@@ -41,6 +41,7 @@ const state = {
     about: {
       installing: false,
       log: 'No install attempts yet.',
+      logPollTimer: null,
     },
     nodesDiscovering: false,
     discoveryStartTs: 0,
@@ -2475,6 +2476,50 @@ function updateSettingsStatus(message, options = {}) {
     aboutStatus.style.color = options.error ? 'var(--bad)' : 'var(--muted)';
   }
 
+  function stopSelfUpdateLogStream() {
+    if (state.about.logPollTimer) {
+      clearInterval(state.about.logPollTimer);
+      state.about.logPollTimer = null;
+    }
+  }
+
+  async function fetchSelfUpdateLogTick() {
+    try {
+      const res = await fetch('/api/node-manager/self-update/log');
+      const payload = await res.json();
+      const text = payload?.log || '';
+      state.about.log = text || 'Waiting for log...';
+      if (aboutInstallLog) {
+        aboutInstallLog.textContent = state.about.log;
+      }
+      const finished =
+        /Installation summary/i.test(text) ||
+        /Installation complete/i.test(text) ||
+        /Installation finished/i.test(text);
+      if (finished) {
+        stopSelfUpdateLogStream();
+        state.about.installing = false;
+        setAboutStatus('Install completed. Reloading…');
+        loadUpdateStatus({ force: true }).finally(() => {
+          window.setTimeout(() => window.location.reload(), 1000);
+        });
+      }
+    } catch (err) {
+      state.about.log = err?.message || 'Waiting for log...';
+      if (aboutInstallLog) aboutInstallLog.textContent = state.about.log;
+    }
+  }
+
+  function startSelfUpdateLogStream() {
+    stopSelfUpdateLogStream();
+    fetchSelfUpdateLogTick();
+    state.about.logPollTimer = window.setInterval(fetchSelfUpdateLogTick, 1500);
+    window.setTimeout(() => {
+      stopSelfUpdateLogStream();
+      state.about.installing = false;
+    }, 120000);
+  }
+
   function versionKey(raw) {
     if (!raw) return [];
     let cleaned = String(raw).trim();
@@ -2563,7 +2608,12 @@ function updateSettingsStatus(message, options = {}) {
   async function runSelfUpdate() {
     if (!aboutInstallBtn || state.about.installing) return;
     state.about.installing = true;
+    setAboutStatus('Update queued…');
     renderAboutUpdateStatus();
+    stopSelfUpdateLogStream();
+    if (aboutInstallLog) {
+      aboutInstallLog.textContent = 'Queued update… streaming logs shortly.';
+    }
     try {
       const res = await fetch('/api/node-manager/self-update', { method: 'POST' });
       let payload = {};
@@ -2572,28 +2622,23 @@ function updateSettingsStatus(message, options = {}) {
       } catch (_) {
         payload = { error: `HTTP ${res.status}` };
       }
-      const stdout = payload?.stdout || '';
-      const stderr = payload?.stderr || '';
-      const code = Number(payload?.code);
-      const combined = [stdout, stderr].filter(Boolean).join('\n').trim() || 'No output.';
-      state.about.log = combined;
-      if (aboutInstallLog) {
-        aboutInstallLog.textContent = combined;
+      if (payload?.error) {
+        throw new Error(payload.error);
       }
-      const ok = Number.isFinite(code) ? code === 0 : false;
-      setAboutStatus(ok ? 'Install completed.' : `Install failed (code ${Number.isFinite(code) ? code : '?'})`, { error: !ok });
-      if (ok) {
-        await loadUpdateStatus({ force: true });
-        window.setTimeout(() => {
-          window.location.reload();
-        }, 800);
-      }
+      state.about.log = 'Update queued; streaming logs…';
+      if (aboutInstallLog) aboutInstallLog.textContent = state.about.log;
+      startSelfUpdateLogStream();
+      setAboutStatus('Update in progress…');
     } catch (err) {
       state.about.log = err?.message || 'Install failed.';
       if (aboutInstallLog) aboutInstallLog.textContent = state.about.log;
       setAboutStatus('Install failed.', { error: true });
-    } finally {
       state.about.installing = false;
+      stopSelfUpdateLogStream();
+    } finally {
+      if (!state.about.logPollTimer) {
+        state.about.installing = false;
+      }
       renderAboutUpdateStatus();
     }
   }
