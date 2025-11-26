@@ -1,5 +1,7 @@
 (() => {
-const state = {
+  const localAppVersion = (typeof window !== 'undefined' && window.__APP_VERSION__) ? window.__APP_VERSION__ : '—';
+  const initialLatestVersion = (typeof window !== 'undefined' && window.__APP_LATEST__) ? window.__APP_LATEST__ : null;
+  const state = {
     nodes: new Map(), // id -> { card, meta }
     charts: new Map(), // id -> Chart instance
     chartViews: new Map(), // id -> active chart view
@@ -126,8 +128,6 @@ const automationLogUpdated = document.getElementById('automationLogUpdated');
   const aboutStatus = document.getElementById('aboutStatus');
   const aboutInstallLog = document.getElementById('aboutInstallLog');
   const updateIndicator = document.getElementById('updateIndicator');
-  const localAppVersion = (typeof window !== 'undefined' && window.__APP_VERSION__) ? window.__APP_VERSION__ : '—';
-  const initialLatestVersion = (typeof window !== 'undefined' && window.__APP_LATEST__) ? window.__APP_LATEST__ : null;
   const walletAddressValue = document.getElementById('walletAddressValue');
   const walletBalanceValue = document.getElementById('walletBalanceValue');
   const walletTotalValue = document.getElementById('walletTotalValue');
