@@ -2553,6 +2553,11 @@ function updateSettingsStatus(message, options = {}) {
       aboutReleaseNotes.hidden = !showNotes;
       aboutReleaseNotes.textContent = showNotes ? notes.trim() : '';
     }
+    const installLogEl = document.getElementById('aboutInstallLog');
+    const installLogWrap = installLogEl ? installLogEl.parentElement : null;
+    if (installLogWrap) {
+      installLogWrap.hidden = !available;
+    }
   }
 
   async function runSelfUpdate() {
