@@ -3744,12 +3744,34 @@ def _run_restore_job(details: Dict[str, object]) -> None:
         if sanity_warnings:
             details["post_restore_warnings"] = sanity_warnings
             job_warnings.extend(sanity_warnings)
+            try:
+                _record_snapshot_integrity(
+                    snapshot_path.name,
+                    {
+                        "ok": False,
+                        "error": "; ".join(sanity_warnings) or "post-restore sanity warnings",
+                        "warnings": sanity_warnings,
+                    },
+                )
+            except Exception:
+                pass
         status = "completed"
         _prune_pre_restore_backups(data_dir)
     except Exception as exc:
         status = "error"
         message = f"Snapshot restore failed: {exc}"
         details["restart"] = False
+        if snapshot_path:
+            try:
+                _record_snapshot_integrity(
+                    snapshot_path.name,
+                    {
+                        "ok": False,
+                        "error": message,
+                    },
+                )
+            except Exception:
+                pass
         if backup_dir and backup_dir.exists():
             try:
                 if data_dir.exists():

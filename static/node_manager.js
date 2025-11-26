@@ -1745,6 +1745,24 @@ const automationLogUpdated = document.getElementById('automationLogUpdated');
         metaEl.textContent = metaParts.length ? metaParts.join(' • ') : '—';
         tile.appendChild(metaEl);
 
+        const integrity = item.integrity || {};
+        const statusEl = document.createElement('span');
+        statusEl.className = 'snapshot-status';
+        const integrityOk = Boolean(integrity.ok);
+        let statusText = 'Integrity unknown';
+        let statusLevel = 'warn';
+        if (integrityOk) {
+          statusText = 'Integrity OK';
+          statusLevel = 'ok';
+        } else if (integrity && (integrity.error || integrity.warnings)) {
+          statusText = `Corrupt: ${integrity.error || 'failed integrity check'}`;
+          statusLevel = 'error';
+        }
+        statusEl.textContent = statusText;
+        statusEl.classList.add(`is-${statusLevel}`);
+        statusEl.title = integrity.error || '';
+        tile.appendChild(statusEl);
+
         const actions = document.createElement('div');
         actions.className = 'snapshot-tile__actions';
         const deleteBtn = document.createElement('button');
