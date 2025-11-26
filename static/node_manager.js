@@ -2498,11 +2498,12 @@ function updateSettingsStatus(message, options = {}) {
 
   function renderAboutUpdateStatus() {
     if (!aboutVersion) return;
-    aboutVersion.textContent = localAppVersion || '—';
+    const localVersion = state.updateStatus.local || localAppVersion || '—';
+    aboutVersion.textContent = localVersion;
     const latest = state.updateStatus.latest || initialLatestVersion || '—';
     if (aboutLatest) aboutLatest.textContent = latest;
     if (aboutLatestPill) aboutLatestPill.hidden = !latest;
-    const available = !!state.updateStatus.updateAvailable && isNewerVersion(latest, localAppVersion);
+    const available = !!state.updateStatus.updateAvailable && isNewerVersion(latest, localVersion);
     if (aboutUpdateBadge) aboutUpdateBadge.hidden = !available;
     if (aboutInstallBtn) {
       aboutInstallBtn.hidden = !available;
