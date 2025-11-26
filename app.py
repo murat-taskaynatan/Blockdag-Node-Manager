@@ -4578,6 +4578,15 @@ class NodeContext:
                 metrics["health_text"] = stalled_reason
                 metrics["health_detail"] = stalled_reason
                 metrics["stalled_reason"] = stalled_reason
+            # Worker-stopped should always render offline, not stalled.
+            wt = str(metrics.get("health_text") or metrics.get("health_detail") or "").lower()
+            if "worker stopped" in wt:
+                metrics["running"] = False
+                metrics["container_running"] = False
+                metrics["stalled"] = False
+                metrics["stalled_reason"] = "worker stopped (offline)"
+                metrics["health_text"] = "worker stopped (offline)"
+                metrics["health_detail"] = "worker stopped (offline)"
             else:
                 metrics.pop("health_text", None)
                 metrics.pop("health_detail", None)
