@@ -2505,7 +2505,11 @@ function updateSettingsStatus(message, options = {}) {
     const latestParts = versionKey(latest);
     const localParts = versionKey(localVersion);
     const hasVersions = latestParts.length > 0 && localParts.length > 0;
-    const available = hasVersions && isNewerVersion(latest, localVersion);
+    const available =
+      Boolean(latest) &&
+      hasVersions &&
+      latest.trim() !== localVersion.trim() &&
+      isNewerVersion(latest, localVersion);
     state.updateStatus.updateAvailable = available;
     if (aboutUpdateBadge) {
       aboutUpdateBadge.hidden = !available;
