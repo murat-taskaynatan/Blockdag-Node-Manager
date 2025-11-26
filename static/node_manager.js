@@ -2503,7 +2503,8 @@ function updateSettingsStatus(message, options = {}) {
     const latest = state.updateStatus.latest || initialLatestVersion || '—';
     if (aboutLatest) aboutLatest.textContent = latest;
     if (aboutLatestPill) aboutLatestPill.hidden = !latest;
-    const available = !!state.updateStatus.updateAvailable && isNewerVersion(latest, localVersion);
+    const available = isNewerVersion(latest, localVersion);
+    state.updateStatus.updateAvailable = available;
     if (aboutUpdateBadge) aboutUpdateBadge.hidden = !available;
     if (aboutInstallBtn) {
       aboutInstallBtn.hidden = !available;
