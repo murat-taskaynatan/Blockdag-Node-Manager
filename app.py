@@ -4537,6 +4537,15 @@ class NodeContext:
     def snapshot(self, *, include_series: bool = False) -> dict:
         with self.lock:
             metrics = dict(self.last_metrics or self._empty_metrics())
+            # Ensure worker-stopped always renders offline.
+            ht = str(metrics.get("health_text") or metrics.get("health_detail") or "").lower()
+            if "worker stopped" in ht:
+                metrics["running"] = False
+                metrics["container_running"] = False
+                metrics["stalled"] = False
+                metrics["stalled_reason"] = "worker stopped (offline)"
+                metrics["health_text"] = "worker stopped (offline)"
+                metrics["health_detail"] = "worker stopped (offline)"
             metrics.setdefault("running", self.running)
             metrics.setdefault("peer_id", self.peer_identity())
             if "peer_ports" not in metrics:
