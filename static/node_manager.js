@@ -2509,6 +2509,11 @@ function updateSettingsStatus(message, options = {}) {
     if (aboutInstallBtn) {
       aboutInstallBtn.hidden = !available;
       aboutInstallBtn.disabled = state.about.installing;
+    } else {
+      // force hide any stray button clones
+      document.querySelectorAll('#aboutInstallBtn').forEach((btn) => {
+        btn.hidden = true;
+      });
     }
   }
 
