@@ -113,6 +113,12 @@ const state = {
   const aboutInstallBtn = document.getElementById('aboutInstallBtn');
   const aboutInstallLog = document.getElementById('aboutInstallLog');
   const aboutReleaseNotes = document.getElementById('aboutReleaseNotes');
+  function scrollInstallLogToBottom() {
+    if (!aboutInstallLog) return;
+    window.requestAnimationFrame(() => {
+      aboutInstallLog.scrollTop = aboutInstallLog.scrollHeight;
+    });
+  }
 const automationLogRefreshBtn = document.getElementById('automationLogRefresh');
 const automationLogCount = document.getElementById('automationLogCount');
 const automationLogTabCount = document.getElementById('automationLogTabCount');
@@ -2491,6 +2497,7 @@ function updateSettingsStatus(message, options = {}) {
       state.about.log = text || 'Waiting for log...';
       if (aboutInstallLog) {
         aboutInstallLog.textContent = state.about.log;
+        scrollInstallLogToBottom();
       }
       const finished =
         /Installation summary/i.test(text) ||
@@ -2506,7 +2513,10 @@ function updateSettingsStatus(message, options = {}) {
       }
     } catch (err) {
       state.about.log = err?.message || 'Waiting for log...';
-      if (aboutInstallLog) aboutInstallLog.textContent = state.about.log;
+      if (aboutInstallLog) {
+        aboutInstallLog.textContent = state.about.log;
+        scrollInstallLogToBottom();
+      }
     }
   }
 
@@ -2613,6 +2623,7 @@ function updateSettingsStatus(message, options = {}) {
     stopSelfUpdateLogStream();
     if (aboutInstallLog) {
       aboutInstallLog.textContent = 'Queued update… streaming logs shortly.';
+      scrollInstallLogToBottom();
     }
     try {
       const res = await fetch('/api/node-manager/self-update', { method: 'POST' });
@@ -2626,12 +2637,18 @@ function updateSettingsStatus(message, options = {}) {
         throw new Error(payload.error);
       }
       state.about.log = 'Update queued; streaming logs…';
-      if (aboutInstallLog) aboutInstallLog.textContent = state.about.log;
+      if (aboutInstallLog) {
+        aboutInstallLog.textContent = state.about.log;
+        scrollInstallLogToBottom();
+      }
       startSelfUpdateLogStream();
       setAboutStatus('Update in progress…');
     } catch (err) {
       state.about.log = err?.message || 'Install failed.';
-      if (aboutInstallLog) aboutInstallLog.textContent = state.about.log;
+      if (aboutInstallLog) {
+        aboutInstallLog.textContent = state.about.log;
+        scrollInstallLogToBottom();
+      }
       setAboutStatus('Install failed.', { error: true });
       state.about.installing = false;
       stopSelfUpdateLogStream();
