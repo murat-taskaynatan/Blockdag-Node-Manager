@@ -1285,6 +1285,6 @@
 </div>
 <script>
   window.__APP_VERSION__ = "{{ app_version }}";
-  window.__APP_LATEST__ = "{{ app_latest_version or '' }}";
+  window.__APP_LATEST__ = "";
 </script>
 <script src="{{ url_for('static', filename='node_manager.js') }}?v={{ app_version }}-{{ cache_buster }}"></script>
