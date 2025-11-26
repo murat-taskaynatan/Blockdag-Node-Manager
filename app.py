@@ -5091,6 +5091,7 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
                 "restore_restart_attempted": False,
                 "ever_healthy": False,
                 "liveness_post_restore_until": 0.0,
+                "worker_stopped_until": 0.0,
             },
         )
         last_check = float(state.get("last_check", 0.0))
@@ -5125,6 +5126,11 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
             metrics["stalled_reason"] = "worker stopped"
             metrics["health_text"] = "worker stopped (offline)"
             metrics["health_detail"] = "worker stopped (offline)"
+            try:
+                with _LOG_POLICY_LOCK:
+                    state["worker_stopped_until"] = max(time.time() + LIVENESS_STABLE_SEC, float(state.get("worker_stopped_until", 0.0)))
+            except Exception:
+                pass
     if (
         not failsafe_triggered
         and metrics.get("container_running")
@@ -5265,6 +5271,23 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
         )
         running_flag = bool(metrics.get("running") or metrics.get("container_running"))
         uptime_seconds = float(metrics.get("uptime_seconds") or 0.0)
+        worker_stopped_until = 0.0
+        try:
+            with _LOG_POLICY_LOCK:
+                worker_stopped_until = float(state.get("worker_stopped_until", 0.0))
+                if worker_stopped_until and worker_stopped_until <= now:
+                    state["worker_stopped_until"] = 0.0
+        except Exception:
+            worker_stopped_until = 0.0
+        if worker_stopped_until > now and not running_flag:
+            offline_reason = metrics.get("health_detail") or metrics.get("health_text") or "worker stopped (offline)"
+            metrics["running"] = False
+            metrics["container_running"] = False
+            metrics["stalled"] = False
+            metrics["stalled_reason"] = offline_reason
+            metrics["health_text"] = offline_reason
+            metrics["health_detail"] = offline_reason
+            return
         if not running_flag:
             offline_reason = (
                 metrics.get("health_detail")
