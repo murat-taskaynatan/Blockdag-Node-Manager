@@ -2498,6 +2498,34 @@ function updateSettingsStatus(message, options = {}) {
     return false;
   }
 
+  function escapeRegex(str) {
+    return String(str || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function extractReleaseSection(version, notesText) {
+    if (!version || !notesText) return '';
+    const normalized = String(version).replace(/^v/i, '');
+    const headingRe = new RegExp(`^##?\\s*\\[?v?${escapeRegex(normalized)}\\]?\\b`, 'i');
+    const lines = String(notesText).split(/\r?\n/);
+    let start = -1;
+    for (let i = 0; i < lines.length; i += 1) {
+      if (headingRe.test(lines[i])) {
+        start = i;
+        break;
+      }
+    }
+    if (start === -1) return '';
+    let end = lines.length;
+    const nextHeading = new RegExp('^##?\\s*\\[?v?\\d', 'i');
+    for (let j = start + 1; j < lines.length; j += 1) {
+      if (nextHeading.test(lines[j])) {
+        end = j;
+        break;
+      }
+    }
+    return lines.slice(start, end).join('\n').trim();
+  }
+
   function renderAboutUpdateStatus() {
     if (!aboutVersion) return;
     const localVersion = state.updateStatus.local || localAppVersion || '—';
@@ -2682,7 +2710,7 @@ async function loadSettings() {
           const notesRes = await fetch(`https://raw.githubusercontent.com/murat-taskaynatan/Blockdag-Node-Manager/${latest}/CHANGELOG.md`, { cache: 'no-store' });
           if (notesRes.ok) {
             const notes = await notesRes.text();
-            state.about.releaseNotes = notes || '';
+            state.about.releaseNotes = extractReleaseSection(latest, notes) || '';
           } else {
             state.about.releaseNotes = '';
           }
