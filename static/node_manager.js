@@ -2549,8 +2549,9 @@ function updateSettingsStatus(message, options = {}) {
     }
     if (aboutReleaseNotes) {
       const notes = available ? (state.about.releaseNotes || '') : '';
-      aboutReleaseNotes.hidden = !(available && notes.trim());
-      aboutReleaseNotes.textContent = aboutReleaseNotes.hidden ? '' : notes.trim();
+      const showNotes = available && notes.trim();
+      aboutReleaseNotes.hidden = !showNotes;
+      aboutReleaseNotes.textContent = showNotes ? notes.trim() : '';
     }
   }
 
