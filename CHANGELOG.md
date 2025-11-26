@@ -1,7 +1,5 @@
 # Changelog
 
-# Changelog
-
 ## v1.7.0 - 2025-11-26
 
 - About pane now shows version/update chips inline with an install button and release notes for the latest tag; badges only appear when a newer release is detected.
