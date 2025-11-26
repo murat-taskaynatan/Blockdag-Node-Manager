@@ -2502,12 +2502,14 @@ function updateSettingsStatus(message, options = {}) {
     aboutVersion.textContent = localVersion;
     const latest = state.updateStatus.latest || '';
     if (aboutLatest) aboutLatest.textContent = latest || '—';
-    if (aboutLatestPill) aboutLatestPill.hidden = !latest;
     const available = Boolean(latest) && isNewerVersion(latest, localVersion);
     state.updateStatus.updateAvailable = available;
     if (aboutUpdateBadge) {
       aboutUpdateBadge.hidden = !available;
       aboutUpdateBadge.style.display = available ? 'inline-flex' : 'none';
+    }
+    if (aboutLatestPill) {
+      aboutLatestPill.hidden = !available;
     }
     if (aboutInstallBtn) {
       aboutInstallBtn.hidden = !available;
