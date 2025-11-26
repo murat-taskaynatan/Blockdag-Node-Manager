@@ -524,16 +524,13 @@
               <button class="summary-tab" type="button" data-summary-tab="launchpad" aria-selected="false">Launchpad</button>
               <span style="display:inline-flex;align-items:center;gap:0;line-height:1">
                 <button class="summary-tab" type="button" data-summary-tab="about" aria-selected="false">About</button>
-                <a
+                <span
                   class="update-indicator{% if app_update_available %} is-visible{% endif %}"
                   id="updateIndicator"
-                  href="https://github.com/murat-taskaynatan/Blockdag-Node-Manager/releases"
-                  target="_blank"
-                  rel="noopener"
-                  aria-label="Update available on GitHub"
-                  title="Update available on GitHub"
                   data-latest-version="{{ app_latest_version or '' }}"
-                >⬇</a>
+                  title="Update available"
+                  aria-label="Update available"
+                >⬇</span>
               </span>
             </div>
           </div>
