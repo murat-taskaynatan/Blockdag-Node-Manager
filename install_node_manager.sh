@@ -112,7 +112,7 @@ fi
 
 echo "[1/10] Removing any existing installation of $SERVICE_NAME (if present)"
 if systemctl list-unit-files --type=service 2>/dev/null | grep -q "^${SERVICE_NAME}"; then
-  sudo systemctl disable --now "$SERVICE_NAME" >/dev/null 2>&1 || true
+  sudo systemctl stop "$SERVICE_NAME" >/dev/null 2>&1 || true
 fi
 sudo rm -f "$SYSTEMD_DIR/$SERVICE_NAME"
 sudo rm -f "$ENV_FILE"
