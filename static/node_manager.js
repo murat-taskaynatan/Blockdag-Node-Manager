@@ -2500,8 +2500,8 @@ function updateSettingsStatus(message, options = {}) {
     if (!aboutVersion) return;
     const localVersion = state.updateStatus.local || localAppVersion || '—';
     aboutVersion.textContent = localVersion;
-    const latest = state.updateStatus.latest || initialLatestVersion || '—';
-    if (aboutLatest) aboutLatest.textContent = latest;
+    const latest = state.updateStatus.latest || '';
+    if (aboutLatest) aboutLatest.textContent = latest || '—';
     if (aboutLatestPill) aboutLatestPill.hidden = !latest;
     const available = isNewerVersion(latest, localVersion);
     state.updateStatus.updateAvailable = available;
