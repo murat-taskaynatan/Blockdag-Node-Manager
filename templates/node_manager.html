@@ -1122,6 +1122,15 @@
               <span>Version: <strong id="aboutVersion">—</strong></span>
               <span class="pill" id="aboutUpdateChip" hidden style="background:rgba(255,183,77,.18);color:#ffb74d">Update available</span>
             </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+              <button type="button" class="pill-btn btn--danger" id="aboutInstallBtn" hidden>
+                <span class="icon">⬇</span> Install update
+              </button>
+            </div>
+            <div style="width:100%">
+              <div style="font-size:12px;color:var(--muted);margin-bottom:4px">Install log</div>
+              <pre id="aboutInstallLog" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:10px;min-height:80px;max-height:180px;overflow:auto;margin:0">No install attempts yet.</pre>
+            </div>
           </div>
         </div>
         <div class="summary-pane" data-summary-pane="snapshots" hidden>

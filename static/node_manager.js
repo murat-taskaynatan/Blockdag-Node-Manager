@@ -108,6 +108,8 @@
   const automationLogList = document.getElementById('automationLogList');
   const automationLogEmpty = document.getElementById('automationLogEmpty');
   const automationLogStatus = document.getElementById('automationLogStatus');
+  const aboutInstallBtn = document.getElementById('aboutInstallBtn');
+  const aboutInstallLog = document.getElementById('aboutInstallLog');
 const automationLogRefreshBtn = document.getElementById('automationLogRefresh');
 const automationLogCount = document.getElementById('automationLogCount');
 const automationLogTabCount = document.getElementById('automationLogTabCount');
@@ -2506,13 +2508,16 @@ function updateSettingsStatus(message, options = {}) {
       chip.hidden = !available;
       chip.style.display = available ? 'inline-flex' : 'none';
     }
+    if (aboutInstallBtn) {
+      aboutInstallBtn.hidden = !available;
+      aboutInstallBtn.disabled = state.about.installing;
+    }
   }
 
   async function runSelfUpdate() {
     if (!aboutInstallBtn || state.about.installing) return;
     state.about.installing = true;
     renderAboutUpdateStatus();
-    setAboutStatus('Installing update…');
     try {
       const res = await fetch('/api/node-manager/self-update', { method: 'POST' });
       let payload = {};
