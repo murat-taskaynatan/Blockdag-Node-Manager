@@ -4811,6 +4811,13 @@ def _logs_show_importing(container: Optional[str]) -> bool:
     lines = _get_recent_logs(LOG_ERROR_TAIL, container)
     if not lines:
         return False
+    # If recent logs already show worker stopped, treat it as offline instead of importing
+    for line in reversed(lines):
+        normalized = line.strip().lower()
+        if not normalized:
+            continue
+        if "worker stopped" in normalized:
+            return False
     importing_markers = (
         "importing blocks",
         "downloading blocks",
