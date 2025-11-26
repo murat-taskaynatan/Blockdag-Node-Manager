@@ -2677,12 +2677,14 @@ async function loadSettings() {
       state.updateStatus.local = local;
       state.updateStatus.updateAvailable = newer;
       state.updateStatus.error = null;
-      if (newer) {
+      if (newer && latest) {
         try {
-          const notesRes = await fetch('https://raw.githubusercontent.com/murat-taskaynatan/Blockdag-Node-Manager/main/CHANGELOG.md', { cache: 'no-store' });
+          const notesRes = await fetch(`https://raw.githubusercontent.com/murat-taskaynatan/Blockdag-Node-Manager/${latest}/CHANGELOG.md`, { cache: 'no-store' });
           if (notesRes.ok) {
             const notes = await notesRes.text();
             state.about.releaseNotes = notes || '';
+          } else {
+            state.about.releaseNotes = '';
           }
         } catch (_) {
           state.about.releaseNotes = '';
