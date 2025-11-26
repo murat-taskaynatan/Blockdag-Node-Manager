@@ -113,6 +113,39 @@ const state = {
   const aboutInstallBtn = document.getElementById('aboutInstallBtn');
   const aboutInstallLog = document.getElementById('aboutInstallLog');
   const aboutReleaseNotes = document.getElementById('aboutReleaseNotes');
+  const aboutAnsiContainer = document.getElementById('aboutAnsiContainer');
+  const aboutAnsiAnim = document.getElementById('aboutAnsiAnim');
+  let aboutAnsiTimer = null;
+  let aboutAnsiFrame = 0;
+  const ansiFrames = [
+    '\u001b[36m┌───────────────────────┐\u001b[0m\n\u001b[36m│ \u001b[1m BlockDAG Network \u001b[22m │\u001b[0m\n\u001b[36m└───────────────────────┘\u001b[0m',
+    '\u001b[36m┌───────────────────────┐\u001b[0m\n\u001b[36m│ \u001b[1m BlockDAG Network \u001b[22m │\u001b[0m\n\u001b[36m└───────────────────────┘\u001b[0m\n   \u001b[32m↻ syncing\u001b[0m',
+    '\u001b[36m┌───────────────────────┐\u001b[0m\n\u001b[36m│ \u001b[1m BlockDAG Network \u001b[22m │\u001b[0m\n\u001b[36m└───────────────────────┘\u001b[0m\n    \u001b[32m↻ syncing\u001b[0m',
+    '\u001b[36m┌───────────────────────┐\u001b[0m\n\u001b[36m│ \u001b[1m BlockDAG Network \u001b[22m │\u001b[0m\n\u001b[36m└───────────────────────┘\u001b[0m\n     \u001b[32m↻ syncing\u001b[0m',
+    '\u001b[36m┌───────────────────────┐\u001b[0m\n\u001b[36m│ \u001b[1m BlockDAG Network \u001b[22m │\u001b[0m\n\u001b[36m└───────────────────────┘\u001b[0m\n    \u001b[32m↻ syncing\u001b[0m',
+    '\u001b[36m┌───────────────────────┐\u001b[0m\n\u001b[36m│ \u001b[1m BlockDAG Network \u001b[22m │\u001b[0m\n\u001b[36m└───────────────────────┘\u001b[0m\n   \u001b[32m↻ syncing\u001b[0m',
+  ];
+
+  function startAnsiLoop() {
+    if (!aboutAnsiAnim || !aboutAnsiContainer) return;
+    aboutAnsiContainer.style.display = 'block';
+    if (aboutAnsiTimer) return;
+    aboutAnsiAnim.textContent = ansiFrames[0];
+    aboutAnsiTimer = window.setInterval(() => {
+      aboutAnsiFrame = (aboutAnsiFrame + 1) % ansiFrames.length;
+      aboutAnsiAnim.textContent = ansiFrames[aboutAnsiFrame];
+    }, 250);
+  }
+
+  function stopAnsiLoop() {
+    if (aboutAnsiTimer) {
+      clearInterval(aboutAnsiTimer);
+      aboutAnsiTimer = null;
+    }
+    if (aboutAnsiContainer) {
+      aboutAnsiContainer.style.display = 'none';
+    }
+  }
   function scrollInstallLogToBottom() {
     if (!aboutInstallLog) return;
     window.requestAnimationFrame(() => {
@@ -2586,6 +2619,11 @@ function updateSettingsStatus(message, options = {}) {
     const localVersion = state.updateStatus.local || localAppVersion || '—';
     aboutVersion.textContent = localVersion;
     const available = !!state.updateStatus.updateAvailable;
+    if (available) {
+      stopAnsiLoop();
+    } else {
+      startAnsiLoop();
+    }
     const chip = document.getElementById('aboutUpdateChip');
     if (chip) {
       chip.hidden = !available;
