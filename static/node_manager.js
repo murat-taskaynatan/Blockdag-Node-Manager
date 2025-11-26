@@ -1755,7 +1755,7 @@ const automationLogUpdated = document.getElementById('automationLogUpdated');
           chipText = 'Integrity OK';
           chipLevel = 'ok';
         } else if (integrity && (integrity.error || integrity.warnings)) {
-          chipText = 'Corrupt';
+          chipText = 'Integrity failed';
           chipLevel = 'error';
         }
         chip.textContent = chipText;
