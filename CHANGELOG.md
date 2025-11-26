@@ -1,5 +1,31 @@
 # Changelog
 
+# Changelog
+
+## v1.6.9 - 2025-11-26
+
+- Added an About pane with version/update chips, inline install button, and release notes for the latest tag when an update is available; update badges now hide unless the tag is newer than the local build.
+- Simplified header by removing the version badge while keeping the update indicator; About tab shows a compact version chip and controlled update/install UI.
+- Launchpad defaults to `blockdagnetwork/awakening:v0.0.3` with an image selector for testnet builds; install button styling/hover tweaked.
+
+## v1.6.8 - 2025-11-24
+
+- Liveness recovery hardened: worker-stopped states mark nodes offline, cooldown reset bug fixed, and snapshot sanity checks removed to avoid false negatives.
+- UI cleanups: widened remote RPC dropdown, repositioned wallet/snapshot inputs, and added remote RPC profile selector with IP endpoint default.
+- Snapshot integrity checks relaxed to avoid false failures; automation logs/queue filters refined.
+
+## v1.6.7 - 2025-11-23
+
+- Liveness policy fixes: global cooldown NameError fixed, container name config corrected for node1 to avoid duplicate entries.
+- Snapshot/restore jobs defer during memory restarts and surface deferred entries in the automation queue.
+- Launchpad ports auto-alignment and external IP/port advertising corrections for P2P mappings.
+
+## v1.6.6 - 2025-11-22
+
+- Archive mode/pebble corruption patterns added to fatal restore triggers; repeated boot failure heuristic added to liveness restores.
+- UI tweaks around stalled/offline health chips and queue duplication handling.
+- Snapshot workflow allows restores to proceed after integrity warnings; zero state root hash removed from fatal patterns.
+
 ## v1.6.5 - 2025-11-20
 
 - Manual snapshot jobs bypass the sync-progress guard so operators can capture backups even while a node is still catching up; manual invocations now tag jobs with `mode=manual_snapshot`.
