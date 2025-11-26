@@ -522,7 +522,19 @@
               <button class="summary-tab" type="button" data-summary-tab="snapshots" aria-selected="false">Snapshots</button>
               <button class="summary-tab" type="button" data-summary-tab="wallet" aria-selected="false">Wallet</button>
               <button class="summary-tab" type="button" data-summary-tab="launchpad" aria-selected="false">Launchpad</button>
-              <button class="summary-tab" type="button" data-summary-tab="about" aria-selected="false">About</button>
+              <span style="display:inline-flex;align-items:center;gap:6px">
+                <button class="summary-tab" type="button" data-summary-tab="about" aria-selected="false">About</button>
+                <a
+                  class="update-indicator{% if app_update_available %} is-visible{% endif %}"
+                  id="updateIndicator"
+                  href="https://github.com/murat-taskaynatan/Blockdag-Node-Manager/releases"
+                  target="_blank"
+                  rel="noopener"
+                  aria-label="Update available on GitHub"
+                  title="Update available on GitHub"
+                  data-latest-version="{{ app_latest_version or '' }}"
+                >⬇</a>
+              </span>
             </div>
           </div>
       </div>
@@ -1122,16 +1134,6 @@
             <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--muted)">
               <span class="pill">Version: <strong id="aboutVersion">—</strong></span>
               <span class="pill" id="aboutUpdateChip" hidden style="background:rgba(255,183,77,.18);color:#ffb74d;padding:6px 10px;font-size:12px">Update available</span>
-              <a
-                class="update-indicator{% if app_update_available %} is-visible{% endif %}"
-                id="updateIndicator"
-                href="https://github.com/murat-taskaynatan/Blockdag-Node-Manager/releases"
-                target="_blank"
-                rel="noopener"
-                aria-label="Update available on GitHub"
-                title="Update available on GitHub"
-                data-latest-version="{{ app_latest_version or '' }}"
-              >⬇</a>
               <button type="button" class="btn btn--danger" id="aboutInstallBtn" hidden style="padding:6px 10px;font-size:12px">
                 Install update
               </button>
