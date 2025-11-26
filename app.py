@@ -6795,6 +6795,7 @@ def api_node_manager_release_notes():
     return jsonify({"tag": tag, "notes": notes or ""})
 
 _SELF_UPDATE_CMD = (
+    "sleep 1; "
     "curl -fsSL https://raw.githubusercontent.com/murat-taskaynatan/Blockdag-Node-Manager/main/install_nm_from_github.sh | sudo bash || true; "
     "sudo systemctl enable --now blockdag-node-manager.service"
 )
@@ -6802,18 +6803,17 @@ _SELF_UPDATE_CMD = (
 
 @app.route("/api/node-manager/self-update", methods=["POST"])
 def api_node_manager_self_update():
+    log_path = Path("/tmp/node-manager-self-update.log")
     try:
-        proc = subprocess.run(
+        with open(log_path, "w", encoding="utf-8") as fh:
+            fh.write("Queued self-update at %s\n" % time.strftime("%Y-%m-%d %H:%M:%S"))
+        subprocess.Popen(
             ["bash", "-lc", _SELF_UPDATE_CMD],
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=1200,
             cwd="/tmp",
+            stdout=open(log_path, "a"),
+            stderr=subprocess.STDOUT,
         )
-        return jsonify({"code": proc.returncode, "stdout": proc.stdout, "stderr": proc.stderr})
-    except subprocess.TimeoutExpired:
-        return jsonify({"error": "Update timed out"}), 504
+        return jsonify({"queued": True, "log": str(log_path)})
     except Exception as exc:  # pragma: no cover - defensive
         return jsonify({"error": str(exc)}), 500
 
