@@ -2500,34 +2500,7 @@ function updateSettingsStatus(message, options = {}) {
     if (!aboutVersion) return;
     const localVersion = state.updateStatus.local || localAppVersion || '—';
     aboutVersion.textContent = localVersion;
-    const latest = state.updateStatus.latest || '';
-    if (aboutLatest) aboutLatest.textContent = latest || '—';
-    const latestParts = versionKey(latest);
-    const localParts = versionKey(localVersion);
-    const hasVersions = latestParts.length > 0 && localParts.length > 0;
-    const available =
-      Boolean(latest) &&
-      hasVersions &&
-      latest.trim() !== localVersion.trim() &&
-      isNewerVersion(latest, localVersion);
-    state.updateStatus.updateAvailable = available;
-    if (aboutUpdateBadge) {
-      aboutUpdateBadge.hidden = !available;
-      aboutUpdateBadge.style.display = available ? 'inline-flex' : 'none';
-    }
-    if (aboutLatestPill) {
-      aboutLatestPill.hidden = !available;
-    }
-    if (aboutInstallBtn) {
-      aboutInstallBtn.hidden = !available;
-      aboutInstallBtn.disabled = state.about.installing;
-    }
-    if (aboutCheckUpdateBtn) {
-      aboutCheckUpdateBtn.disabled = state.about.installing;
-    }
-    if (aboutInstallLog) {
-      aboutInstallLog.textContent = state.about.log || 'No install attempts yet.';
-    }
+    // Additional About controls removed for now
   }
 
   async function runSelfUpdate() {
