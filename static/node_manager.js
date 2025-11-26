@@ -2387,11 +2387,11 @@ function switchSummaryTab(target) {
     const paneView = pane.dataset.summaryPane;
     pane.hidden = paneView !== activeView;
   });
-  if (summaryActions) {
-    const hide = activeView !== 'stats';
-    summaryActions.hidden = hide;
-    summaryActions.setAttribute('aria-hidden', hide ? 'true' : 'false');
-  }
+    if (summaryActions) {
+      const hide = activeView !== 'stats';
+      summaryActions.hidden = hide;
+      summaryActions.setAttribute('aria-hidden', hide ? 'true' : 'false');
+    }
   if (summaryDynamicTitle && summaryDynamicDesc) {
     const copy = {
       stats: {
