@@ -1044,9 +1044,38 @@ const automationLogUpdated = document.getElementById('automationLogUpdated');
     return Array.isArray(series) && series.some((value) => Number.isFinite(value));
   }
 
+  function stabilizeSeries(series, maxDropRatio = 0.5, maxDropStreak = 2) {
+    if (!Array.isArray(series)) return [];
+    const output = [];
+    let last = null;
+    let dropStreak = 0;
+    for (const raw of series) {
+      const value = Number(raw);
+      const finite = Number.isFinite(value) && value > 0;
+      if (!finite) {
+        output.push(last);
+        continue;
+      }
+      if (last !== null && value < last * maxDropRatio) {
+        dropStreak += 1;
+        if (dropStreak <= maxDropStreak) {
+          output.push(last);
+          continue;
+        }
+      } else {
+        dropStreak = 0;
+      }
+      output.push(value);
+      last = value;
+    }
+    return output;
+  }
+
   function computeDeltaSeries(metrics, length) {
-    const localSeries = Array.isArray(metrics.local) ? metrics.local : [];
-    const remoteSeries = Array.isArray(metrics.remote) ? metrics.remote : [];
+    const localSeriesRaw = Array.isArray(metrics.local) ? metrics.local : [];
+    const remoteSeriesRaw = Array.isArray(metrics.remote) ? metrics.remote : [];
+    const localSeries = stabilizeSeries(localSeriesRaw);
+    const remoteSeries = stabilizeSeries(remoteSeriesRaw);
     const targetLength = Number.isFinite(length) && length >= 0
       ? length
       : Math.max(localSeries.length, remoteSeries.length);
