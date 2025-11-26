@@ -514,7 +514,7 @@
           <p class="summary-desc" id="summaryDynamicDesc">Real-time snapshot of every node discovered on the local network.</p>
         </div>
           <div class="summary-controls">
-            <div class="summary-tabs" role="tablist" aria-label="Dashboard view">
+            <div class="summary-tabs" role="tablist" aria-label="Dashboard view" style="align-items:center;gap:8px">
               <button class="summary-tab is-active" type="button" data-summary-tab="stats" aria-selected="true">Stats</button>
               <button class="summary-tab" type="button" data-summary-tab="system" aria-selected="false">System</button>
               <button class="summary-tab" type="button" data-summary-tab="settings" aria-selected="false">Settings</button>
@@ -522,7 +522,19 @@
               <button class="summary-tab" type="button" data-summary-tab="snapshots" aria-selected="false">Snapshots</button>
               <button class="summary-tab" type="button" data-summary-tab="wallet" aria-selected="false">Wallet</button>
               <button class="summary-tab" type="button" data-summary-tab="launchpad" aria-selected="false">Launchpad</button>
-              <button class="summary-tab" type="button" data-summary-tab="about" aria-selected="false">About</button>
+              <span style="display:inline-flex;align-items:center;gap:6px">
+                <button class="summary-tab" type="button" data-summary-tab="about" aria-selected="false">About</button>
+                <a
+                  class="update-indicator{% if app_update_available %} is-visible{% endif %}"
+                  id="updateIndicator"
+                  href="https://github.com/murat-taskaynatan/Blockdag-Node-Manager/releases"
+                  target="_blank"
+                  rel="noopener"
+                  aria-label="Update available on GitHub"
+                  title="Update available on GitHub"
+                  data-latest-version="{{ app_latest_version or '' }}"
+                >⬇</a>
+              </span>
             </div>
           </div>
       </div>
@@ -1264,18 +1276,6 @@
 </template>
 
 <script src="{{ url_for('static', filename='chart.umd.min.js') }}"></script>
-<div class="version-stack">
-  <a
-    class="update-indicator{% if app_update_available %} is-visible{% endif %}"
-    id="updateIndicator"
-    href="https://github.com/murat-taskaynatan/Blockdag-Node-Manager/releases"
-    target="_blank"
-    rel="noopener"
-    aria-label="Update available on GitHub"
-    title="Update available on GitHub"
-    data-latest-version="{{ app_latest_version or '' }}"
-  >⬇</a>
-</div>
 <script>
   window.__APP_VERSION__ = "{{ app_version }}";
   window.__APP_LATEST__ = "";
