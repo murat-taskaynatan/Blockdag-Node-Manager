@@ -3723,6 +3723,7 @@ def _run_restore_job(details: Dict[str, object]) -> None:
     snapshot_path: Optional[Path] = None
     data_dir = _normalize_path(details.get("data_dir")) if details else None
     job_warnings: List[str] = []
+    backup_dir: Optional[Path] = None
     preserved_identity_relative: Optional[Path] = None
     preserved_identity_payload: Optional[bytes] = None
     if data_dir:
@@ -3860,9 +3861,9 @@ def _run_restore_job(details: Dict[str, object]) -> None:
                 pass
         if backup_dir and backup_dir.exists():
             try:
-                if data_dir.exists():
+                if data_dir and data_dir.exists():
                     shutil.rmtree(data_dir, ignore_errors=True)
-                shutil.move(str(backup_dir), str(data_dir))
+                shutil.move(str(backup_dir), str(data_dir or backup_dir))
             except Exception:
                 pass
     finally:
