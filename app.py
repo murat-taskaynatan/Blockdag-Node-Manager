@@ -6808,6 +6808,7 @@ def api_node_manager_self_update():
             text=True,
             check=False,
             timeout=1200,
+            cwd="/tmp",
         )
         return jsonify({"code": proc.returncode, "stdout": proc.stdout, "stderr": proc.stderr})
     except subprocess.TimeoutExpired:
