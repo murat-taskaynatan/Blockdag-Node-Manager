@@ -1746,22 +1746,24 @@ const automationLogUpdated = document.getElementById('automationLogUpdated');
         tile.appendChild(metaEl);
 
         const integrity = item.integrity || {};
-        const statusEl = document.createElement('span');
-        statusEl.className = 'snapshot-status';
+        const chip = document.createElement('span');
+        chip.className = 'chip snapshot-health';
         const integrityOk = Boolean(integrity.ok);
-        let statusText = 'Integrity unknown';
-        let statusLevel = 'warn';
+        let chipText = 'Integrity unknown';
+        let chipLevel = 'warn';
         if (integrityOk) {
-          statusText = 'Integrity OK';
-          statusLevel = 'ok';
+          chipText = 'Integrity OK';
+          chipLevel = 'ok';
         } else if (integrity && (integrity.error || integrity.warnings)) {
-          statusText = `Corrupt: ${integrity.error || 'failed integrity check'}`;
-          statusLevel = 'error';
+          chipText = 'Corrupt';
+          chipLevel = 'error';
         }
-        statusEl.textContent = statusText;
-        statusEl.classList.add(`is-${statusLevel}`);
-        statusEl.title = integrity.error || '';
-        tile.appendChild(statusEl);
+        chip.textContent = chipText;
+        chip.classList.add(`chip-${chipLevel}`);
+        if (integrity.error) {
+          chip.title = integrity.error;
+        }
+        tile.appendChild(chip);
 
         const actions = document.createElement('div');
         actions.className = 'snapshot-tile__actions';
