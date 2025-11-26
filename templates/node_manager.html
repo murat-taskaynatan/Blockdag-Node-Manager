@@ -484,6 +484,7 @@
       <h1 class="title">BlockDAG | Node Manager</h1>
     </div>
       <div class="header-actions">
+        <span class="chip" id="globalSummaryBadge" title="" style="min-height:28px; padding:6px 10px;">—</span>
         <button class="pill-btn" id="btnDiscoverNodes" type="button" data-summary-view="stats">
           <span class="icon">🔍</span>
           Search Nodes
@@ -512,9 +513,6 @@
         <div>
           <div class="title" id="summaryDynamicTitle">Global Stats</div>
           <p class="summary-desc" id="summaryDynamicDesc">Real-time snapshot of every node discovered on the local network.</p>
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <span class="chip" id="globalSummaryBadge" title="">—</span>
-          </div>
         </div>
           <div class="summary-controls">
             <div class="summary-tabs" role="tablist" aria-label="Dashboard view" style="align-items:center;gap:8px">
