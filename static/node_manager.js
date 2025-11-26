@@ -62,7 +62,7 @@ const state = {
       lastLaunchSignature: null,
     },
   };
-  const FORCE_UPDATE_AVAILABLE = false;
+  const FORCE_UPDATE_AVAILABLE = true;
 
   const cardsContainer = document.getElementById('fleetCards');
   const emptyStateCard = document.getElementById('emptyFleetState');
