@@ -5272,7 +5272,11 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
                 or "node reported offline"
             )
             stall_reason = offline_reason
-            stalled_flag = True
+            stalled_flag = False  # offline, not stalled
+            metrics["stalled"] = False
+            metrics["stalled_reason"] = offline_reason
+            metrics["health_text"] = offline_reason
+            metrics["health_detail"] = offline_reason
         if not stalled_flag:
             if running_flag and uptime_seconds >= LIVENESS_STABLE_SEC:
                 with _LOG_POLICY_LOCK:
