@@ -2511,6 +2511,10 @@ function updateSettingsStatus(message, options = {}) {
       latest.trim() !== localVersion.trim() &&
       isNewerVersion(latest, localVersion);
     state.updateStatus.updateAvailable = available;
+    if (!available && aboutUpdateBadge) {
+      aboutUpdateBadge.hidden = true;
+      aboutUpdateBadge.style.display = 'none';
+    }
     if (aboutUpdateBadge) {
       aboutUpdateBadge.hidden = !available;
       aboutUpdateBadge.style.display = available ? 'inline-flex' : 'none';
