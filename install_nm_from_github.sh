@@ -54,7 +54,7 @@ TEMP_ROOT="$(mktemp -d)"
 trap cleanup EXIT
 
 echo "[1/4] Cloning $REPO_URL (ref $REPO_REF)"
-git clone --depth 1 --branch "$REPO_REF" --single-branch "$REPO_URL" "$TEMP_ROOT/repo"
+GIT_TERMINAL_PROMPT=0 GIT_ADVICE_DETACHED_HEAD=false git clone --depth 1 --branch "$REPO_REF" --single-branch "$REPO_URL" "$TEMP_ROOT/repo"
 
 echo "[2/4] Running installer from cloned repository"
 SOURCE_DIR="$TEMP_ROOT/repo" \

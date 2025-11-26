@@ -106,7 +106,7 @@ if [[ ! -f "$SOURCE_DIR/app.py" ]]; then
   TEMP_DIR="$(mktemp -d)"
   trap cleanup EXIT
 echo "[0/10] Source tree missing; cloning $REPO_URL (ref $REPO_REF)"
-  git clone --depth 1 --branch "$REPO_REF" --single-branch "$REPO_URL" "$TEMP_DIR/repo"
+  GIT_TERMINAL_PROMPT=0 GIT_ADVICE_DETACHED_HEAD=false git clone --depth 1 --branch "$REPO_REF" --single-branch "$REPO_URL" "$TEMP_DIR/repo"
   SOURCE_DIR="$TEMP_DIR/repo"
 fi
 
