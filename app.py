@@ -3189,6 +3189,21 @@ def _run_snapshot_job(details: Dict[str, object]) -> None:
         if flushed:
             message += f" (overlays flushed: {', '.join(flushed)})"
         status = "completed"
+        # Post-snapshot sanity check on the captured archive to catch obvious corruption.
+        sanity_warnings = _snapshot_post_restore_sanity(data_dir)
+        if sanity_warnings:
+            details["post_snapshot_warnings"] = sanity_warnings
+            try:
+                _record_snapshot_integrity(
+                    dest_name or dest_path.name,
+                    {
+                        "ok": False,
+                        "error": "; ".join(sanity_warnings) or "post-snapshot sanity warnings",
+                        "warnings": sanity_warnings,
+                    },
+                )
+            except Exception:
+                pass
         if SNAPSHOT_MAX > 0:
             _prune_snapshots()
     except Exception as exc:
