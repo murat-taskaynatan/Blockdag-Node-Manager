@@ -2675,7 +2675,7 @@ async function loadSettings() {
       const local = payload?.local_version || localAppVersion || '—';
       const available = Boolean(payload?.update_available && latest);
       const newer = available && isNewerVersion(latest, local);
-      state.updateStatus.latest = latest;
+      state.updateStatus.latest = newer ? latest : '';
       state.updateStatus.local = local;
       state.updateStatus.updateAvailable = newer;
       state.updateStatus.error = null;
