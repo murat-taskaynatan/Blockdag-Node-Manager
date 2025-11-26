@@ -1,7 +1,7 @@
 (() => {
   const localAppVersion = (typeof window !== 'undefined' && window.__APP_VERSION__) ? window.__APP_VERSION__ : '—';
   const initialLatestVersion = (typeof window !== 'undefined' && window.__APP_LATEST__) ? window.__APP_LATEST__ : null;
-  const state = {
+const state = {
     nodes: new Map(), // id -> { card, meta }
     charts: new Map(), // id -> Chart instance
     chartViews: new Map(), // id -> active chart view
@@ -62,6 +62,7 @@
       lastLaunchSignature: null,
     },
   };
+  const FORCE_UPDATE_AVAILABLE = true;
 
   const cardsContainer = document.getElementById('fleetCards');
   const emptyStateCard = document.getElementById('emptyFleetState');
@@ -2659,11 +2660,14 @@ async function loadSettings() {
       const res = await fetch(`/api/node-manager/version${force ? '?force=1' : ''}`, { cache: 'no-store', signal: controller.signal });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const payload = await res.json();
-      const latest = payload?.latest_version || null;
+      let latest = payload?.latest_version || null;
       const local = payload?.local_version || localAppVersion || '—';
       const available = Boolean(payload?.update_available && latest);
-      const newer = available && isNewerVersion(latest, local);
-      state.updateStatus.latest = newer ? latest : '';
+      const newer = FORCE_UPDATE_AVAILABLE || (available && isNewerVersion(latest, local));
+      if (FORCE_UPDATE_AVAILABLE && !latest) {
+        latest = local !== '—' ? local : 'v-test';
+      }
+      state.updateStatus.latest = newer ? (latest || 'v-test') : '';
       state.updateStatus.local = local;
       state.updateStatus.updateAvailable = newer;
       state.updateStatus.error = null;
