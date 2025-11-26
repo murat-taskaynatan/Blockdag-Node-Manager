@@ -2114,10 +2114,10 @@ def _snapshot_integrity_check(snapshot_path: Path) -> Dict[str, object]:
             result["error"] = "manifest unreadable"
             return result
 
-        required_ssts = set(re.findall(r"(\\d{6}\\.sst)", manifest_text, flags=re.IGNORECASE))
-            if not required_ssts:
-                # Manifest contained no explicit SST references; treat as unknown, not failed.
-                required_ssts = set()
+        required_ssts = set(re.findall(r"(\d{6}\.sst)", manifest_text, flags=re.IGNORECASE))
+        if not required_ssts:
+            # Manifest contained no explicit SST references; treat as unknown, not failed.
+            required_ssts = set()
 
         missing = [
             name
