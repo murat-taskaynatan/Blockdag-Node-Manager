@@ -111,12 +111,11 @@ echo "[0/10] Source tree missing; cloning $REPO_URL (ref $REPO_REF)"
 fi
 
 echo "[1/10] Removing any existing installation of $SERVICE_NAME (if present)"
-# Intentionally avoid stopping the service here; a restart happens at the end.
+# Intentionally avoid stopping the service here; a restart happens at the end,
+# and we keep the install directory in place to prevent crashing the live
+# process mid-update.
 sudo rm -f "$SYSTEMD_DIR/$SERVICE_NAME"
 sudo rm -f "$ENV_FILE"
-if [[ -d "$INSTALL_DIR" ]]; then
-  sudo rm -rf "$INSTALL_DIR"
-fi
 sudo systemctl daemon-reload
 
 echo "[2/10] Syncing files to $INSTALL_DIR"
