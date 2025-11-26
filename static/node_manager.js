@@ -2508,11 +2508,13 @@ function updateSettingsStatus(message, options = {}) {
     }
     if (aboutInstallBtn) {
       aboutInstallBtn.hidden = !available;
-      aboutInstallBtn.disabled = state.about.installing;
+      aboutInstallBtn.style.display = available ? 'inline-flex' : 'none';
+      aboutInstallBtn.disabled = state.about.installing || !available;
     } else {
       // force hide any stray button clones
       document.querySelectorAll('#aboutInstallBtn').forEach((btn) => {
         btn.hidden = true;
+        btn.style.display = 'none';
       });
     }
   }
