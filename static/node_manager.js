@@ -111,6 +111,7 @@ const state = {
   const automationLogStatus = document.getElementById('automationLogStatus');
   const aboutInstallBtn = document.getElementById('aboutInstallBtn');
   const aboutInstallLog = document.getElementById('aboutInstallLog');
+  const aboutReleaseNotes = document.getElementById('aboutReleaseNotes');
 const automationLogRefreshBtn = document.getElementById('automationLogRefresh');
 const automationLogCount = document.getElementById('automationLogCount');
 const automationLogTabCount = document.getElementById('automationLogTabCount');
@@ -2518,6 +2519,11 @@ function updateSettingsStatus(message, options = {}) {
         btn.style.display = 'none';
       });
     }
+    if (aboutReleaseNotes) {
+      const notes = available ? (state.about.releaseNotes || '') : '';
+      aboutReleaseNotes.hidden = !(available && notes.trim());
+      aboutReleaseNotes.textContent = aboutReleaseNotes.hidden ? '' : notes.trim();
+    }
   }
 
   async function runSelfUpdate() {
@@ -2671,6 +2677,19 @@ async function loadSettings() {
       state.updateStatus.local = local;
       state.updateStatus.updateAvailable = newer;
       state.updateStatus.error = null;
+      if (newer) {
+        try {
+          const notesRes = await fetch('https://raw.githubusercontent.com/murat-taskaynatan/Blockdag-Node-Manager/main/CHANGELOG.md', { cache: 'no-store' });
+          if (notesRes.ok) {
+            const notes = await notesRes.text();
+            state.about.releaseNotes = notes || '';
+          }
+        } catch (_) {
+          state.about.releaseNotes = '';
+        }
+      } else {
+        state.about.releaseNotes = '';
+      }
       if (newer) {
         const hrefBase = 'https://github.com/murat-taskaynatan/Blockdag-Node-Manager/releases';
         updateIndicator.href = hrefBase;
