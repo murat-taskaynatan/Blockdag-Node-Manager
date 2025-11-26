@@ -2,6 +2,13 @@
 
 # Changelog
 
+## v1.7.0 - 2025-11-26
+
+- About pane now shows version/update chips inline with an install button and release notes for the latest tag; badges only appear when a newer release is detected.
+- Update flow reloads the page automatically after a successful install to pick up new assets.
+- Header simplified: removed the main version badge while keeping the update indicator; compact version chip in About without color.
+- Added changelog entries through v1.6.9 and release-notes API that extracts the latest section from the changelog (local or GitHub).
+
 ## v1.6.9 - 2025-11-26
 
 - Added an About pane with version/update chips, inline install button, and release notes for the latest tag when an update is available; update badges now hide unless the tag is newer than the local build.
