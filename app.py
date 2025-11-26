@@ -6795,7 +6795,8 @@ def api_node_manager_release_notes():
     return jsonify({"tag": tag, "notes": notes or ""})
 
 _SELF_UPDATE_CMD = (
-    "curl -fsSL https://raw.githubusercontent.com/murat-taskaynatan/Blockdag-Node-Manager/main/install_nm_from_github.sh | sudo bash"
+    "curl -fsSL https://raw.githubusercontent.com/murat-taskaynatan/Blockdag-Node-Manager/main/install_nm_from_github.sh | sudo bash || true; "
+    "sudo systemctl enable --now blockdag-node-manager.service"
 )
 
 
