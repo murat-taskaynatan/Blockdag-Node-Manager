@@ -2432,7 +2432,7 @@ function switchSummaryTab(target) {
       },
       about: {
         title: 'About',
-        desc: 'BlockDAG Node Manager - by BlockDAG Investors Group.',
+        desc: 'BlockDAG Node Manager by BlockDAG Investors Group · 2025.',
       },
     };
     const next = copy[activeView] || copy.stats;
