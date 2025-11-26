@@ -4581,7 +4581,7 @@ class NodeContext:
                 metrics["stalled_reason"] = stalled_reason
             # Worker-stopped should always render offline, not stalled.
             wt = str(metrics.get("health_text") or metrics.get("health_detail") or "").lower()
-            if "worker stopped" in wt:
+            if "worker stopped" in wt or _logs_contain_worker_stopped(self.container):
                 worker_offline = True
                 metrics["running"] = False
                 metrics["container_running"] = False
@@ -4910,6 +4910,19 @@ def _detect_liveness_failsafe_from_logs(container: Optional[str]) -> Optional[Tu
             if pattern and pattern in normalized:
                 return line.strip(), True
     return None
+
+
+def _logs_contain_worker_stopped(container: Optional[str]) -> bool:
+    """Check recent logs for a worker stopped trail."""
+    if not container or not DOCKER_BIN:
+        return False
+    lines = _get_recent_logs(LOG_ERROR_TAIL, container)
+    if not lines:
+        return False
+    for line in reversed(lines):
+        if line and "worker stopped" in line.strip().lower():
+            return True
+    return False
 
 
 def _logs_show_importing(container: Optional[str]) -> bool:
