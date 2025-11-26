@@ -5378,6 +5378,9 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
             or metrics.get("health_text")
             or "stalled detection triggered"
         )
+        if "worker stopped" in str(stall_reason or "").lower():
+            stall_reason = None
+            stalled_flag = False
         running_flag = bool(metrics.get("running") or metrics.get("container_running"))
         uptime_seconds = float(metrics.get("uptime_seconds") or 0.0)
         worker_stopped_until = 0.0
@@ -6107,6 +6110,14 @@ def _collect_node_metrics(ctx: NodeContext) -> Tuple[dict, Optional[int]]:
 
 
 def _detect_stalled_reason(ctx: "NodeContext", metrics: dict, previous: Optional[dict]) -> Optional[str]:
+    text_fields = [
+        metrics.get("stalled_reason"),
+        metrics.get("health_detail"),
+        metrics.get("health_text"),
+    ]
+    for txt in text_fields:
+        if txt and "worker stopped" in str(txt).lower():
+            return None
     try:
         remote_height = int(metrics.get("remote_height") or 0)
     except Exception:
