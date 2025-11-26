@@ -1037,6 +1037,15 @@
                     Wallet address
                     <input type="text" id="launchpadWalletAddress" placeholder="0x..." autocomplete="off">
                   </label>
+                  <label class="launchpad-basics-row__full">
+                    Awakening image
+                    <select id="launchpadImage">
+                      <option value="blockdagnetwork/awakening:v0.0.3" selected>Testnet v0.0.3 (latest)</option>
+                      <option value="blockdagnetwork/awakening:v0.0.2">Testnet v0.0.2</option>
+                      <option value="blockdagnetwork/awakening:v0.0.1">Testnet v0.0.1</option>
+                      <option value="" disabled>Mainnet (coming soon)</option>
+                    </select>
+                  </label>
                 </div>
               </div>
               <div class="launchpad-port-gap" style="height:20px"></div>
@@ -1087,6 +1096,7 @@
                 <div><strong>Peer port</strong><span id="launchpadSummaryPeer">—</span></div>
                 <div><strong>External peer</strong><span id="launchpadSummaryExternalPeer">—</span></div>
                 <div><strong>External P2P</strong><span id="launchpadSummaryExternalP2P">—</span></div>
+                <div><strong>Image</strong><span id="launchpadSummaryImage">—</span></div>
                 <div><strong>Wallet</strong><span id="launchpadSummaryWallet">—</span></div>
               </div>
               <div class="launchpad-status" id="launchpadStatus" aria-live="polite"></div>

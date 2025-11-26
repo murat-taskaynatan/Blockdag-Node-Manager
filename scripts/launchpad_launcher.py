@@ -474,6 +474,7 @@ def _render_compose(
     data_dir: Path,
     logs_dir: Path,
     mining_address: str,
+    image: Optional[str] = None,
     helper_mount: Optional[str] = None,
 ):
     raw_text = source.read_text()
@@ -502,12 +503,13 @@ def _render_compose(
     else:
         # Force mining address even if template had an empty placeholder.
         text = re.sub(r"--miningaddr=\S*", f"--miningaddr={mining_address}", text)
-    image_line = f"image: {LAUNCHPAD_DEFAULT_IMAGE}"
+    selected_image = image or LAUNCHPAD_DEFAULT_IMAGE
+    image_line = f"image: {selected_image}"
     pattern = re.compile(r"image:\s+blockdagnetwork/awakening:[^\s]+", re.IGNORECASE)
     if pattern.search(text):
         text = pattern.sub(image_line, text, count=1)
     elif "blockdagnetwork/awakening" in text:
-        text = text.replace("blockdagnetwork/awakening", LAUNCHPAD_DEFAULT_IMAGE, 1)
+        text = text.replace("blockdagnetwork/awakening", selected_image, 1)
     if helper_mount:
         container_line = f"    container_name: {label}\n"
         replacement = container_line + '    entrypoint: ["/custom-entrypoint.sh"]\n'
@@ -591,7 +593,9 @@ def launch_node(payload: Dict) -> Dict:
             pass
     if not compose_src.exists():
         raise LaunchError("docker-compose template not found; try recloning blockdag-scripts")
-    _rewrite_compose_image(compose_src, LAUNCHPAD_DEFAULT_IMAGE)
+    raw_image = (payload.get("image") or "").strip()
+    selected_image = raw_image if raw_image.lower().startswith("blockdagnetwork/awakening:") else LAUNCHPAD_DEFAULT_IMAGE
+    _rewrite_compose_image(compose_src, selected_image)
     node_number = _infer_node_number_from_path(install_path) or 1
     p2p_port, rpc_port, ws_port, peer_port, peer_internal = _prepare_ports(payload, node_number=node_number)
     compose_target = scripts_dir / f"docker-compose-{label}.yml"
@@ -613,6 +617,7 @@ def launch_node(payload: Dict) -> Dict:
         data_dir,
         logs_dir,
         wallet,
+        selected_image,
         helper_mount,
     )
     project_name = label

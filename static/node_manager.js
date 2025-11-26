@@ -47,6 +47,7 @@ const state = {
         p2pPort: 38130,
         rpcPort: 18545,
         autoPorts: true,
+        image: 'blockdagnetwork/awakening:v0.0.3',
       },
       previewPorts: null,
       previewLoading: false,
@@ -148,6 +149,7 @@ const automationLogUpdated = document.getElementById('automationLogUpdated');
     rpcPort: document.getElementById('launchpadRpcPort'),
     autoPorts: document.getElementById('launchpadAutoPorts'),
     walletAddress: document.getElementById('launchpadWalletAddress'),
+    image: document.getElementById('launchpadImage'),
     externalP2PPort: document.getElementById('launchpadExternalP2PPort'),
     wsPort: document.getElementById('launchpadWsPort'),
     peerPort: document.getElementById('launchpadPeerPort'),
@@ -175,6 +177,7 @@ const automationLogUpdated = document.getElementById('automationLogUpdated');
     ws: document.getElementById('launchpadSummaryWs'),
     peer: document.getElementById('launchpadSummaryPeer'),
     externalPeer: document.getElementById('launchpadSummaryExternalPeer'),
+    image: document.getElementById('launchpadSummaryImage'),
   };
   const launchpadBackBtn = document.getElementById('launchpadBackBtn');
   const launchpadNextBtn = document.getElementById('launchpadNextBtn');
@@ -2921,6 +2924,7 @@ function syncCards(nodes) {
       rpcPort: Number(launchpadFields.rpcPort?.value) || 18545,
       autoPorts,
       walletAddress: launchpadFields.walletAddress?.value?.trim() || '',
+      image: launchpadFields.image?.value?.trim() || 'blockdagnetwork/awakening:v0.0.3',
       externalP2PPort: Number(launchpadFields.externalP2PPort?.value) || null,
       wsPort: Number(launchpadFields.wsPort?.value) || 18546,
       peerPort: Number(launchpadFields.peerPort?.value) || 18150,
@@ -2955,6 +2959,7 @@ function syncCards(nodes) {
       peerPort: Number(data.peerPort) || 0,
       externalP2PPort: Number(data.externalP2PPort) || 0,
       externalPeerPort: Number(data.externalPeerPort) || 0,
+      image: data.image || '',
     };
     return JSON.stringify(snapshot);
   }
@@ -3077,6 +3082,9 @@ function syncCards(nodes) {
     }
     if (launchpadSummaryRefs.externalPeer) {
       launchpadSummaryRefs.externalPeer.textContent = resolvedExternalPeer;
+    }
+    if (launchpadSummaryRefs.image) {
+      setSummaryField(launchpadSummaryRefs.image, data.image || '');
     }
     updateLaunchpadAutoNote(data);
     updateLaunchpadLaunchState();
@@ -3214,7 +3222,8 @@ function syncCards(nodes) {
       return Boolean(
         getLaunchpadFieldValue(launchpadFields.label) &&
           getLaunchpadFieldValue(launchpadFields.installPath) &&
-          getLaunchpadFieldValue(launchpadFields.walletAddress) &&
+        getLaunchpadFieldValue(launchpadFields.walletAddress) &&
+          getLaunchpadFieldValue(launchpadFields.image) &&
           getLaunchpadFieldValue(launchpadFields.externalP2PPort) &&
           getLaunchpadFieldValue(launchpadFields.wsPort) &&
           getLaunchpadFieldValue(launchpadFields.peerPort) &&
