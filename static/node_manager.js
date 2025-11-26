@@ -2473,13 +2473,36 @@ function updateSettingsStatus(message, options = {}) {
     aboutStatus.style.color = options.error ? 'var(--bad)' : 'var(--muted)';
   }
 
+  function versionKey(raw) {
+    if (!raw) return [];
+    let cleaned = String(raw).trim();
+    if (cleaned.toLowerCase().startsWith('v')) cleaned = cleaned.slice(1);
+    return cleaned
+      .split(/[^0-9]+/)
+      .filter(Boolean)
+      .map((part) => Number.parseInt(part, 10))
+      .filter((n) => Number.isFinite(n));
+  }
+
+  function isNewerVersion(latest, local) {
+    const a = versionKey(latest);
+    const b = versionKey(local);
+    for (let i = 0; i < Math.max(a.length, b.length); i += 1) {
+      const ai = a[i] || 0;
+      const bi = b[i] || 0;
+      if (ai > bi) return true;
+      if (ai < bi) return false;
+    }
+    return false;
+  }
+
   function renderAboutUpdateStatus() {
     if (!aboutVersion) return;
     aboutVersion.textContent = localAppVersion || '—';
     const latest = state.updateStatus.latest || initialLatestVersion || '—';
     if (aboutLatest) aboutLatest.textContent = latest;
     if (aboutLatestPill) aboutLatestPill.hidden = !latest;
-    const available = !!state.updateStatus.updateAvailable;
+    const available = !!state.updateStatus.updateAvailable && isNewerVersion(latest, localAppVersion);
     if (aboutUpdateBadge) aboutUpdateBadge.hidden = !available;
     if (aboutInstallBtn) {
       aboutInstallBtn.hidden = !available;
