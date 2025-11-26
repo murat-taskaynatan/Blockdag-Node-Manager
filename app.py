@@ -4434,6 +4434,22 @@ class NodeContext:
                 return dict(self.last_metrics)
             previous = dict(self.last_metrics) if self.last_metrics is not None else None
         metrics, remote_series_value = _collect_node_metrics(self)
+        failsafe = _detect_liveness_failsafe_from_logs(self.container)
+        if failsafe:
+            failsafe_reason, failsafe_recovery = failsafe
+            metrics["stalled"] = True
+            metrics["stalled_reason"] = failsafe_reason
+            metrics["health_text"] = failsafe_reason
+            metrics["health_detail"] = failsafe_reason
+            metrics["recovery_required"] = bool(failsafe_recovery)
+            if "worker stopped" in str(failsafe_reason or "").lower():
+                # Expose worker-exit as offline
+                metrics["running"] = False
+                metrics["container_running"] = False
+                metrics["stalled"] = False
+                metrics["stalled_reason"] = "worker stopped"
+                metrics["health_text"] = "worker stopped (offline)"
+                metrics["health_detail"] = "worker stopped (offline)"
         with self.lock:
             self.last_sample_ts = now
             self.running = metrics["running"]
