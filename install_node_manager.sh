@@ -51,6 +51,14 @@ SOURCE_DIR="${SOURCE_DIR:-$SCRIPT_DIR}"
 REPO_URL="${REPO_URL:-https://github.com/murat-taskaynatan/Blockdag-Node-Manager.git}"
 REPO_REF="${REPO_REF:-${REPO_BRANCH:-v1.7.0}}"
 
+# Avoid running from a directory that will be deleted during install.
+ORIG_PWD="$(pwd)"
+if [[ "$ORIG_PWD" == "$INSTALL_DIR" || "$ORIG_PWD" == "$INSTALL_DIR/"* ]]; then
+  cd /
+fi
+# Ensure subsequent relative paths resolve from the source tree.
+cd "$SOURCE_DIR"
+
 need_cmd "$PYTHON_BIN"
 ensure_packages python3 python3-venv python3-pip rsync fio
 
