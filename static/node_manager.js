@@ -5628,6 +5628,16 @@ function syncCards(nodes) {
   }
 
   async function init() {
+    if (aboutUpdateBadge) {
+      aboutUpdateBadge.hidden = true;
+      aboutUpdateBadge.style.display = 'none';
+    }
+    if (aboutLatestPill) {
+      aboutLatestPill.hidden = true;
+    }
+    if (aboutInstallBtn) {
+      aboutInstallBtn.hidden = true;
+    }
     attachEventHandlers();
     renderAboutUpdateStatus();
     setAboutStatus('Idle');
