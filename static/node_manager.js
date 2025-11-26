@@ -2502,7 +2502,10 @@ function updateSettingsStatus(message, options = {}) {
     aboutVersion.textContent = localVersion;
     const latest = state.updateStatus.latest || '';
     if (aboutLatest) aboutLatest.textContent = latest || '—';
-    const available = Boolean(latest) && isNewerVersion(latest, localVersion);
+    const latestParts = versionKey(latest);
+    const localParts = versionKey(localVersion);
+    const hasVersions = latestParts.length > 0 && localParts.length > 0;
+    const available = hasVersions && isNewerVersion(latest, localVersion);
     state.updateStatus.updateAvailable = available;
     if (aboutUpdateBadge) {
       aboutUpdateBadge.hidden = !available;
