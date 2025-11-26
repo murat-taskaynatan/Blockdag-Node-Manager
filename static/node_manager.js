@@ -2622,7 +2622,7 @@ function updateSettingsStatus(message, options = {}) {
     renderAboutUpdateStatus();
     stopSelfUpdateLogStream();
     if (aboutInstallLog) {
-      aboutInstallLog.textContent = 'Queued update… streaming logs shortly.';
+      aboutInstallLog.textContent = 'Update starting… streaming logs shortly.';
       scrollInstallLogToBottom();
     }
     try {

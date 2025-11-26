@@ -17,6 +17,19 @@ WAITRESS_THREADS="${WAITRESS_THREADS:-12}"
 WAITRESS_BACKLOG="${WAITRESS_BACKLOG:-256}"
 WAITRESS_CONNECTION_LIMIT="${WAITRESS_CONNECTION_LIMIT:-0}"
 cd "$INSTALL_DIR"
+if [[ ! -x "$VENV_BIN/waitress-serve" ]]; then
+  echo "Python virtual environment missing or incomplete at $VENV_BIN; attempting to recreate..."
+  python3 -m venv "$INSTALL_DIR/.venv"
+  source "$VENV_BIN/activate"
+  if [[ -f "$INSTALL_DIR/requirements.txt" ]]; then
+    pip install --upgrade pip >/dev/null
+    pip install -r "$INSTALL_DIR/requirements.txt" >/dev/null
+  else
+    pip install --upgrade pip >/dev/null
+    pip install flask requests waitress >/dev/null
+  fi
+  deactivate
+fi
 ARGS=("--listen=${HOST}:${PORT}" "--threads=${WAITRESS_THREADS}" "--backlog=${WAITRESS_BACKLOG}")
 if [[ -n "$WAITRESS_CONNECTION_LIMIT" && "$WAITRESS_CONNECTION_LIMIT" != "0" ]]; then
   ARGS+=("--connection-limit=${WAITRESS_CONNECTION_LIMIT}")

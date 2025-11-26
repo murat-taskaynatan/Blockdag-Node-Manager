@@ -6806,7 +6806,7 @@ def api_node_manager_self_update():
     log_path = Path("/tmp/node-manager-self-update.log")
     try:
         with open(log_path, "w", encoding="utf-8") as fh:
-            fh.write("Queued self-update at %s\n" % time.strftime("%Y-%m-%d %H:%M:%S"))
+            fh.write("Update starting at %s\n" % time.strftime("%Y-%m-%d %H:%M:%S"))
         subprocess.Popen(
             ["bash", "-lc", _SELF_UPDATE_CMD],
             cwd="/tmp",
