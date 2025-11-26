@@ -2660,11 +2660,12 @@ async function loadSettings() {
       const latest = payload?.latest_version || null;
       const local = payload?.local_version || localAppVersion || '—';
       const available = Boolean(payload?.update_available && latest);
+      const newer = available && isNewerVersion(latest, localAppVersion);
       state.updateStatus.latest = latest;
       state.updateStatus.local = local;
-      state.updateStatus.updateAvailable = available;
+      state.updateStatus.updateAvailable = newer;
       state.updateStatus.error = null;
-      if (available) {
+      if (newer) {
         const hrefBase = 'https://github.com/murat-taskaynatan/Blockdag-Node-Manager/releases';
         updateIndicator.href = hrefBase;
         updateIndicator.title = `Update available: ${latest || 'latest'} (opens GitHub)`;
