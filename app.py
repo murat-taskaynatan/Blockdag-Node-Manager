@@ -4574,6 +4574,7 @@ class NodeContext:
             self.sync_progress_series.append((ts, metrics.get("sync_progress")))
             stalled_reason = _detect_stalled_reason(self, metrics, previous)
             metrics["stalled"] = bool(stalled_reason)
+            worker_offline = False
             if stalled_reason:
                 metrics["health_text"] = stalled_reason
                 metrics["health_detail"] = stalled_reason
@@ -4581,13 +4582,14 @@ class NodeContext:
             # Worker-stopped should always render offline, not stalled.
             wt = str(metrics.get("health_text") or metrics.get("health_detail") or "").lower()
             if "worker stopped" in wt:
+                worker_offline = True
                 metrics["running"] = False
                 metrics["container_running"] = False
                 metrics["stalled"] = False
                 metrics["stalled_reason"] = "worker stopped (offline)"
                 metrics["health_text"] = "worker stopped (offline)"
                 metrics["health_detail"] = "worker stopped (offline)"
-            else:
+            if not worker_offline:
                 metrics.pop("health_text", None)
                 metrics.pop("health_detail", None)
                 metrics.pop("stalled_reason", None)
