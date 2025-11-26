@@ -2423,7 +2423,7 @@ function switchSummaryTab(target) {
       },
       about: {
         title: 'About',
-        desc: 'Version and update controls for the BlockDAG Node Manager.',
+        desc: 'BlockDAG Node Manager - by BlockDAG Investors Group.',
       },
     };
     const next = copy[activeView] || copy.stats;
