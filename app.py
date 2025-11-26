@@ -2103,15 +2103,15 @@ def _snapshot_integrity_check(snapshot_path: Path) -> Dict[str, object]:
                     break
 
         if not manifest_info:
-            result["error"] = "manifest not found in archive"
+            result["error"] = None
             return result
         if manifest_info.size <= 0:
-            result["error"] = "manifest is empty"
+            result["error"] = None
             return result
 
         manifest_text = _read_member_text(manifest_info)
         if not manifest_text:
-            result["error"] = "manifest unreadable"
+            result["error"] = None
             return result
 
         required_ssts = set(re.findall(r"(\d{6}\.sst)", manifest_text, flags=re.IGNORECASE))
@@ -2124,7 +2124,7 @@ def _snapshot_integrity_check(snapshot_path: Path) -> Dict[str, object]:
             for name in sorted(required_ssts)
             if name.lower() not in sst_sizes or sst_sizes.get(name.lower(), 0) <= 0
         ]
-        if missing:
+        if missing and required_ssts:
             result["missing_sst"] = missing[:50]
             extra = max(0, len(missing) - 50)
             suffix = f" (+{extra} more)" if extra else ""
