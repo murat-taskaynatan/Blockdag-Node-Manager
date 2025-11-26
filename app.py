@@ -2026,6 +2026,7 @@ def _extract_snapshot_contents(
 
 
 def _snapshot_integrity_check(snapshot_path: Path) -> Dict[str, object]:
+    """Perform a Pebble completeness check without extracting the tar."""
     result: Dict[str, object] = {
         "ok": False,
         "error": None,
@@ -2034,6 +2035,7 @@ def _snapshot_integrity_check(snapshot_path: Path) -> Dict[str, object]:
         "entry_count": 0,
         "bytes": 0,
         "duration_sec": None,
+        "missing_sst": [],
     }
     started = time.time()
     if not snapshot_path or not snapshot_path.exists():
@@ -2044,35 +2046,105 @@ def _snapshot_integrity_check(snapshot_path: Path) -> Dict[str, object]:
     except Exception as exc:
         result["error"] = f"unable to open archive: {exc}"
         return result
+
+    # Gather manifest/current candidates and SST inventory
+    sst_sizes: Dict[str, int] = {}
+    entry_sizes: Dict[str, int] = {}
+    manifest_entries: Dict[str, tarfile.TarInfo] = {}
+    current_entries: Dict[str, tarfile.TarInfo] = {}
     try:
         for member in tar:
-            if not isinstance(member, tarfile.TarInfo):
+            if not isinstance(member, tarfile.TarInfo) or not member.isfile():
                 continue
-            if not member.isfile():
-                continue
-            result["entry_count"] += 1
+            name_raw = member.name or ""
+            name = name_raw.lower()
             size = int(member.size or 0)
+            result["entry_count"] += 1
             result["bytes"] += size
-            name = (member.name or "").lower()
-            if name.endswith(".sst"):
+            entry_sizes[name] = size
+            base = Path(name).name
+            if base.lower().endswith(".sst"):
+                sst_sizes[base.lower()] = size
                 result["sst_count"] += 1
                 if size <= 0:
                     result["sst_zero"] += 1
+            if "/bdagchain/current" in name:
+                current_entries[name] = member
+            if "/bdagchain/manifest-" in name:
+                manifest_entries[name] = member
         result["duration_sec"] = max(time.time() - started, 0.0)
-        if result["sst_count"] <= 0:
-            result["error"] = "no SST files found in archive"
-        elif result["sst_zero"] > 0:
+
+        def _read_member_text(info: tarfile.TarInfo) -> str:
+            try:
+                with tar.extractfile(info) as fh:
+                    if fh is None:
+                        return ""
+                    data = fh.read()
+                return data.decode("utf-8", errors="ignore")
+            except Exception:
+                return ""
+
+        # Resolve CURRENT -> manifest
+        manifest_name = None
+        if current_entries:
+            current_info = next(iter(current_entries.values()))
+            current_text = _read_member_text(current_info).strip()
+            if current_text:
+                manifest_name = current_text.split("\n", 1)[0].strip().lower()
+        if not manifest_name and manifest_entries:
+            # Fall back to highest manifest in tar
+            manifest_name = Path(sorted(manifest_entries.keys())[-1]).name.lower()
+
+        manifest_info = None
+        if manifest_name:
+            for key, info in manifest_entries.items():
+                if key.lower().endswith(manifest_name):
+                    manifest_info = info
+                    break
+
+        if not manifest_info:
+            result["error"] = "manifest not found in archive"
+            return result
+        if manifest_info.size <= 0:
+            result["error"] = "manifest is empty"
+            return result
+
+        manifest_text = _read_member_text(manifest_info)
+        if not manifest_text:
+            result["error"] = "manifest unreadable"
+            return result
+
+        required_ssts = set(re.findall(r"(\\d{6}\\.sst)", manifest_text, flags=re.IGNORECASE))
+        if not required_ssts:
+            result["error"] = "no SST references found in manifest"
+            return result
+
+        missing = [
+            name
+            for name in sorted(required_ssts)
+            if name.lower() not in sst_sizes or sst_sizes.get(name.lower(), 0) <= 0
+        ]
+        if missing:
+            result["missing_sst"] = missing[:50]
+            extra = max(0, len(missing) - 50)
+            suffix = f" (+{extra} more)" if extra else ""
+            result["error"] = f"missing SST files: {', '.join(result['missing_sst'])}{suffix}"
+            return result
+
+        if result["sst_zero"] > 0:
             result["error"] = f"{result['sst_zero']} SST files are zero bytes"
-        else:
-            result["ok"] = True
+            return result
+
+        result["ok"] = True
+        return result
     except Exception as exc:
         result["error"] = str(exc)
+        return result
     finally:
         try:
             tar.close()
         except Exception:
             pass
-    return result
 
 
 def _directory_size(path: Path) -> int:
