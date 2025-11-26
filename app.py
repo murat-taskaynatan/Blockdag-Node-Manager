@@ -759,7 +759,10 @@ def _load_liveness_cooldowns() -> None:
         return
     now = time.time()
     with _LOG_POLICY_LOCK:
-        global_val = float(_GLOBAL_LIVENESS_COOLDOWN_UNTIL)
+        try:
+            global_val = float(_GLOBAL_LIVENESS_COOLDOWN_UNTIL)
+        except NameError:
+            global_val = 0.0
         for container, ts_raw in data.items():
             try:
                 ts = float(ts_raw)
