@@ -2718,9 +2718,6 @@ async function loadSettings() {
         } catch (_) {
           state.about.releaseNotes = '';
         }
-        if (!state.about.releaseNotes) {
-          state.about.releaseNotes = `See release notes: https://github.com/murat-taskaynatan/Blockdag-Node-Manager/releases/tag/${latest}`;
-        }
       } else {
         state.about.releaseNotes = '';
       }
