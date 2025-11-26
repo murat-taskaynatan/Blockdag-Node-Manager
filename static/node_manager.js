@@ -2505,7 +2505,10 @@ function updateSettingsStatus(message, options = {}) {
     if (aboutLatestPill) aboutLatestPill.hidden = !latest;
     const available = Boolean(latest) && isNewerVersion(latest, localVersion);
     state.updateStatus.updateAvailable = available;
-    if (aboutUpdateBadge) aboutUpdateBadge.hidden = !available;
+    if (aboutUpdateBadge) {
+      aboutUpdateBadge.hidden = !available;
+      aboutUpdateBadge.style.display = available ? 'inline-flex' : 'none';
+    }
     if (aboutInstallBtn) {
       aboutInstallBtn.hidden = !available;
       aboutInstallBtn.disabled = state.about.installing;
