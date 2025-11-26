@@ -6739,6 +6739,61 @@ def api_node_manager_version():
         }
     )
 
+def _extract_release_section(tag: str, text: str) -> str:
+    if not tag or not text:
+        return ""
+    cleaned = str(tag).strip()
+    if cleaned.lower().startswith("v"):
+        cleaned = cleaned[1:]
+    heading = re.compile(rf"^##\s*\[?v?{re.escape(cleaned)}\]?\b", re.IGNORECASE | re.MULTILINE)
+    lines = text.splitlines()
+    start = -1
+    for idx, line in enumerate(lines):
+        if heading.search(line):
+            start = idx
+            break
+    if start == -1:
+        return ""
+    next_heading = re.compile(r"^##\s*\[?v?\d", re.IGNORECASE)
+    end = len(lines)
+    for idx in range(start + 1, len(lines)):
+        if next_heading.search(lines[idx]):
+            end = idx
+            break
+    return "\n".join(lines[start:end]).strip()
+
+
+def _fetch_release_notes(tag: str) -> str:
+    if not tag:
+        return ""
+    # Try local changelog first
+    try:
+        changelog_path = Path(__file__).resolve().parent / "CHANGELOG.md"
+        if changelog_path.exists():
+            text = changelog_path.read_text(encoding="utf-8")
+            section = _extract_release_section(tag, text)
+            if section:
+                return section
+    except Exception:
+        pass
+    # Fallback to GitHub raw
+    try:
+        url = f"https://raw.githubusercontent.com/murat-taskaynatan/Blockdag-Node-Manager/{tag}/CHANGELOG.md"
+        resp = requests.get(url, timeout=6)
+        if resp.status_code == 200:
+            section = _extract_release_section(tag, resp.text)
+            return section or ""
+    except Exception:
+        pass
+    return ""
+
+
+@app.route("/api/node-manager/release-notes")
+def api_node_manager_release_notes():
+    tag = (request.args.get("tag") or "").strip()
+    notes = _fetch_release_notes(tag)
+    return jsonify({"tag": tag, "notes": notes or ""})
+
 _SELF_UPDATE_CMD = (
     "curl -fsSL https://raw.githubusercontent.com/murat-taskaynatan/Blockdag-Node-Manager/main/install_nm_from_github.sh | sudo bash"
 )

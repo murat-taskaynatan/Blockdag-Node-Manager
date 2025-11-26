@@ -62,7 +62,7 @@ const state = {
       lastLaunchSignature: null,
     },
   };
-  const FORCE_UPDATE_AVAILABLE = true;
+  const FORCE_UPDATE_AVAILABLE = false;
 
   const cardsContainer = document.getElementById('fleetCards');
   const emptyStateCard = document.getElementById('emptyFleetState');
@@ -2708,10 +2708,10 @@ async function loadSettings() {
       state.updateStatus.error = null;
       if (newer && latest) {
         try {
-          const notesRes = await fetch(`https://raw.githubusercontent.com/murat-taskaynatan/Blockdag-Node-Manager/${latest}/CHANGELOG.md`, { cache: 'no-store' });
+          const notesRes = await fetch(`/api/node-manager/release-notes?tag=${encodeURIComponent(latest)}`, { cache: 'no-store' });
           if (notesRes.ok) {
-            const notes = await notesRes.text();
-            state.about.releaseNotes = extractReleaseSection(latest, notes) || '';
+            const payloadNotes = await notesRes.json().catch(() => ({}));
+            state.about.releaseNotes = payloadNotes?.notes || '';
           } else {
             state.about.releaseNotes = '';
           }
