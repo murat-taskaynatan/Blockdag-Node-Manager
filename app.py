@@ -6739,6 +6739,27 @@ def api_node_manager_version():
         }
     )
 
+_SELF_UPDATE_CMD = (
+    "curl -fsSL https://raw.githubusercontent.com/murat-taskaynatan/Blockdag-Node-Manager/main/install_nm_from_github.sh | sudo bash"
+)
+
+
+@app.route("/api/node-manager/self-update", methods=["POST"])
+def api_node_manager_self_update():
+    try:
+        proc = subprocess.run(
+            ["bash", "-lc", _SELF_UPDATE_CMD],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=1200,
+        )
+        return jsonify({"code": proc.returncode, "stdout": proc.stdout, "stderr": proc.stderr})
+    except subprocess.TimeoutExpired:
+        return jsonify({"error": "Update timed out"}), 504
+    except Exception as exc:  # pragma: no cover - defensive
+        return jsonify({"error": str(exc)}), 500
+
 
 @app.route("/api/node-manager/logs")
 def api_node_manager_logs():

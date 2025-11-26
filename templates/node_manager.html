@@ -520,6 +520,7 @@
               <button class="summary-tab" type="button" data-summary-tab="snapshots" aria-selected="false">Snapshots</button>
               <button class="summary-tab" type="button" data-summary-tab="wallet" aria-selected="false">Wallet</button>
               <button class="summary-tab" type="button" data-summary-tab="launchpad" aria-selected="false">Launchpad</button>
+              <button class="summary-tab" type="button" data-summary-tab="about" aria-selected="false">About</button>
             </div>
           </div>
       </div>
@@ -1111,6 +1112,30 @@
               <span class="icon" data-launch-icon hidden>🚀</span>
               <span data-launch-label>Next</span>
             </button>
+          </div>
+        </div>
+        <div class="summary-pane" data-summary-pane="about" hidden>
+          <div class="snapshot-card" style="gap:12px">
+            <h3 style="margin:0">About BlockDAG Node Manager</h3>
+            <p style="margin:0;color:var(--muted)">Built by the BlockDAG Investors Group to simplify operations, recovery, and monitoring across your fleet.</p>
+            <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+              <span class="pill">Version: <strong id="aboutVersion">—</strong></span>
+              <span class="pill" id="aboutLatestPill" hidden>Latest: <strong id="aboutLatest">—</strong></span>
+              <span class="pill" id="aboutUpdateBadge" hidden style="background:rgba(68,242,168,.16);color:#44f2a8">Update available</span>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+              <button type="button" class="pill-btn" id="aboutCheckUpdateBtn">
+                <span class="icon">↻</span> Check for updates
+              </button>
+              <button type="button" class="pill-btn" id="aboutInstallBtn" hidden>
+                <span class="icon">⬇</span> Install update
+              </button>
+              <span id="aboutStatus" style="font-size:13px;color:var(--muted)">Idle</span>
+            </div>
+            <div style="width:100%">
+              <div style="font-size:12px;color:var(--muted);margin-bottom:4px">Install log</div>
+              <pre id="aboutInstallLog" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:10px;min-height:80px;max-height:180px;overflow:auto;margin:0">No install attempts yet.</pre>
+            </div>
           </div>
         </div>
         <div class="summary-pane" data-summary-pane="snapshots" hidden>

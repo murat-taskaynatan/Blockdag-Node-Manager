@@ -22,7 +22,7 @@ const state = {
     snapshotStatus: { text: '', level: '', manual: false },
     snapshotCountdown: null,
     overlayStatus: { items: [], byNode: new Map() },
-    updateStatus: { latest: null, updateAvailable: false, error: null, local: null },
+    updateStatus: { latest: initialLatestVersion || null, updateAvailable: false, error: null, local: null },
     automationLogs: {
       items: [],
       expanded: false,
@@ -35,6 +35,10 @@ const state = {
       items: [],
       count: 0,
       tab: 'logs',
+    },
+    about: {
+      installing: false,
+      log: 'No install attempts yet.',
     },
     nodesDiscovering: false,
     discoveryStartTs: 0,
@@ -113,6 +117,14 @@ const automationLogPane = document.getElementById('automationLogPane');
 const automationQueuePane = document.getElementById('automationQueuePane');
 const automationTabs = Array.from(document.querySelectorAll('[data-automation-tab]'));
 const automationLogUpdated = document.getElementById('automationLogUpdated');
+  const aboutVersion = document.getElementById('aboutVersion');
+  const aboutLatest = document.getElementById('aboutLatest');
+  const aboutLatestPill = document.getElementById('aboutLatestPill');
+  const aboutUpdateBadge = document.getElementById('aboutUpdateBadge');
+  const aboutCheckUpdateBtn = document.getElementById('aboutCheckUpdateBtn');
+  const aboutInstallBtn = document.getElementById('aboutInstallBtn');
+  const aboutStatus = document.getElementById('aboutStatus');
+  const aboutInstallLog = document.getElementById('aboutInstallLog');
   const updateIndicator = document.getElementById('updateIndicator');
   const localAppVersion = (typeof window !== 'undefined' && window.__APP_VERSION__) ? window.__APP_VERSION__ : '—';
   const initialLatestVersion = (typeof window !== 'undefined' && window.__APP_LATEST__) ? window.__APP_LATEST__ : null;
@@ -2409,6 +2421,10 @@ function switchSummaryTab(target) {
         title: 'Launchpad',
         desc: "Configure and launch new nodes with guided steps and automatic port assignment. ",
       },
+      about: {
+        title: 'About',
+        desc: 'Version and update controls for the BlockDAG Node Manager.',
+      },
     };
     const next = copy[activeView] || copy.stats;
     summaryDynamicTitle.textContent = next.title;
@@ -2450,6 +2466,68 @@ function updateSettingsStatus(message, options = {}) {
     }
   }
 }
+
+  function setAboutStatus(message, options = {}) {
+    if (!aboutStatus) return;
+    aboutStatus.textContent = message || '';
+    aboutStatus.style.color = options.error ? 'var(--bad)' : 'var(--muted)';
+  }
+
+  function renderAboutUpdateStatus() {
+    if (!aboutVersion) return;
+    aboutVersion.textContent = localAppVersion || '—';
+    const latest = state.updateStatus.latest || initialLatestVersion || '—';
+    if (aboutLatest) aboutLatest.textContent = latest;
+    if (aboutLatestPill) aboutLatestPill.hidden = !latest;
+    const available = !!state.updateStatus.updateAvailable;
+    if (aboutUpdateBadge) aboutUpdateBadge.hidden = !available;
+    if (aboutInstallBtn) {
+      aboutInstallBtn.hidden = !available;
+      aboutInstallBtn.disabled = state.about.installing;
+    }
+    if (aboutCheckUpdateBtn) {
+      aboutCheckUpdateBtn.disabled = state.about.installing;
+    }
+    if (aboutInstallLog) {
+      aboutInstallLog.textContent = state.about.log || 'No install attempts yet.';
+    }
+  }
+
+  async function runSelfUpdate() {
+    if (!aboutInstallBtn || state.about.installing) return;
+    state.about.installing = true;
+    renderAboutUpdateStatus();
+    setAboutStatus('Installing update…');
+    try {
+      const res = await fetch('/api/node-manager/self-update', { method: 'POST' });
+      let payload = {};
+      try {
+        payload = await res.json();
+      } catch (_) {
+        payload = { error: `HTTP ${res.status}` };
+      }
+      const stdout = payload?.stdout || '';
+      const stderr = payload?.stderr || '';
+      const code = Number(payload?.code);
+      const combined = [stdout, stderr].filter(Boolean).join('\n').trim() || 'No output.';
+      state.about.log = combined;
+      if (aboutInstallLog) {
+        aboutInstallLog.textContent = combined;
+      }
+      const ok = Number.isFinite(code) ? code === 0 : false;
+      setAboutStatus(ok ? 'Install completed.' : `Install failed (code ${Number.isFinite(code) ? code : '?'})`, { error: !ok });
+      if (ok) {
+        await loadUpdateStatus({ force: true });
+      }
+    } catch (err) {
+      state.about.log = err?.message || 'Install failed.';
+      if (aboutInstallLog) aboutInstallLog.textContent = state.about.log;
+      setAboutStatus('Install failed.', { error: true });
+    } finally {
+      state.about.installing = false;
+      renderAboutUpdateStatus();
+    }
+  }
 
   function applySettingsToForm(settings = {}) {
     const merged = { ...defaultSettings, ...settings };
@@ -2577,6 +2655,7 @@ async function loadSettings() {
       updateIndicator.classList.remove('is-visible');
     } finally {
       window.clearTimeout(timer);
+      renderAboutUpdateStatus();
     }
   }
 
@@ -5497,10 +5576,23 @@ function syncCards(nodes) {
       });
       setAutomationTab(state.automationQueue.tab);
     }
+    if (aboutCheckUpdateBtn) {
+      aboutCheckUpdateBtn.addEventListener('click', () => {
+        setAboutStatus('Checking for updates…');
+        void loadUpdateStatus({ force: true });
+      });
+    }
+    if (aboutInstallBtn) {
+      aboutInstallBtn.addEventListener('click', () => {
+        void runSelfUpdate();
+      });
+    }
   }
 
   async function init() {
     attachEventHandlers();
+    renderAboutUpdateStatus();
+    setAboutStatus('Idle');
     const initialTab = summaryTabButtons.find((button) => button.classList.contains('is-active')) || summaryTabButtons[0] || null;
     if (initialTab) {
       switchSummaryTab(initialTab);
