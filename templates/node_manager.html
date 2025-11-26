@@ -1264,19 +1264,16 @@
 
 <script src="{{ url_for('static', filename='chart.umd.min.js') }}"></script>
 <div class="version-stack">
-  <div class="version-badge" id="versionBadge">
-            <strong>{{ app_version_display or 'v1.6.9' }}</strong>
-    <a
-      class="update-indicator{% if app_update_available %} is-visible{% endif %}"
-      id="updateIndicator"
-      href="https://github.com/murat-taskaynatan/Blockdag-Node-Manager/releases"
-      target="_blank"
-      rel="noopener"
-      aria-label="Update available on GitHub"
-      title="Update available on GitHub"
-      data-latest-version="{{ app_latest_version or '' }}"
-    >⬇</a>
-  </div>
+  <a
+    class="update-indicator{% if app_update_available %} is-visible{% endif %}"
+    id="updateIndicator"
+    href="https://github.com/murat-taskaynatan/Blockdag-Node-Manager/releases"
+    target="_blank"
+    rel="noopener"
+    aria-label="Update available on GitHub"
+    title="Update available on GitHub"
+    data-latest-version="{{ app_latest_version or '' }}"
+  >⬇</a>
 </div>
 <script>
   window.__APP_VERSION__ = "{{ app_version }}";
