@@ -2511,10 +2511,6 @@ function updateSettingsStatus(message, options = {}) {
       latest.trim() !== localVersion.trim() &&
       isNewerVersion(latest, localVersion);
     state.updateStatus.updateAvailable = available;
-    if (!available && aboutUpdateBadge) {
-      aboutUpdateBadge.hidden = true;
-      aboutUpdateBadge.style.display = 'none';
-    }
     if (aboutUpdateBadge) {
       aboutUpdateBadge.hidden = !available;
       aboutUpdateBadge.style.display = available ? 'inline-flex' : 'none';
@@ -2678,7 +2674,7 @@ async function loadSettings() {
       const latest = payload?.latest_version || null;
       const local = payload?.local_version || localAppVersion || '—';
       const available = Boolean(payload?.update_available && latest);
-      const newer = available && isNewerVersion(latest, localAppVersion);
+      const newer = available && isNewerVersion(latest, local);
       state.updateStatus.latest = latest;
       state.updateStatus.local = local;
       state.updateStatus.updateAvailable = newer;
@@ -5632,16 +5628,6 @@ function syncCards(nodes) {
   }
 
   async function init() {
-    if (aboutUpdateBadge) {
-      aboutUpdateBadge.hidden = true;
-      aboutUpdateBadge.style.display = 'none';
-    }
-    if (aboutLatestPill) {
-      aboutLatestPill.hidden = true;
-    }
-    if (aboutInstallBtn) {
-      aboutInstallBtn.hidden = true;
-    }
     attachEventHandlers();
     renderAboutUpdateStatus();
     setAboutStatus('Idle');
