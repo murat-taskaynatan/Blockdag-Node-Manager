@@ -2326,6 +2326,10 @@ def _select_snapshot_for_restore() -> Optional[Path]:
         path = directory / name
         if not path.exists():
             continue
+        integrity = entry.get("integrity") or {}
+        if integrity and not integrity.get("ok"):
+            # Skip snapshots flagged as corrupt
+            continue
         height = _parse_snapshot_height(name)
         if height is not None and height > best_height:
             best_height = height
