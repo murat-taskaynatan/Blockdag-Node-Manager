@@ -5451,6 +5451,19 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
             metrics["stalled_reason"] = offline_reason
             metrics["health_text"] = offline_reason
             metrics["health_detail"] = offline_reason
+            try:
+                app.logger.info(
+                    "Liveness trace (offline): id=%s container=%s running=%s stalled=%s recovery=%s restarts=%s last_liveness=%s",
+                    ctx.id,
+                    ctx.container or "unknown",
+                    running_flag,
+                    stalled_flag,
+                    metrics.get("recovery_required"),
+                    state.get("liveness_restarts"),
+                    state.get("last_liveness"),
+                )
+            except Exception:
+                pass
         if not stalled_flag:
             if running_flag and uptime_seconds >= LIVENESS_STABLE_SEC:
                 with _LOG_POLICY_LOCK:
