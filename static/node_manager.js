@@ -42,6 +42,8 @@ const state = {
       installing: false,
       log: 'No install attempts yet.',
       logPollTimer: null,
+      animationTimer: null,
+      frameIndex: 0,
     },
     nodesDiscovering: false,
     discoveryStartTs: 0,
@@ -71,6 +73,9 @@ const state = {
   const summaryBadge = document.getElementById('globalSummaryBadge');
   const summaryDynamicTitle = document.getElementById('summaryDynamicTitle');
   const summaryDynamicDesc = document.getElementById('summaryDynamicDesc');
+  const ASCII_FRAMES_FULL = Array.isArray(window.BDAG_ASCII_FRAMES) ? window.BDAG_ASCII_FRAMES : [];
+  const ASCII_FRAMES = ASCII_FRAMES_FULL.slice(0, 80);
+  const ABOUT_FRAME_INTERVAL = 120;
 
   const summaryTabButtons = Array.from(document.querySelectorAll('[data-summary-tab]'));
   const summaryPanes = Array.from(document.querySelectorAll('[data-summary-pane]'));
@@ -113,39 +118,31 @@ const state = {
   const aboutInstallBtn = document.getElementById('aboutInstallBtn');
   const aboutInstallLog = document.getElementById('aboutInstallLog');
   const aboutReleaseNotes = document.getElementById('aboutReleaseNotes');
-  const aboutAnsiContainer = document.getElementById('aboutAnsiContainer');
-  const aboutAnsiAnim = document.getElementById('aboutAnsiAnim');
-  let aboutAnsiTimer = null;
-  let aboutAnsiFrame = 0;
-  const ansiFrames = [
-    '\u001b[38;5;208m█▇▆▅▄▃▂▂▃▄▅▆▇█▇▆▅▄▃▂▁▁▂▃▄▅▆▇\u001b[0m\n\u001b[38;5;208m▇▆▅▄▃▂▁▁▂▃▄▅▆▇█▇▆▅▄▃▂▁▂▃▄▅▆▇█\u001b[0m\n\u001b[38;5;208m▆▅▄▃▂▁   ▂▃▄▅▆▇█▇▆▅▄▃▂▁   ▂▃▄▅▆▇\u001b[0m\n\u001b[38;5;208m▅▄▃▂▁     ▂▃▄▅▆▇█▇▆▅▄▃▂▁     ▂▃▄▅▆▇█\u001b[0m\n\u001b[38;5;208mBlockDAG Investors Group\u001b[0m',
-    '\u001b[38;5;208m▃▄▅▆▇█▇▆▅▄▃▂▂▃▄▅▆▇█▇▆▅▄▃▂▁▁▂▃▄▅▆\u001b[0m\n\u001b[38;5;208m▄▃▂▁▁▂▃▄▅▆▇█▇▆▅▄▃▂▁▂▃▄▅▆▇█▇▆▅▄\u001b[0m\n\u001b[38;5;208m▂▁       ▂▃▄▅▆▇█▇▆▅▄▃▂▁       ▂▃▄▅\u001b[0m\n\u001b[38;5;208m         ▂▃▄▅▆▇█▇▆▅▄▃▂▁         ▂▃▄▅▆\u001b[0m\n\u001b[38;5;208mBlockDAG Investors Group\u001b[0m',
-    '\u001b[38;5;208m▂▂▃▄▅▆▇█▇▆▅▄▃▂▂▃▄▅▆▇█▇▆▅▄▃▂▁▁▂▃▄▅\u001b[0m\n\u001b[38;5;208m  ▂▃▄▅▆▇█▇▆▅▄▃▂▁▂▃▄▅▆▇█▇▆▅▄▃▂▁▂▃▄▅▆\u001b[0m\n\u001b[38;5;208m    ▃▄▅▆▇█▇▆▅▄▃▂▁   ▂▃▄▅▆▇█▇▆▅▄▃▂▁\u001b[0m\n\u001b[38;5;208m       ▅▆▇█▇▆▅▄▃▂▁     ▂▃▄▅▆▇█▇▆▅▄▃\u001b[0m\n\u001b[38;5;208mBlockDAG Investors Group\u001b[0m',
-    '\u001b[38;5;208m    █▇▆▅▄▃▂▂▃▄▅▆▇█▇▆▅▄▃▂▁▁▂▃▄▅▆▇█\u001b[0m\n\u001b[38;5;208m  ▇▆▅▄▃▂▁▁▂▃▄▅▆▇█▇▆▅▄▃▂▁▂▃▄▅▆▇█▇▆▅\u001b[0m\n\u001b[38;5;208m▅▄▃▂▁   ▂▃▄▅▆▇█▇▆▅▄▃▂▁   ▂▃▄▅▆▇█▇▆\u001b[0m\n\u001b[38;5;208m▂▁     ▂▃▄▅▆▇█▇▆▅▄▃▂▁     ▂▃▄▅▆▇█▇▆▅\u001b[0m\n\u001b[38;5;208mBlockDAG Investors Group\u001b[0m',
-    '\u001b[38;5;208m▁▂▃▄▅▆▇█▇▆▅▄▃▂▂▃▄▅▆▇█▇▆▅▄▃▂▁▁▂▃▄\u001b[0m\n\u001b[38;5;208m      ▂▃▄▅▆▇█▇▆▅▄▃▂▁▂▃▄▅▆▇█▇▆▅▄▃▂▁▂▃▄▅\u001b[0m\n\u001b[38;5;208m        ▃▄▅▆▇█▇▆▅▄▃▂▁   ▂▃▄▅▆▇█▇▆▅▄▃▂\u001b[0m\n\u001b[38;5;208m          ▅▆▇█▇▆▅▄▃▂▁     ▂▃▄▅▆▇█▇▆▅▄\u001b[0m\n\u001b[38;5;208mBlockDAG Investors Group\u001b[0m',
-    '\u001b[38;5;208m██▇▆▅▄▃▂▂▃▄▅▆▇█▇▆▅▄▃▂▁▁▂▃▄▅▆▇█▇▆\u001b[0m\n\u001b[38;5;208m▇▆▅▄▃▂▁▁▂▃▄▅▆▇█▇▆▅▄▃▂▁▂▃▄▅▆▇█▇▆▅▄▃\u001b[0m\n\u001b[38;5;208m▆▅▄▃▂▁   ▂▃▄▅▆▇█▇▆▅▄▃▂▁   ▂▃▄▅▆▇█▇▆▅\u001b[0m\n\u001b[38;5;208m▅▄▃▂▁     ▂▃▄▅▆▇█▇▆▅▄▃▂▁     ▂▃▄▅▆▇█▇▆▅▄\u001b[0m\n\u001b[38;5;208mBlockDAG Investors Group\u001b[0m',
-  ];
+  const aboutAsciiFrame = document.getElementById('aboutAsciiFrame');
+  const aboutAsciiMeta = null;
 
-  function startAnsiLoop() {
-    if (!aboutAnsiAnim || !aboutAnsiContainer) return;
-    aboutAnsiContainer.style.display = 'block';
-    if (aboutAnsiTimer) return;
-    aboutAnsiAnim.textContent = ansiFrames[0];
-    aboutAnsiTimer = window.setInterval(() => {
-      aboutAnsiFrame = (aboutAnsiFrame + 1) % ansiFrames.length;
-      aboutAnsiAnim.textContent = ansiFrames[aboutAnsiFrame];
-    }, 250);
+  function stripLeadingBlankLines(str) {
+    if (typeof str !== 'string') return str;
+    return str.replace(/^(?:[ \t\x0B\f\r]*\n)+/, '');
   }
 
-  function stopAnsiLoop() {
-    if (aboutAnsiTimer) {
-      clearInterval(aboutAnsiTimer);
-      aboutAnsiTimer = null;
-    }
-    if (aboutAnsiContainer) {
-      aboutAnsiContainer.style.display = 'none';
-    }
+  function normalizeAsciiFrames(frames) {
+    const splitFrames = frames.map((frame) => {
+      const raw = typeof frame === 'string' ? frame : '';
+      const trimmed = stripLeadingBlankLines(raw);
+      return trimmed.split('\n');
+    });
+    const maxLines = splitFrames.reduce((max, lines) => Math.max(max, lines.length), 0);
+    const normalized = splitFrames.map((lines) => {
+      const padded = lines.slice();
+      while (padded.length < maxLines) padded.push('');
+      return padded;
+    });
+    return { frames: normalized, maxLines };
   }
+
+  const NORMALIZED_ASCII = normalizeAsciiFrames(ASCII_FRAMES);
+
   function scrollInstallLogToBottom() {
     if (!aboutInstallLog) return;
     window.requestAnimationFrame(() => {
@@ -2465,7 +2462,7 @@ function switchSummaryTab(target) {
       },
       about: {
         title: 'About',
-        desc: 'BlockDAG Node Manager by BlockDAG Investors Group · 2025.',
+        desc: 'BlockDAG Node Manager by BlockDAG Investors Group.',
       },
     };
     const next = copy[activeView] || copy.stats;
@@ -2484,6 +2481,11 @@ function switchSummaryTab(target) {
     }
   } else {
     stopAutomationLogPolling();
+  }
+  if (activeView === 'about') {
+    startAboutAnimation();
+  } else {
+    stopAboutAnimation();
   }
 }
 
@@ -2513,6 +2515,30 @@ function updateSettingsStatus(message, options = {}) {
     if (!aboutStatus) return;
     aboutStatus.textContent = message || '';
     aboutStatus.style.color = options.error ? 'var(--bad)' : 'var(--muted)';
+  }
+
+  function renderAboutFrame(index) {
+    if (!aboutAsciiFrame || !NORMALIZED_ASCII.frames.length) return;
+    const safeIndex = index % NORMALIZED_ASCII.frames.length;
+    state.about.frameIndex = safeIndex;
+    const lines = NORMALIZED_ASCII.frames[safeIndex] || [];
+    aboutAsciiFrame.textContent = lines.join('\n');
+  }
+
+  function stopAboutAnimation() {
+    if (state.about.animationTimer) {
+      clearInterval(state.about.animationTimer);
+      state.about.animationTimer = null;
+    }
+  }
+
+  function startAboutAnimation() {
+    if (!aboutAsciiFrame || !ASCII_FRAMES.length) return;
+    stopAboutAnimation();
+    renderAboutFrame(state.about.frameIndex || 0);
+    state.about.animationTimer = window.setInterval(() => {
+      renderAboutFrame((state.about.frameIndex + 1) % ASCII_FRAMES.length);
+    }, ABOUT_FRAME_INTERVAL);
   }
 
   function stopSelfUpdateLogStream() {
@@ -2619,11 +2645,6 @@ function updateSettingsStatus(message, options = {}) {
     const localVersion = state.updateStatus.local || localAppVersion || '—';
     aboutVersion.textContent = localVersion;
     const available = !!state.updateStatus.updateAvailable;
-    if (available) {
-      stopAnsiLoop();
-    } else {
-      startAnsiLoop();
-    }
     const chip = document.getElementById('aboutUpdateChip');
     if (chip) {
       chip.hidden = !available;
@@ -5790,6 +5811,7 @@ function syncCards(nodes) {
     attachEventHandlers();
     renderAboutUpdateStatus();
     setAboutStatus('Idle');
+    renderAboutFrame(0);
     const initialTab = summaryTabButtons.find((button) => button.classList.contains('is-active')) || summaryTabButtons[0] || null;
     if (initialTab) {
       switchSummaryTab(initialTab);
@@ -5858,10 +5880,15 @@ function syncCards(nodes) {
         void loadAutomationLogs({ force: true, silent: true });
         startAutomationLogPolling();
       }
+      const activeSummaryTab = summaryTabButtons.find((btn) => btn.classList.contains('is-active'));
+      if (activeSummaryTab && activeSummaryTab.dataset.summaryTab === 'about') {
+        startAboutAnimation();
+      }
     } else {
       stopOcLogPolling();
       stopAutomationLogPolling();
       stopSnapshotHeartbeat();
+      stopAboutAnimation();
     }
   });
 

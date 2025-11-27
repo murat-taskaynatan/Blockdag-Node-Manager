@@ -104,6 +104,7 @@
     .node-discovery-message{flex-direction:column;align-items:flex-start;text-align:left}
   }
   @media (max-width:640px){
+    .node-logs__panel{height:180px;min-height:180px;max-height:180px;flex:0 0 180px}
     .summary-tabs{gap:4px;padding:2px}
     .summary-tab{padding:6px 8px;font-size:12px}
     summary.fleet-summary{flex-direction:column;align-items:flex-start}
@@ -313,7 +314,7 @@
   .btn--primary .icon{font-size:14px}
   .btn--ghost{border-color:rgba(154,164,199,.35);color:var(--muted)}
   .fleet-grid{display:grid;gap:14px}
-  details.fleet-card{background:var(--card);border-radius:16px;box-shadow:0 4px 16px rgba(0,0,0,.2);padding:0;border:1px solid rgba(255,255,255,.04)}
+  details.fleet-card{background:var(--card);border-radius:16px;box-shadow:0 4px 16px rgba(0,0,0,.2);padding:0;border:1px solid rgba(255,255,255,.04);overflow:hidden}
   .fleet-card[open]{animation:pop .25s ease}
   summary.fleet-summary{list-style:none;margin:0;padding:16px 18px;border-bottom:1px solid rgba(255,255,255,.04);display:flex;align-items:center;justify-content:space-between;cursor:pointer}
   summary.fleet-summary::-webkit-details-marker{display:none}
@@ -434,16 +435,19 @@
   .node-logs__toggle:focus-visible{outline:none;color:var(--text);text-decoration:underline}
   .node-logs__chevron{font-size:12px;transition:transform .2s}
   .node-logs.is-open .node-logs__chevron{transform:rotate(180deg)}
-  .node-logs__panel{background:rgba(0,0,0,.18);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:10px;border:1px solid rgba(255,255,255,.1)}
+  .node-logs__panel{background:rgba(0,0,0,.18);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:10px;border:1px solid rgba(255,255,255,.1);height:200px;min-height:200px;max-height:200px;overflow:auto;flex:0 0 200px}
   .node-logs__panel[hidden]{display:none}
   .node-logs__toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px}
   .node-logs__meta{font-size:12px;color:var(--muted)}
   .node-logs__refresh{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;font-size:12px}
-  .node-logs__output{margin:0;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.45;max-height:200px;overflow:auto;white-space:pre-wrap;background:rgba(33,24,0,.45);border-radius:8px;padding:10px;color:#ffb74d!important;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.16) #20263d;}
+  .node-logs__output{margin:0;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.45;overflow:auto;white-space:pre-wrap;background:rgba(33,24,0,.45);border-radius:8px;padding:10px;color:#ffb74d!important;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.16) #20263d;flex:1 1 auto;min-height:0;height:100%}
   #ocLogsPanel .node-logs__output{font-weight:600}
   .node-logs__output::-webkit-scrollbar{width:8px;height:8px}
   .node-logs__output::-webkit-scrollbar-track{background:#20263d;border-radius:8px}
   .node-logs__output::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.16);border-radius:8px}
+  .about-ascii{background:rgba(33,24,0,.45);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:12px;box-shadow:0 10px 26px rgba(0,0,0,.32);color:#ffb74d;display:flex;flex-direction:column}
+  .about-ascii__frame{margin:0;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:5px;line-height:0.9;white-space:pre;overflow:hidden;background:rgba(0,0,0,.22);border-radius:10px;padding:10px;padding-top:28px;border:1px solid rgba(255,255,255,.06);height:120px;min-height:120px;max-height:120px;flex:0 0 120px}
+  .about-ascii__meta{display:none}
   .node-logs__header{font-weight:700;font-size:13.3333px;color:rgb(184,187,196);display:flex;align-items:center;justify-content:space-between}
   /* Overclock logs panel spacing override */
   #ocLogsPanel.node-logs{border-top:none;padding-top:0;margin-top:0}
@@ -1136,8 +1140,8 @@
                 Install update
               </button>
             </div>
-            <div id="aboutAnsiContainer" style="width:100%;max-width:100%;min-width:0;display:none">
-              <pre id="aboutAnsiAnim" style="background:rgba(33,24,0,.45);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px;min-height:160px;max-height:180px;overflow:auto;margin:0;font-family:'SFMono-Regular',Menlo,Consolas,'Liberation Mono',monospace;font-size:12px;line-height:1.3;white-space:pre;color:#ffb74d;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.16) #20263d">Waiting…</pre>
+            <div class="about-ascii">
+              <pre id="aboutAsciiFrame" class="about-ascii__frame" aria-hidden="true"></pre>
             </div>
             <div id="aboutReleaseNotes" hidden style="font-size:13px;color:var(--muted);line-height:1.4;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:10px;white-space:pre-wrap"></div>
             <div style="width:100%;max-width:100%;min-width:0">
@@ -1281,4 +1285,5 @@
   window.__APP_VERSION__ = "{{ app_version }}";
   window.__APP_LATEST__ = "";
 </script>
+<script src="{{ url_for('static', filename='ascii_frames.js') }}?v={{ app_version }}-{{ cache_buster }}"></script>
 <script src="{{ url_for('static', filename='node_manager.js') }}?v={{ app_version }}-{{ cache_buster }}"></script>
