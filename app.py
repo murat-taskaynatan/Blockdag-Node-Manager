@@ -5447,6 +5447,7 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
             stall_reason = offline_reason
             stalled_flag = stalled_flag or True  # treat offline as stalled to allow liveness actions
             metrics["stalled"] = True
+            metrics["recovery_required"] = True  # force liveness recovery path for offline nodes
             metrics["stalled_reason"] = offline_reason
             metrics["health_text"] = offline_reason
             metrics["health_detail"] = offline_reason
