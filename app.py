@@ -1022,6 +1022,9 @@ def _apply_runtime_settings(settings: Dict[str, object]) -> None:
         _ensure_directory_rw(SNAPSHOT_DIR, create=True)
     except Exception:
         pass
+    # Reload integrity metadata after resolving the effective snapshot dir so we
+    # keep status alongside the active snapshot location across restarts.
+    _load_snapshot_integrity()
     if not os.access(SNAPSHOT_DIR, os.R_OK | os.W_OK | os.X_OK):
         fallback_candidates = [
             _expanded_path(SNAPSHOT_DIR_DEFAULT_PATH, _SNAPSHOT_DIR_FALLBACK),
