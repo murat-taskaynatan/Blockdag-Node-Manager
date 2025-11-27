@@ -623,6 +623,13 @@ SNAPSHOT_INTEGRITY_PATH = (Path(__file__).resolve().parent / "data" / "snapshot_
 SNAPSHOT_INTEGRITY_PATH.parent.mkdir(parents=True, exist_ok=True)
 _SNAPSHOT_INTEGRITY_LOCK = threading.Lock()
 _SNAPSHOT_INTEGRITY: Dict[str, dict] = {}
+
+
+def _snapshot_integrity_path() -> Path:
+    override = os.getenv("BDAG_SNAPSHOT_INTEGRITY_PATH", "").strip()
+    if override:
+        return _expanded_path(override, Path.cwd())
+    return _expanded_path(str(SNAPSHOT_DIR / ".snapshot_integrity.json"), Path.cwd())
 LIVENESS_COOLDOWN_PATH = (Path(__file__).resolve().parent / "data" / "liveness_cooldown.json")
 LIVENESS_COOLDOWN_PATH.parent.mkdir(parents=True, exist_ok=True)
 
@@ -672,18 +679,21 @@ def _persist_snapshot_integrity() -> None:
     with _SNAPSHOT_INTEGRITY_LOCK:
         payload = dict(_SNAPSHOT_INTEGRITY)
     try:
-        temp_path = SNAPSHOT_INTEGRITY_PATH.with_suffix(".tmp")
+        path = _snapshot_integrity_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = path.with_suffix(".tmp")
         temp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-        temp_path.replace(SNAPSHOT_INTEGRITY_PATH)
+        temp_path.replace(path)
     except Exception:
         pass
 
 
 def _load_snapshot_integrity() -> None:
-    if not SNAPSHOT_INTEGRITY_PATH.exists():
+    path = _snapshot_integrity_path()
+    if not path.exists():
         return
     try:
-        raw = SNAPSHOT_INTEGRITY_PATH.read_text(encoding="utf-8")
+        raw = path.read_text(encoding="utf-8")
         data = json.loads(raw)
     except Exception:
         return
@@ -842,7 +852,6 @@ def _schedule_wallet_refresh(*, force: bool = False) -> None:
 
 
 _load_wallet_history()
-_load_snapshot_integrity()
 _load_liveness_cooldowns()
 
 # ---------------------------------------------------------------------------
@@ -1601,6 +1610,10 @@ try:
     _ensure_directory_rw(SNAPSHOT_DATA_DIR, create=False)
 except Exception:
     pass
+
+# Load persisted snapshot integrity info after SNAPSHOT_DIR is resolved so we
+# store alongside snapshots rather than the app bundle.
+_load_snapshot_integrity()
 _CUSTOM_TEMP_PATH = _normalize_path(os.getenv("BDAG_CPU_TEMP_PATH") or "")
 _SENSOR_PACKAGES = ("lm-sensors",)
 _CUSTOM_TEMP_PATH = _normalize_path(os.getenv("BDAG_CPU_TEMP_PATH") or "")
