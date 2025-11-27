@@ -5221,6 +5221,17 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
     enable_error_restart = bool(settings.get("auto_restart_on_error"))
     enable_liveness = bool(settings.get("liveness_auto_recover"))
     if not (enable_error_restart or enable_liveness):
+        if ctx.id == "blockdag-testnet-network-8":
+            try:
+                app.logger.info(
+                    "Liveness trace: skipping (disabled) id=%s container=%s liveness=%s auto_restart=%s",
+                    ctx.id,
+                    ctx.container or "unknown",
+                    enable_liveness,
+                    enable_error_restart,
+                )
+            except Exception:
+                pass
         return
     now = time.time()
     memory_liveness_blocked = _memory_liveness_cooldown_active(now)
@@ -5243,6 +5254,16 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
         )
         last_check = float(state.get("last_check", 0.0))
         if now - last_check < LOG_ERROR_CHECK_SEC:
+            if ctx.id == "blockdag-testnet-network-8":
+                try:
+                    app.logger.info(
+                        "Liveness trace: rate-limited id=%s container=%s delta=%.2fs",
+                        ctx.id,
+                        ctx.container or "unknown",
+                        now - last_check,
+                    )
+                except Exception:
+                    pass
             return
         state["last_check"] = now
         post_restore_until = float(state.get("liveness_post_restore_until", 0.0))
@@ -5289,6 +5310,15 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
         metrics["stalled"] = False
         metrics["recovery_required"] = False
         metrics["health_text"] = "Importing blocks…"
+        if ctx.id == "blockdag-testnet-network-8":
+            try:
+                app.logger.info(
+                    "Liveness trace: importing skip id=%s container=%s",
+                    ctx.id,
+                    ctx.container or "unknown",
+                )
+            except Exception:
+                pass
     stalled_reason_text = (
         metrics.get("stalled_reason")
         or metrics.get("health_detail")
