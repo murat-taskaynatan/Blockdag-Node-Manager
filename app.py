@@ -5461,13 +5461,15 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
             worker_stopped_until = 0.0
         if worker_stopped_until > now and not running_flag:
             offline_reason = metrics.get("health_detail") or metrics.get("health_text") or "worker stopped (offline)"
+            stall_reason = offline_reason
+            stalled_flag = True
             metrics["running"] = False
             metrics["container_running"] = False
-            metrics["stalled"] = False
+            metrics["stalled"] = True
+            metrics["recovery_required"] = True
             metrics["stalled_reason"] = offline_reason
             metrics["health_text"] = offline_reason
             metrics["health_detail"] = offline_reason
-            return
         if not running_flag:
             offline_reason = (
                 metrics.get("health_detail")
