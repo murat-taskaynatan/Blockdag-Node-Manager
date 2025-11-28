@@ -79,6 +79,9 @@ const state = {
 
   const summaryTabButtons = Array.from(document.querySelectorAll('[data-summary-tab]'));
   const summaryPanes = Array.from(document.querySelectorAll('[data-summary-pane]'));
+  const isAboutTabActive = () => summaryTabButtons.some(
+    (btn) => btn.classList.contains('is-active') && btn.dataset.summaryTab === 'about',
+  );
   const summaryActions = document.querySelector('[data-summary-view="stats"]');
   const systemPane = document.querySelector('[data-summary-pane="system"]');
   const systemCpuValue = document.getElementById('statCpu');
@@ -119,6 +122,7 @@ const state = {
   const aboutInstallLog = document.getElementById('aboutInstallLog');
   const aboutReleaseNotes = document.getElementById('aboutReleaseNotes');
   const aboutAsciiFrame = document.getElementById('aboutAsciiFrame');
+  const aboutAsciiWrap = aboutAsciiFrame ? aboutAsciiFrame.parentElement : null;
   const aboutAsciiMeta = null;
 
   function stripLeadingBlankLines(str) {
@@ -2484,7 +2488,7 @@ function switchSummaryTab(target) {
   } else {
     stopAutomationLogPolling();
   }
-  if (activeView === 'about') {
+  if (activeView === 'about' && !state.updateStatus.updateAvailable) {
     startAboutAnimation();
   } else {
     stopAboutAnimation();
@@ -2665,9 +2669,18 @@ function updateSettingsStatus(message, options = {}) {
     }
     if (aboutReleaseNotes) {
       const notes = available ? (state.about.releaseNotes || '') : '';
-      const showNotes = available && notes.trim();
+      const normalized = notes.trim();
+      const showNotes = available;
       aboutReleaseNotes.hidden = !showNotes;
-      aboutReleaseNotes.textContent = showNotes ? notes.trim() : '';
+      aboutReleaseNotes.textContent = showNotes ? (normalized || 'Release notes not available for this update.') : '';
+    }
+    if (aboutAsciiWrap) {
+      aboutAsciiWrap.style.display = available ? 'none' : '';
+    }
+    if (available) {
+      stopAboutAnimation();
+    } else if (isAboutTabActive()) {
+      startAboutAnimation();
     }
     const installLogEl = document.getElementById('aboutInstallLog');
     const installLogWrap = installLogEl ? installLogEl.parentElement : null;
