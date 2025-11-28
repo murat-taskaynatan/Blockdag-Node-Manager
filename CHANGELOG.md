@@ -3,6 +3,7 @@
 ## v1.7.1 - 2025-11-28
 
 - System tab disk usage now targets a user-selectable filesystem (new System disk path setting; defaults to the manager install path). UI widths improved for the system disk and wallet address inputs.
+- Launchpad: Awakening image selection is exposed so operators can pick the testnet build when launching nodes.
 - Remote RPC endpoint is selectable in Settings (IP vs HTTPS) to control height/delta checks.
 - Automation: offline/liveness recovery no longer skips stopped nodes; launchpad drops unsupported flags to nodeworker.
 - Snapshots: integrity metadata reloads after settings changes so status follows the active snapshot directory.
