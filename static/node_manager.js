@@ -372,6 +372,8 @@ const automationLogUpdated = document.getElementById('automationLogUpdated');
     auto_snapshot_hours: 0,
     display_wallet_balance: true,
     snapshot_max: 0,
+    snapshot_dir: '',
+    system_disk_path: '',
     cpu_temp_path: '',
     remote_rpc_profile: 'ip',
     login_gate_enabled: false,

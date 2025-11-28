@@ -621,6 +621,8 @@ WALLET_HISTORY_PATH = (Path(__file__).resolve().parent / "data" / "wallet_histor
 WALLET_HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
 SNAPSHOT_INTEGRITY_PATH = (Path(__file__).resolve().parent / "data" / "snapshot_integrity.json")
 SNAPSHOT_INTEGRITY_PATH.parent.mkdir(parents=True, exist_ok=True)
+SYSTEM_DISK_PATH_DEFAULT = Path(__file__).resolve().parent
+SYSTEM_DISK_PATH = SYSTEM_DISK_PATH_DEFAULT
 _SNAPSHOT_INTEGRITY_LOCK = threading.Lock()
 _SNAPSHOT_INTEGRITY: Dict[str, dict] = {}
 
@@ -946,6 +948,8 @@ DEFAULT_SETTINGS: Dict[str, object] = {
     "display_wallet_balance": _coerce_bool(os.getenv("BDAG_WALLET_DISPLAY", "1"), True),
     "snapshot_max": SNAPSHOT_MAX_DEFAULT,
     "snapshot_dir": os.getenv("BDAG_SNAPSHOT_DIR", SNAPSHOT_DIR_DEFAULT_PATH),
+    # Filesystem path used for System tab disk usage
+    "system_disk_path": str(SYSTEM_DISK_PATH_DEFAULT),
     "cpu_temp_path": "/mnt/hgfs/vmshared/cpu_temp.txt",
     "remote_rpc_profile": "ip",
     "wallet_address": "",
@@ -986,6 +990,7 @@ def _apply_runtime_settings(settings: Dict[str, object]) -> None:
     global AUTO_RESTART_INTERVAL_SEC
     global _CUSTOM_TEMP_PATH
     global SNAPSHOT_DIR
+    global SYSTEM_DISK_PATH
     global LOGIN_USER
     global LOGIN_PASS
     global LOGIN_ENABLED
@@ -1013,6 +1018,21 @@ def _apply_runtime_settings(settings: Dict[str, object]) -> None:
     if not path_value:
         path_value = str(DEFAULT_SETTINGS.get("cpu_temp_path", "")).strip()
     _CUSTOM_TEMP_PATH = _normalize_path(path_value)
+
+    disk_path_value = str(settings.get("system_disk_path") or "").strip()
+    if not disk_path_value:
+        disk_path_value = str(SYSTEM_DISK_PATH_DEFAULT)
+    disk_candidate = _expanded_path(disk_path_value, SYSTEM_DISK_PATH_DEFAULT)
+    SYSTEM_DISK_PATH = SYSTEM_DISK_PATH_DEFAULT
+    try:
+        psutil.disk_usage(str(disk_candidate))
+        SYSTEM_DISK_PATH = disk_candidate
+    except Exception:
+        try:
+            psutil.disk_usage(str(SYSTEM_DISK_PATH_DEFAULT))
+            SYSTEM_DISK_PATH = SYSTEM_DISK_PATH_DEFAULT
+        except Exception:
+            SYSTEM_DISK_PATH = Path("/")
 
     requested_snapshot_dir = str(settings.get("snapshot_dir") or "").strip()
     env_snapshot_dir = os.getenv("BDAG_SNAPSHOT_DIR", "").strip()
@@ -6754,7 +6774,7 @@ def api_system():
     except Exception:
         cpu_percent = 0.0
     mem = psutil.virtual_memory()
-    path = str(SNAPSHOT_DATA_DIR) if SNAPSHOT_DATA_DIR else "/"
+    path = str(SYSTEM_DISK_PATH or SYSTEM_DISK_PATH_DEFAULT)
     try:
         disk = psutil.disk_usage(path)
         disk_path = path
