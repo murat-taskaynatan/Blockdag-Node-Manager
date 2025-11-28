@@ -194,6 +194,9 @@ LIVENESS_SUSPEND_MAX_SEC = max(
 LIVENESS_POST_RESTORE_COOLDOWN_SEC = max(
     0.0, float(os.getenv("BDAG_LIVENESS_POST_RESTORE_COOLDOWN_SEC", "300") or "300")
 )
+SNAPSHOT_POST_COOLDOWN_SEC = max(
+    0.0, float(os.getenv("BDAG_SNAPSHOT_POST_COOLDOWN_SEC", "300") or "300")
+)
 _liveness_patterns_raw = [
     part.strip().lower()
     for part in str(os.getenv("BDAG_LIVENESS_RECOVER_PATTERNS", "") or "").split(",")
@@ -1741,6 +1744,7 @@ _SNAPSHOT_JOB_STATE: Dict[str, object] = {
     "started": None,
     "ended": None,
 }
+_SNAPSHOT_POST_COOLDOWN: Dict[str, float] = {}
 _PENDING_RESTORE_QUEUE: Deque[Dict[str, object]] = deque()
 _PENDING_RESTORE_LOCK = threading.Lock()
 
@@ -3354,6 +3358,9 @@ def _run_snapshot_job(details: Dict[str, object]) -> None:
                     "ended": time.time(),
                 }
             )
+            container_id = (details or {}).get("container")
+            if container_id and SNAPSHOT_POST_COOLDOWN_SEC > 0:
+                _SNAPSHOT_POST_COOLDOWN[container_id] = time.time() + SNAPSHOT_POST_COOLDOWN_SEC
         if details.get("trigger") == "auto":
             _auto_snapshot_mark_result(status)
         trigger_label = (details or {}).get("trigger")
@@ -5237,6 +5244,22 @@ def _is_snapshot_job_active_for_container(container: Optional[str]) -> bool:
         return mode != "restore"
 
 
+def _snapshot_liveness_cooldown_active(container: Optional[str], *, now: Optional[float] = None) -> bool:
+    if not container:
+        return False
+    ts: Optional[float]
+    with _SNAPSHOT_JOB_LOCK:
+        ts = _SNAPSHOT_POST_COOLDOWN.get(container)
+        if ts is None:
+            return False
+    now_val = now if now is not None else time.time()
+    if ts <= now_val:
+        with _SNAPSHOT_JOB_LOCK:
+            _SNAPSHOT_POST_COOLDOWN.pop(container, None)
+        return False
+    return True
+
+
 def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
     global _GLOBAL_LIVENESS_COOLDOWN_UNTIL
     if not ctx or not ctx.container or not DOCKER_BIN:
@@ -5460,6 +5483,21 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
         return
 
     if enable_liveness and not liveness_suspended:
+        if _snapshot_liveness_cooldown_active(ctx.container, now=now):
+            try:
+                remaining = 0.0
+                with _SNAPSHOT_JOB_LOCK:
+                    expires_at = _SNAPSHOT_POST_COOLDOWN.get(ctx.container) or 0.0
+                remaining = max(0.0, (expires_at or 0.0) - now)
+                app.logger.info(
+                    "Liveness skipping %s (%s) during post-snapshot cooldown; %.0fs remaining",
+                    ctx.id,
+                    ctx.container or "unknown",
+                    remaining,
+                )
+            except Exception:
+                pass
+            return
         if _is_restore_job_active_for_container(ctx.container) or _is_snapshot_job_active_for_container(ctx.container):
             return
         stalled_flag = bool(metrics.get("stalled"))
