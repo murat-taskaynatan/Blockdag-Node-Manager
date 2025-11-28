@@ -59,5 +59,4 @@ exec nodeworker \
   --contract-address="${CONTRACT_ADDRESS:-}" \
   --rollout-window="${ROLLOUT_WINDOW:-}" \
   --persist-root="${PERSIST_ROOT:-}" \
-  --health-min-peers="${HEALTH_MIN_PEERS:-}" \
-  --contract-deploy-block="${CONTRACT_DEPLOY_BLOCK:-}"
+  --health-min-peers="${HEALTH_MIN_PEERS:-}"
