@@ -2868,7 +2868,7 @@ async function loadSettings() {
       if (newer) {
         const hrefBase = 'https://github.com/murat-taskaynatan/Blockdag-Node-Manager/releases';
         updateIndicator.href = hrefBase;
-        updateIndicator.title = `Update available: ${latest || 'latest'} (opens GitHub)`;
+        updateIndicator.title = `Update available: ${latest || 'latest'}`;
         updateIndicator.setAttribute('aria-label', `Update available ${latest || ''}`.trim());
         updateIndicator.classList.add('is-visible');
       } else {
