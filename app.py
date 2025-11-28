@@ -2028,14 +2028,15 @@ def _extract_snapshot_contents(
     try:
         tar = tarfile.open(snapshot_path, "r:*")
     except tarfile.TarError as exc:
-        raise RuntimeError(f"Failed to open snapshot archive: {exc}") from exc
+        raise RuntimeError(f\"Failed to open snapshot archive: {exc}\") from exc
     try:
-        members = tar.getmembers()
-        member_total = sum(max(member.size, 0) for member in members if member.isfile() or member.islnk() or member.issym())
-        total = member_total or total_bytes
         processed = 0
         last_emit = 0.0
-        for member in members:
+        # Prefer caller-provided total_bytes (archive size) to avoid materializing all members.
+        total = max(total_bytes, 0)
+        for member in tar:
+            if not isinstance(member, tarfile.TarInfo):
+                continue
             _validate_tar_member(member)
             tar.extract(member, path=target_dir)
             if member.isfile() or member.islnk() or member.issym():
@@ -2047,18 +2048,17 @@ def _extract_snapshot_contents(
                 eta = None
                 if total > 0:
                     pct = max(0.0, min(100.0, (processed / total) * 100.0))
-                if elapsed > 0 and total > 0 and processed > 0:
                     remaining = max(total - processed, 0)
-                    if remaining > 0:
+                    if elapsed > 0 and remaining > 0:
                         speed = processed / max(elapsed, 1e-6)
                         if speed > 0:
                             eta = remaining / speed
                 _snapshot_progress_update(
                     {
                         "bytes_written": processed,
-                        "total_bytes": total,
+                        "total_bytes": total or None,
                         "pct": pct,
-                                                "eta_seconds": eta,
+                        "eta_seconds": eta,
                         "updated": now,
                         "path": str(snapshot_path),
                         "started": started,
@@ -2070,9 +2070,9 @@ def _extract_snapshot_contents(
         _snapshot_progress_update(
             {
                 "bytes_written": processed,
-                "total_bytes": final_total,
+                "total_bytes": final_total or None,
                 "pct": 100.0 if final_total else None,
-                                "eta_seconds": 0.0 if final_total else None,
+                "eta_seconds": 0.0 if final_total else None,
                 "updated": final_now,
                 "path": str(snapshot_path),
                 "started": started,
