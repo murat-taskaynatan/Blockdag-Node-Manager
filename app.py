@@ -4626,14 +4626,36 @@ class NodeContext:
                 elif "block_rate_per_sec" not in metrics:
                     metrics["block_rate_per_sec"] = None
             metrics.setdefault("block_rate_per_sec", None)
-            local_height = int(metrics.get("local_height") or 0)
-            remote_height = metrics.get("remote_height")
+            def _monotonic_height(series: deque, candidate: Optional[float]) -> Optional[int]:
+                """Prevent negative or decreasing heights; carry forward last known positive."""
+                try:
+                    new_val = int(candidate) if candidate is not None else 0
+                except Exception:
+                    new_val = 0
+                last_val = None
+                if series:
+                    try:
+                        last_val = int(series[-1][1] or 0)
+                    except Exception:
+                        last_val = None
+                if last_val and last_val > 0:
+                    if new_val <= 0:
+                        return last_val
+                    if new_val < last_val:
+                        return last_val
+                return new_val if new_val > 0 else (last_val if last_val else new_val)
+
+            local_height = _monotonic_height(self.height_series, metrics.get("local_height"))
+            metrics["local_height"] = local_height
+            remote_height = _monotonic_height(self.remote_series, metrics.get("remote_height"))
+            if remote_height and remote_height > 0:
+                metrics["remote_height"] = remote_height
+                remote_series_value = remote_height
             if isinstance(remote_height, (int, float)) and remote_height > 0:
                 progress = max(0.0, min(100.0, (local_height / float(remote_height)) * 100.0))
                 metrics["sync_progress"] = progress
             else:
                 metrics["sync_progress"] = None
-            local_height = int(metrics.get("local_height") or 0)
             if local_height > 0:
                 self._ever_reached_height = True
             ts = metrics["last_updated"]
