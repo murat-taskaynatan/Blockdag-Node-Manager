@@ -5537,6 +5537,18 @@ def _apply_node_policies(ctx: "NodeContext", settings: Dict[str, bool]) -> None:
                 or metrics.get("health_text")
                 or "node reported offline"
             )
+            # Avoid treating a simple manual stop as a failure unless we have a real reason.
+            no_error_reason = not stalled_flag and not metrics.get("stalled_reason") and offline_reason == "node reported offline"
+            if no_error_reason and not metrics.get("recovery_required"):
+                try:
+                    app.logger.info(
+                        "Liveness skipping offline recovery for %s (%s); offline without error pattern",
+                        ctx.id,
+                        ctx.container or "unknown",
+                    )
+                except Exception:
+                    pass
+                return
             stall_reason = offline_reason
             stalled_flag = stalled_flag or True  # treat offline as stalled to allow liveness actions
             metrics["stalled"] = True
