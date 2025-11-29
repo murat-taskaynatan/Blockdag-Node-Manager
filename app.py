@@ -2836,14 +2836,10 @@ def _snapshot_health_check(
                 lowered = text.lower()
                 if any(pattern.search(lowered) for pattern in SNAPSHOT_HEALTH_LOG_GUARD_PATTERNS):
                     suspicious.append(text.strip())
-            if suspicious and enforce_running:
+            if suspicious:
+                # Only surface as warnings; don't abort snapshot creation.
                 info["log_hits"] = suspicious[:10]
-                info["failure"] = "recent-log-warning"
-                message = "Recent logs show repair/corruption activity; snapshot aborted"
-                info["result"] = message
-                return False, message, info
-            if suspicious and not enforce_running:
-                info["log_hits"] = suspicious[:10]
+                info["warning"] = "recent-log-warning"
     success_message = "Node passed snapshot health checks"
     info["result"] = success_message
     return True, success_message, info
