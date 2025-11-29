@@ -999,6 +999,7 @@ def _apply_runtime_settings(settings: Dict[str, object]) -> None:
     global LOGIN_PASS
     global LOGIN_ENABLED
     global ACTIVE_REMOTE_BASES
+    global _REMOTE_HEIGHT_CACHE
     snapshot_limit = settings.get("snapshot_max")
     if isinstance(snapshot_limit, int) and snapshot_limit >= 0:
         SNAPSHOT_MAX = snapshot_limit
@@ -1075,10 +1076,15 @@ def _apply_runtime_settings(settings: Dict[str, object]) -> None:
     profile_raw = str(settings.get("remote_rpc_profile") or "").strip().lower()
     profile = profile_raw if profile_raw in REMOTE_RPC_PROFILES else DEFAULT_SETTINGS.get("remote_rpc_profile", "ip")
     settings["remote_rpc_profile"] = profile
+    prev_remote_bases = ACTIVE_REMOTE_BASES[:]
     if profile in REMOTE_RPC_PROFILES:
         ACTIVE_REMOTE_BASES = [_normalize_remote_url(REMOTE_RPC_PROFILES[profile])]
     else:
         ACTIVE_REMOTE_BASES = DEFAULT_REMOTE_BASES[:]
+    # If the remote endpoints changed, flush cached remote heights so new data is polled immediately.
+    if ACTIVE_REMOTE_BASES != prev_remote_bases:
+        with _REMOTE_HEIGHT_CACHE_LOCK:
+            _REMOTE_HEIGHT_CACHE.clear()
     DEFAULT_NODE_SETTINGS["remote_rpc_bases"] = ACTIVE_REMOTE_BASES[:]
     # Refresh per-node remote RPC bases for nodes that rely on defaults (no override).
     if "NODES" in globals():
