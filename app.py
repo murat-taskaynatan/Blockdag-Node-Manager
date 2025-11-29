@@ -6925,8 +6925,13 @@ def api_node_manager_release_notes():
 
 _SELF_UPDATE_CMD = (
     "sleep 1; "
-    "curl -fsSL https://raw.githubusercontent.com/murat-taskaynatan/Blockdag-Node-Manager/main/install_nm_from_github.sh | sudo bash || true; "
-    "sudo systemctl enable --now blockdag-node-manager.service"
+    # Avoid interactive sudo failures (no TTY / password prompt) when running from the UI.
+    "if ! sudo -n true 2>/dev/null; then "
+    "echo 'Self-update requires passwordless sudo (sudo -n). Grant NOPASSWD or run install manually.'; "
+    "exit 1; "
+    "fi; "
+    "curl -fsSL https://raw.githubusercontent.com/murat-taskaynatan/Blockdag-Node-Manager/main/install_nm_from_github.sh | sudo -n bash || exit $?; "
+    "sudo -n systemctl enable --now blockdag-node-manager.service"
 )
 
 
