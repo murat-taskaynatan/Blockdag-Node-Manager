@@ -4,6 +4,7 @@ import os
 import pwd
 import re
 import socket
+import time
 import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
@@ -575,10 +576,16 @@ def launch_node(payload: Dict) -> Dict:
     pruned_networks = _prune_orphan_blockdag_networks()
     if scripts_dir.exists():
         if not git_dir.exists():
-            raise LaunchError("Existing blockdag-scripts directory is not a git repo; remove it and retry")
-        _ensure_git_safe_directory(scripts_dir)
-        _run_command(["git", "-C", str(scripts_dir), "pull"])
-    else:
+            # Move the directory aside so we can clone a clean copy automatically.
+            backup = scripts_dir.with_name(f"{scripts_dir.name}.backup-{int(time.time())}")
+            try:
+                scripts_dir.rename(backup)
+            except Exception as exc:
+                raise LaunchError(f"Existing blockdag-scripts directory is not a git repo and could not be moved: {exc}")
+        else:
+            _ensure_git_safe_directory(scripts_dir)
+            _run_command(["git", "-C", str(scripts_dir), "pull"])
+    if not scripts_dir.exists():
         _ensure_git_safe_directory(scripts_dir)
         _run_command(["git", "clone", "--depth", "1", LAUNCHPAD_REPO, str(scripts_dir)])
     env_path = scripts_dir / ".env"
