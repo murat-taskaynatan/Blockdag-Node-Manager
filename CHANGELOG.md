@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.7.2 - 2025-11-28
+
+- Liveness: added a post-snapshot cooldown so nodes aren’t auto-recovered immediately after snapshot jobs stop the container; liveness skip for offline nodes without an error reason; default auto-recover ships disabled (toggleable in Settings).
+- Restore: snapshot extraction now streams tar members to cut peak memory use during restores.
+- Release plumbing: version/default installers bumped to v1.7.2.
+
 ## v1.7.1 - 2025-11-28
 
 - System tab disk usage now targets a user-selectable filesystem (new System disk path setting; defaults to the manager install path). UI widths improved for the system disk and wallet address inputs.
