@@ -563,7 +563,7 @@ def _normalize_remote_url(url: Optional[str]) -> str:
     return text.rstrip("/")
 
 
-PRIMARY_REMOTE_RPC_BASE = _normalize_remote_url("http://13.245.135.249:18545")
+PRIMARY_REMOTE_RPC_BASE = _normalize_remote_url("https://rpc.bdagscan.com")
 ALT_REMOTE_RPC_BASE = _normalize_remote_url("https://rpc.awakening.bdagscan.com")
 LEGACY_REMOTE_RPC_BASES: List[str] = []
 
