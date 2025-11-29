@@ -573,6 +573,7 @@ REMOTE_RPC_PROFILES = {
 }
 
 DEFAULT_REMOTE_RPC_BASES = [
+    ALT_REMOTE_RPC_BASE,
     PRIMARY_REMOTE_RPC_BASE,
 ]
 
@@ -955,7 +956,7 @@ DEFAULT_SETTINGS: Dict[str, object] = {
     # Filesystem path used for System tab disk usage
     "system_disk_path": str(SYSTEM_DISK_PATH_DEFAULT),
     "cpu_temp_path": "/mnt/hgfs/vmshared/cpu_temp.txt",
-    "remote_rpc_profile": "ip",
+    "remote_rpc_profile": "https",
     "wallet_address": "",
     # Overclock preferences (persist UI selections)
     "overclock_data_path": "/home/node/blockdag",

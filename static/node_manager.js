@@ -379,7 +379,7 @@ const automationLogUpdated = document.getElementById('automationLogUpdated');
     snapshot_dir: '',
     system_disk_path: '',
     cpu_temp_path: '',
-    remote_rpc_profile: 'ip',
+    remote_rpc_profile: 'https',
     login_gate_enabled: false,
     login_user: '',
     login_pass: '',
