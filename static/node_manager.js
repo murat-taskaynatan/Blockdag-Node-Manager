@@ -5032,6 +5032,9 @@ function syncCards(nodes) {
             }
             target.value = value;
             state.settings[key] = value;
+          } else if (type === 'select-one') {
+            const value = target.value;
+            state.settings[key] = value;
           } else if (type === 'text') {
             const value = target.value.trim();
             target.value = value;
