@@ -1072,7 +1072,9 @@ def _apply_runtime_settings(settings: Dict[str, object]) -> None:
                 SNAPSHOT_DIR = candidate
                 break
 
-    profile = str(settings.get("remote_rpc_profile") or "ip").strip().lower()
+    profile_raw = str(settings.get("remote_rpc_profile") or "").strip().lower()
+    profile = profile_raw if profile_raw in REMOTE_RPC_PROFILES else DEFAULT_SETTINGS.get("remote_rpc_profile", "ip")
+    settings["remote_rpc_profile"] = profile
     if profile in REMOTE_RPC_PROFILES:
         ACTIVE_REMOTE_BASES = [_normalize_remote_url(REMOTE_RPC_PROFILES[profile])]
     else:
