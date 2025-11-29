@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.7.3 - 2025-11-29
+
+- Remote RPC: HTTPS is now the default profile for new installs; the selector is limited to HTTPS/IP with accurate labels, persists correctly in Settings, and flushes cached remote heights when switched so deltas refresh immediately.
+- Settings/install: `settings.json` is preserved during upgrades so saved preferences (including remote RPC choice) aren’t overwritten; select inputs now save their chosen values reliably.
+- Launchpad: non-git `blockdag-scripts` folders are auto-backed up and recloned so launch succeeds without manual cleanup.
+- Liveness/automation: added the RPC listener closed pattern to restart triggers to catch stalls automatically.
+- Self-update: self-install flow checks for passwordless sudo and seeds a sudoers entry for the manager user to avoid interactive prompts.
+
 ## v1.7.2 - 2025-11-28
 
 - Liveness: added a post-snapshot cooldown so nodes aren’t auto-recovered immediately after snapshot jobs stop the container; liveness skip for offline nodes without an error reason; default auto-recover ships disabled (toggleable in Settings).
