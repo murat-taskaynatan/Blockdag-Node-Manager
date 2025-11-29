@@ -2024,11 +2024,11 @@ def _extract_snapshot_contents(
     *,
     total_bytes: int,
     started: float,
-) -> None:
+    ) -> None:
     try:
         tar = tarfile.open(snapshot_path, "r:*")
     except tarfile.TarError as exc:
-        raise RuntimeError(f\"Failed to open snapshot archive: {exc}\") from exc
+        raise RuntimeError(f"Failed to open snapshot archive: {exc}") from exc
     try:
         processed = 0
         last_emit = 0.0
