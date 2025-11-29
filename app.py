@@ -569,7 +569,6 @@ LEGACY_REMOTE_RPC_BASES: List[str] = []
 
 REMOTE_RPC_PROFILES = {
     "ip": PRIMARY_REMOTE_RPC_BASE,
-    "http": PRIMARY_REMOTE_RPC_BASE,  # alias for ip/HTTP endpoint
     "https": ALT_REMOTE_RPC_BASE,
 }
 
