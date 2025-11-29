@@ -1078,6 +1078,16 @@ def _apply_runtime_settings(settings: Dict[str, object]) -> None:
     else:
         ACTIVE_REMOTE_BASES = DEFAULT_REMOTE_BASES[:]
     DEFAULT_NODE_SETTINGS["remote_rpc_bases"] = ACTIVE_REMOTE_BASES[:]
+    # Refresh per-node remote RPC bases for nodes that rely on defaults (no override).
+    if "NODES" in globals():
+        for ctx in NODES.values():
+            try:
+                if getattr(ctx, "remote_rpc_override", False):
+                    continue
+                with ctx.lock:
+                    ctx.remote_rpc_bases = ACTIVE_REMOTE_BASES[:]
+            except Exception:
+                continue
 
     login_user = str(settings.get("login_user") or "").strip() or _ENV_LOGIN_USER
     login_pass = str(settings.get("login_pass") or "").strip() or _ENV_LOGIN_PASS
@@ -4442,6 +4452,7 @@ class NodeContext:
         if not remote_candidates and merged.get("remote_rpc_base"):
             remote_candidates = [merged.get("remote_rpc_base")]
         remote_bases = _parse_remote_rpc_bases(remote_candidates)
+        self.remote_rpc_override = bool(remote_candidates)
         self.remote_rpc_bases = remote_bases or ACTIVE_REMOTE_BASES[:]
         self.remote_rpc_method = merged.get("remote_rpc_method") or DEFAULT_NODE_SETTINGS["remote_rpc_method"]
         self.remote_rpc_timeout = float(
@@ -4510,6 +4521,7 @@ class NodeContext:
             bases = _parse_remote_rpc_bases(remote_candidates)
             if bases and bases != self.remote_rpc_bases:
                 self.remote_rpc_bases = bases
+                self.remote_rpc_override = True
                 changed = True
         internal_port = meta.get("peer_port_internal")
         if internal_port is not None:
