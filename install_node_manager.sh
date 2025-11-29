@@ -121,11 +121,24 @@ sudo systemctl daemon-reload
 echo "[2/10] Syncing files to $INSTALL_DIR"
 sudo mkdir -p "$INSTALL_DIR"
 sudo chown "$SERVICE_USER":"$SERVICE_GROUP" "$INSTALL_DIR"
+# Preserve user settings if they already exist.
+PRESERVE_SETTINGS=""
+if [[ -f "$INSTALL_DIR/config/settings.json" ]]; then
+  PRESERVE_SETTINGS="$(mktemp)"
+  cp "$INSTALL_DIR/config/settings.json" "$PRESERVE_SETTINGS"
+fi
 rsync -a --delete \
   --filter='protect .venv/' \
   --exclude='.git/' \
   --exclude='.venv/' \
   "$SOURCE_DIR/" "$INSTALL_DIR/"
+# Restore preserved settings after sync.
+if [[ -n "$PRESERVE_SETTINGS" && -f "$PRESERVE_SETTINGS" ]]; then
+  sudo mkdir -p "$INSTALL_DIR/config"
+  sudo cp "$PRESERVE_SETTINGS" "$INSTALL_DIR/config/settings.json"
+  sudo chown "$SERVICE_USER":"$SERVICE_GROUP" "$INSTALL_DIR/config/settings.json"
+  rm -f "$PRESERVE_SETTINGS"
+fi
 # Ensure service account owns the synced tree (covers data/ after upgrades)
 sudo chown -R "$SERVICE_USER":"$SERVICE_GROUP" "$INSTALL_DIR"
 # Guarantee runtime data directory exists and is writable
