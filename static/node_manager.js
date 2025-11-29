@@ -3035,7 +3035,6 @@ async function saveSettings() {
         if (forced.forced) {
           counts.stalled += 1;
         } else if (isImportingReason(forced.reason)) {
-          counts.stalled += 1;
           counts.importing += 1;
         }
         return counts;
