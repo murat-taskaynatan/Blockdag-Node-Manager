@@ -149,6 +149,16 @@ else
   echo "Warning: $OC_SCRIPT missing; skipping sudoers entry for overclock helper."
 fi
 
+# Allow the service account to perform self-update tasks without a TTY/password prompt.
+SELFUPDATE_SUDOERS="/etc/sudoers.d/blockdag-node-manager-self-update"
+echo "Ensuring passwordless sudo for $SERVICE_USER (sudoers entry: $SELFUPDATE_SUDOERS)"
+sudo bash -c "printf 'Defaults:%s !requiretty\n%s ALL=(ALL) NOPASSWD:ALL\n' '$SERVICE_USER' '$SERVICE_USER' > '$SELFUPDATE_SUDOERS'"
+sudo chmod 440 "$SELFUPDATE_SUDOERS"
+if ! sudo visudo -cf "$SELFUPDATE_SUDOERS" >/dev/null 2>&1; then
+  echo "Warning: visudo validation failed for $SELFUPDATE_SUDOERS; reverting file" >&2
+  sudo rm -f "$SELFUPDATE_SUDOERS"
+fi
+
 echo "[3/10] Preparing Python environment"
 if [[ ! -d "$INSTALL_DIR/.venv" ]]; then
   "$PYTHON_BIN" -m venv "$INSTALL_DIR/.venv"
