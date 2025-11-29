@@ -222,6 +222,7 @@ LIVENESS_FAILSAFE_RESTART_PATTERNS = (
     "inner binary kill resulted error",
     "liveness probe exceeded timeout",
     "liveness probe failed",
+    "error while serving listener 0.0.0.0:38131: accept tcp4 0.0.0.0:38131: use of closed network connection",
     "forcing shutdown url=http://127.0.0.1:6061/healthz",
     "watchexecuted: dial ws failed",
     "block chain is shutdown",
