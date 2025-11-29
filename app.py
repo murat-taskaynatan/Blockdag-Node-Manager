@@ -6365,6 +6365,10 @@ def _detect_stalled_reason(ctx: "NodeContext", metrics: dict, previous: Optional
         recent_heights.append(local_height)
     recent_progress = max(recent_heights) > min(recent_heights)
 
+    if importing:
+        metrics["importing"] = True
+        return None
+
     if ever_progress and local_height <= 0 and peers <= 0:
         return "Container restarted but local chain data reset to zero."
     if remote_height > local_height + 2:
