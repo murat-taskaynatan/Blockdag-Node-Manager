@@ -456,7 +456,7 @@ def _prepare_ports(config: Dict, node_number: Optional[int] = None) -> Tuple[int
     external_override = config.get("externalP2PPort")
     peer_external_override = config.get("externalPeerPort")
     used = _collect_used_ports()
-    existing, detected_internal = _existing_node_ports(base_peer)
+    existing, _ = _existing_node_ports(base_peer)
     start_p2p = max(existing["p2p"]) + 1 if existing["p2p"] else base_p2p
     start_rpc = max(existing["rpc"]) + 1 if existing["rpc"] else base_rpc
     start_ws = max(existing["ws"]) + 1 if existing["ws"] else base_ws
@@ -467,7 +467,7 @@ def _prepare_ports(config: Dict, node_number: Optional[int] = None) -> Tuple[int
         rpc = _find_available_port(used, rpc + 1)
     ws = _find_available_port(used, start_ws)
     peer = _find_available_port(used, start_peer)
-    peer_internal = detected_internal or peer
+    peer_internal = peer
     return p2p, rpc, ws, peer, peer_internal
 
 
