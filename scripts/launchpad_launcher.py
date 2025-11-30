@@ -413,8 +413,14 @@ def _existing_node_ports(peer_internal_hint: Optional[int]) -> Tuple[Dict[str, L
                 detected_peer_internal = container_port
             else:
                 container_fallbacks.append((container_port, host_port))
-        if not matched_hint and looks_like_blockdag and container_fallbacks:
+        if looks_like_blockdag and container_fallbacks:
             fallback_candidates.extend(container_fallbacks)
+            ports["peer"].extend(host for _, host in container_fallbacks)
+            if detected_peer_internal is None:
+                try:
+                    detected_peer_internal = min(port for port, _ in container_fallbacks)
+                except Exception:
+                    detected_peer_internal = None
     if not ports["peer"] and fallback_candidates:
         fallback_candidates.sort(key=lambda item: item[0])
         detected_peer_internal = fallback_candidates[0][0]
@@ -450,7 +456,7 @@ def _prepare_ports(config: Dict, node_number: Optional[int] = None) -> Tuple[int
     external_override = config.get("externalP2PPort")
     peer_external_override = config.get("externalPeerPort")
     used = _collect_used_ports()
-    existing, _ = _existing_node_ports(18150)
+    existing, detected_internal = _existing_node_ports(base_peer)
     start_p2p = max(existing["p2p"]) + 1 if existing["p2p"] else base_p2p
     start_rpc = max(existing["rpc"]) + 1 if existing["rpc"] else base_rpc
     start_ws = max(existing["ws"]) + 1 if existing["ws"] else base_ws
@@ -461,7 +467,7 @@ def _prepare_ports(config: Dict, node_number: Optional[int] = None) -> Tuple[int
         rpc = _find_available_port(used, rpc + 1)
     ws = _find_available_port(used, start_ws)
     peer = _find_available_port(used, start_peer)
-    peer_internal = 18150
+    peer_internal = detected_internal or peer
     return p2p, rpc, ws, peer, peer_internal
 
 
@@ -500,7 +506,11 @@ def _render_compose(
     text = text.replace('- "38131:38131"', f'- "{p2p}:38131"', 1)
     text = text.replace('- "18545:18545"', f'- "{rpc}:18545"', 1)
     text = text.replace('- "18546:18546"', f'- "{ws}:18546"', 1)
-    text = text.replace('- "18150:18150"', f'- "{peer}:{peer_internal}"', 1)
+    peer_mapping = f'- "{peer}:{peer_internal}"'
+    text = text.replace('- "18150:18150"', peer_mapping, 1)
+    udp_mapping = f'- "{peer}:{peer_internal}/udp"'
+    if udp_mapping not in text:
+        text = text.replace(peer_mapping, f'{peer_mapping}\n      {udp_mapping}', 1)
     text = text.replace("./bin/bdag/data:/bdag/data", f"./{data_dir.relative_to(source.parent)}:/bdag/data")
     text = text.replace("./bin/bdag/logs:/bdag/logs", f"./{logs_dir.relative_to(source.parent)}:/bdag/logs")
     if "HEALTH_MIN_PEERS: 1" in text:
