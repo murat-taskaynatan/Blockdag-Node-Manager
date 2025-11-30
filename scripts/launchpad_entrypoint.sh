@@ -47,7 +47,7 @@ fi
 
 PEER_PORT_INTERNAL="${PEER_PORT_INTERNAL:-18150}"
 # Always advertise matching TCP/UDP P2P ports and libp2p --port to align with host mapping.
-NODE_ARGS="$NODE_ARGS --p2ptcpport=$PEER_PORT_INTERNAL --p2pudpport=$PEER_PORT_INTERNAL --port=$PEER_PORT_INTERNAL"
+NODE_ARGS="$NODE_ARGS --p2ptcpport=$PEER_PORT_INTERNAL --p2pudpport=$PEER_PORT_INTERNAL --port=$PEER_PORT_INTERNAL --maxpeers=${MAX_PEERS:-50}"
 
 # If EXTERNAL_IP is provided and not already present, advertise it.
 if [ -n "${EXTERNAL_IP:-}" ] && ! printf '%s' "$NODE_ARGS" | grep -q -- '--externalip='; then
