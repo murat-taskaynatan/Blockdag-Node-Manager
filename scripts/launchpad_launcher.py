@@ -493,6 +493,14 @@ def _render_compose(
             return f"{indent}HEALTH_MIN_PEERS: 1\n{indent}PEER_PORT_INTERNAL: {peer_internal}"
 
         text = re.sub(r"(?m)^(\s*)HEALTH_MIN_PEERS: 1$", _inject_peer, text)
+    else:
+        # Ensure PEER_PORT_INTERNAL is present even if HEALTH_MIN_PEERS isn't.
+        text = re.sub(
+            r"(?m)^(.*environment:\n)",
+            rf"\1      PEER_PORT_INTERNAL: {peer_internal}\n",
+            text,
+            count=1,
+        )
     if "--health=0.0.0.0:6061" not in text:
         text = text.replace(
             "--walletpass=test ",
