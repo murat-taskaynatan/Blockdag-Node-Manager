@@ -32,6 +32,8 @@ import requests
 from flask import Flask, abort, jsonify, render_template, request, g
 from flask import Response, send_from_directory, session, redirect, url_for
 from scripts.launchpad_launcher import LaunchError, launch_node, preview_ports, _detect_external_ip
+import requests  # noqa: F401
+import time as _time
 
 
 # ---------------------------------------------------------------------------
@@ -6727,6 +6729,51 @@ def api_node_manager_external_ip():
     except Exception as exc:
         app.logger.warning("External IP detection failed: %s", exc)
         return jsonify({"externalIp": None}), 500
+
+
+def _check_external_peer_port(ip: str, port: int) -> Optional[str]:
+    if not ip or not port:
+        return None
+    try:
+        resp = requests.get(
+            "https://check-host.net/check-tcp",
+            params={"host": f"{ip}:{port}", "max_nodes": 3},
+            headers={"Accept": "application/json"},
+            timeout=5,
+        )
+        data = resp.json()
+        req_id = data.get("request_id")
+        if not req_id:
+            return None
+        _time.sleep(2)
+        result = requests.get(
+            f"https://check-host.net/check-result/{req_id}",
+            headers={"Accept": "application/json"},
+            timeout=5,
+        ).json()
+        open_any = False
+        for res in result.values():
+            if isinstance(res, list) and res:
+                open_any = True
+                break
+        return "open" if open_any else "closed"
+    except Exception as exc:
+        app.logger.warning("External port check failed: %s", exc)
+        return None
+
+
+@app.route("/api/node-manager/port-check", methods=["POST"])
+def api_node_manager_port_check():
+    payload = request.get_json(force=True, silent=True) or {}
+    ip = (payload.get("externalIp") or "").strip()
+    try:
+        port = int(payload.get("port"))
+    except Exception:
+        port = None
+    if not ip or not port:
+        return jsonify({"status": None}), 400
+    status = _check_external_peer_port(ip, port)
+    return jsonify({"status": status})
 
 
 @app.route("/api/node-manager/metrics")

@@ -58,6 +58,7 @@ const state = {
         autoPorts: true,
         image: 'blockdagnetwork/awakening:v0.0.3',
         externalIp: '',
+        portStatus: '',
       },
       previewPorts: null,
       previewLoading: false,
@@ -65,6 +66,9 @@ const state = {
       previewRequestId: 0,
       lastLaunchSignature: null,
       externalIp: '',
+      portStatus: '',
+      lastPortCheckKey: null,
+      portCheckInFlight: false,
     },
   };
   const FORCE_UPDATE_AVAILABLE = false;
@@ -236,6 +240,7 @@ const automationLogUpdated = document.getElementById('automationLogUpdated');
     externalPeer: document.getElementById('launchpadSummaryExternalPeer'),
     image: document.getElementById('launchpadSummaryImage'),
     externalIp: document.getElementById('launchpadSummaryExternalIp'),
+    externalPeerStatus: document.getElementById('launchpadSummaryExternalPeerStatus'),
   };
   const launchpadBackBtn = document.getElementById('launchpadBackBtn');
   const launchpadNextBtn = document.getElementById('launchpadNextBtn');
@@ -3276,6 +3281,7 @@ function syncCards(nodes) {
       externalPeerPort: Number(data.externalPeerPort) || 0,
       image: data.image || '',
       externalIp: data.externalIp || '',
+      portStatus: data.portStatus || '',
     };
     return JSON.stringify(snapshot);
   }
@@ -3377,6 +3383,7 @@ function syncCards(nodes) {
     const resolvedExternalPeer = data.autoPorts
       ? (usePreview ? preview?.peerPort ?? (pendingText || '—') : '—')
       : data.externalPeerPort || '—';
+    const resolvedExternalPeerNumeric = Number(resolvedExternalPeer) || null;
     setSummaryField(launchpadSummaryRefs.label, data.label);
     setSummaryField(launchpadSummaryRefs.path, data.installPath);
     if (launchpadSummaryRefs.p2pPort) {
@@ -3405,6 +3412,26 @@ function syncCards(nodes) {
     }
     if (launchpadSummaryRefs.externalIp) {
       setSummaryField(launchpadSummaryRefs.externalIp, resolvedExternalIp, 'Detecting…');
+    }
+    if (launchpadSummaryRefs.externalPeerStatus) {
+      const statusText = state.launchpad.portStatus
+        ? state.launchpad.portStatus === 'open'
+          ? 'Open'
+          : state.launchpad.portStatus === 'closed'
+            ? 'Closed'
+            : 'Unknown'
+        : (previewLoading ? 'Checking…' : 'Unknown');
+      setSummaryField(launchpadSummaryRefs.externalPeerStatus, statusText, 'Unknown');
+      launchpadSummaryRefs.externalPeerStatus.classList.toggle('missing', statusText === 'Unknown');
+      launchpadSummaryRefs.externalPeerStatus.dataset.state = statusText.toLowerCase();
+    }
+    const canCheckPort = onReviewStep && resolvedExternalPeerNumeric && (preview?.externalIp || data.externalIp || state.launchpad.externalIp);
+    if (canCheckPort && !state.launchpad.portCheckInFlight) {
+      const key = `${resolvedExternalPeerNumeric}-${resolvedExternalIp}`;
+      if (state.launchpad.lastPortCheckKey !== key) {
+        state.launchpad.lastPortCheckKey = key;
+        void checkExternalPeerPort(resolvedExternalIp, resolvedExternalPeerNumeric);
+      }
     }
     updateLaunchpadAutoNote(data);
     updateLaunchpadLaunchState();
@@ -3440,11 +3467,32 @@ function syncCards(nodes) {
       const payload = await res.json();
       const ip = payload?.externalIp || '';
       state.launchpad.externalIp = ip;
+      state.launchpad.portStatus = null;
+      state.launchpad.lastPortCheckKey = null;
       renderLaunchpadSummary();
       return ip;
     } catch (err) {
       // Keep whatever value we have; summary will show Detecting… until resolved
       return null;
+    }
+  }
+
+  async function checkExternalPeerPort(ip, port) {
+    if (!ip || !port) return;
+    state.launchpad.portCheckInFlight = true;
+    try {
+      const res = await fetch('/api/node-manager/port-check', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ externalIp: ip, port }),
+      });
+      const payload = res.ok ? await res.json() : {};
+      state.launchpad.portStatus = payload?.status || null;
+    } catch (err) {
+      state.launchpad.portStatus = null;
+    } finally {
+      state.launchpad.portCheckInFlight = false;
+      renderLaunchpadSummary();
     }
   }
 
