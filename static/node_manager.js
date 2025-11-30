@@ -57,12 +57,14 @@ const state = {
         rpcPort: 18545,
         autoPorts: true,
         image: 'blockdagnetwork/awakening:v0.0.3',
+        externalIp: '',
       },
       previewPorts: null,
       previewLoading: false,
       previewError: null,
       previewRequestId: 0,
       lastLaunchSignature: null,
+      externalIp: '',
     },
   };
   const FORCE_UPDATE_AVAILABLE = false;
@@ -233,6 +235,7 @@ const automationLogUpdated = document.getElementById('automationLogUpdated');
     peer: document.getElementById('launchpadSummaryPeer'),
     externalPeer: document.getElementById('launchpadSummaryExternalPeer'),
     image: document.getElementById('launchpadSummaryImage'),
+    externalIp: document.getElementById('launchpadSummaryExternalIp'),
   };
   const launchpadBackBtn = document.getElementById('launchpadBackBtn');
   const launchpadNextBtn = document.getElementById('launchpadNextBtn');
@@ -3240,6 +3243,7 @@ function syncCards(nodes) {
       wsPort: Number(launchpadFields.wsPort?.value) || 18546,
       peerPort: Number(launchpadFields.peerPort?.value) || 18150,
       externalPeerPort: Number(launchpadFields.externalPeerPort?.value) || null,
+      externalIp: state.launchpad?.externalIp || '',
     };
   }
 
@@ -3271,6 +3275,7 @@ function syncCards(nodes) {
       externalP2PPort: Number(data.externalP2PPort) || 0,
       externalPeerPort: Number(data.externalPeerPort) || 0,
       image: data.image || '',
+      externalIp: data.externalIp || '',
     };
     return JSON.stringify(snapshot);
   }
@@ -3365,6 +3370,7 @@ function syncCards(nodes) {
     const resolvedPeer = usePreview
       ? preview?.peerPortInternal ?? (pendingText || data.peerPort)
       : data.peerPort;
+    const resolvedExternalIp = preview?.externalIp || data.externalIp || pendingText || 'Detecting…';
     const resolvedExternalP2P = data.autoPorts
       ? (usePreview ? preview?.p2pPort ?? (pendingText || data.p2pPort) : data.p2pPort)
       : data.externalP2PPort || '—';
@@ -3397,6 +3403,9 @@ function syncCards(nodes) {
     if (launchpadSummaryRefs.image) {
       setSummaryField(launchpadSummaryRefs.image, data.image || '');
     }
+    if (launchpadSummaryRefs.externalIp) {
+      setSummaryField(launchpadSummaryRefs.externalIp, resolvedExternalIp, 'Detecting…');
+    }
     updateLaunchpadAutoNote(data);
     updateLaunchpadLaunchState();
   }
@@ -3422,6 +3431,21 @@ function syncCards(nodes) {
       throw new Error(errText || res.statusText);
     }
     return res.json();
+  }
+
+  async function loadExternalIp() {
+    try {
+      const res = await fetch('/api/node-manager/external-ip', { cache: 'no-store' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const payload = await res.json();
+      const ip = payload?.externalIp || '';
+      state.launchpad.externalIp = ip;
+      renderLaunchpadSummary();
+      return ip;
+    } catch (err) {
+      // Keep whatever value we have; summary will show Detecting… until resolved
+      return null;
+    }
   }
 
   async function requestLaunch(payload) {
@@ -3470,6 +3494,9 @@ function syncCards(nodes) {
       if (state.launchpad.previewRequestId !== requestId) return;
       state.launchpad.previewPorts = preview;
       state.launchpad.previewLoading = false;
+      if (preview?.externalIp) {
+        state.launchpad.externalIp = preview.externalIp;
+      }
       if (launchpadStatus && launchpadStatus.textContent === 'Calculating ports…') {
         launchpadStatus.textContent = '';
       }
@@ -3512,6 +3539,9 @@ function syncCards(nodes) {
       }
       if (launchpadFields.externalPeerPort && launchpadFields.autoPorts?.checked) {
         launchpadFields.externalPeerPort.value = data.peerPort;
+      }
+      if (data.externalIp) {
+        state.launchpad.externalIp = data.externalIp;
       }
       await discoverNodes({ auto: true });
       state.launchpad.lastLaunchSignature = buildLaunchpadSignature();
@@ -3586,6 +3616,9 @@ function syncCards(nodes) {
       return;
     }
     setLaunchpadStep(next);
+    if (next === 3 && !state.launchpad.externalIp) {
+      void loadExternalIp();
+    }
   }
 
   function sortNodes(list) {
@@ -5834,6 +5867,7 @@ function syncCards(nodes) {
       switchSummaryTab(initialTab);
     }
     setLaunchpadStep(1);
+    void loadExternalIp();
     await loadSettings();
     // No manual data dir field; backend auto-detects on actions
     await loadNodes();

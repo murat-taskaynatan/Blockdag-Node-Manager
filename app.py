@@ -31,7 +31,7 @@ import psutil
 import requests
 from flask import Flask, abort, jsonify, render_template, request, g
 from flask import Response, send_from_directory, session, redirect, url_for
-from scripts.launchpad_launcher import LaunchError, launch_node, preview_ports
+from scripts.launchpad_launcher import LaunchError, launch_node, preview_ports, _detect_external_ip
 
 
 # ---------------------------------------------------------------------------
@@ -6717,6 +6717,16 @@ def api_node_manager_launch_preview():
         app.logger.exception("Launchpad preview errored")
         return jsonify(error="Preview failed"), 500
     return jsonify(result)
+
+
+@app.route("/api/node-manager/external-ip", methods=["GET"])
+def api_node_manager_external_ip():
+    try:
+        ip = _detect_external_ip()
+        return jsonify({"externalIp": ip})
+    except Exception as exc:
+        app.logger.warning("External IP detection failed: %s", exc)
+        return jsonify({"externalIp": None}), 500
 
 
 @app.route("/api/node-manager/metrics")

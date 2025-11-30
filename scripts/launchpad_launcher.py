@@ -8,12 +8,27 @@ import time
 import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
+import requests
 
 LAUNCHPAD_REPO = os.getenv("BDAG_LAUNCHPAD_REPO", "https://github.com/BlockdagNetworkLabs/blockdag-scripts.git")
 LAUNCHPAD_DEFAULT_IMAGE = os.getenv("BDAG_LAUNCHPAD_IMAGE", "blockdagnetwork/awakening:v0.0.3")
 HELPER_TEMPLATE = Path(__file__).resolve().parent / "launchpad_entrypoint.sh"
 NETWORK_KEY_NAMES = ("network.key",)
 BDAGETH_KEY_GLOBS = ("**/bdageth/keystore/*",)
+
+
+def _detect_external_ip() -> Optional[str]:
+    urls = ("https://api.ipify.org", "https://ifconfig.me/ip")
+    for url in urls:
+        try:
+            resp = requests.get(url, timeout=3)
+            if resp.status_code == 200:
+                candidate = (resp.text or "").strip()
+                if re.match(r"^\d{1,3}(?:\.\d{1,3}){3}$", candidate):
+                    return candidate
+        except Exception:
+            continue
+    return None
 
 
 class LaunchError(RuntimeError):
@@ -477,6 +492,7 @@ def _render_compose(
     mining_address: str,
     image: Optional[str] = None,
     helper_mount: Optional[str] = None,
+    external_ip: Optional[str] = None,
 ):
     raw_text = source.read_text()
     text = re.sub(r"(?m)^\s*PEER_PORT_INTERNAL:.*\n?", "", raw_text)
@@ -512,6 +528,13 @@ def _render_compose(
     else:
         # Force mining address even if template had an empty placeholder.
         text = re.sub(r"--miningaddr=\S*", f"--miningaddr={mining_address}", text)
+    if external_ip:
+        text = re.sub(
+            r"(?m)^(.*environment:\n)",
+            rf"\1      EXTERNAL_IP: {external_ip}\n",
+            text,
+            count=1,
+        )
     selected_image = image or LAUNCHPAD_DEFAULT_IMAGE
     image_line = f"image: {selected_image}"
     pattern = re.compile(r"image:\s+blockdagnetwork/awakening:[^\s]+", re.IGNORECASE)
@@ -547,12 +570,14 @@ def _render_compose(
 def preview_ports(payload: Dict) -> Dict[str, int]:
     """Return the resolved port mappings without starting any containers."""
     p2p_port, rpc_port, ws_port, peer_port, peer_internal = _prepare_ports(payload)
+    external_ip = (payload.get("externalIp") or "").strip() or _detect_external_ip()
     return {
         "p2pPort": p2p_port,
         "rpcPort": rpc_port,
         "wsPort": ws_port,
         "peerPort": peer_port,
         "peerPortInternal": peer_internal,
+        "externalIp": external_ip,
     }
 
 
@@ -613,6 +638,7 @@ def launch_node(payload: Dict) -> Dict:
     _rewrite_compose_image(compose_src, selected_image)
     node_number = _infer_node_number_from_path(install_path) or 1
     p2p_port, rpc_port, ws_port, peer_port, peer_internal = _prepare_ports(payload, node_number=node_number)
+    external_ip = (payload.get("externalIp") or "").strip() or _detect_external_ip()
     compose_target = scripts_dir / f"docker-compose-{label}.yml"
     helper_script = _deploy_helper_entrypoint(scripts_dir, label)
     helper_mount = f"./{helper_script.name}:/custom-entrypoint.sh:ro"
@@ -634,9 +660,12 @@ def launch_node(payload: Dict) -> Dict:
         wallet,
         selected_image,
         helper_mount,
+        external_ip=external_ip,
     )
     project_name = label
     env = {**os.environ, "MINING_ADDRESS": wallet}
+    if external_ip:
+        env["EXTERNAL_IP"] = external_ip
     output = _run_command(
         ["docker", "compose", "-p", project_name, "-f", str(compose_target), "up", "-d"],
         cwd=str(scripts_dir),
@@ -649,6 +678,7 @@ def launch_node(payload: Dict) -> Dict:
         "wsPort": ws_port,
         "peerPort": peer_port,
         "peerPortInternal": peer_internal,
+        "externalIp": external_ip,
         "dockerOutput": output,
         "prunedNetworks": pruned_networks,
     }
