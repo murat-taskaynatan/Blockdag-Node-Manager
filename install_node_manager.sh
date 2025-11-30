@@ -49,7 +49,7 @@ ensure_packages() {
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_DIR="${SOURCE_DIR:-$SCRIPT_DIR}"
 REPO_URL="${REPO_URL:-https://github.com/murat-taskaynatan/Blockdag-Node-Manager.git}"
-REPO_REF="${REPO_REF:-${REPO_BRANCH:-v1.7.4}}"
+REPO_REF="${REPO_REF:-${REPO_BRANCH:-v1.7.5}}"
 
 # Avoid running from a directory that will be deleted during install.
 ORIG_PWD="$(pwd)"
