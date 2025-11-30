@@ -3420,8 +3420,8 @@ function syncCards(nodes) {
           : state.launchpad.portStatus === 'closed'
             ? 'Closed'
             : 'Unknown'
-        : (previewLoading ? 'Checking…' : 'Unknown');
-      setSummaryField(launchpadSummaryRefs.externalPeerStatus, statusText, 'Unknown');
+        : (previewLoading ? 'Checking…' : 'Resolving…');
+      setSummaryField(launchpadSummaryRefs.externalPeerStatus, statusText, 'Resolving…');
       launchpadSummaryRefs.externalPeerStatus.classList.toggle('missing', statusText === 'Unknown');
       launchpadSummaryRefs.externalPeerStatus.dataset.state = statusText.toLowerCase();
     }
