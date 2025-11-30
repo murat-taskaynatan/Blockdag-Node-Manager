@@ -10,9 +10,6 @@ else
   BIN=/usr/local/bin/bdag
 fi
 
-echo "Using node binary: $BIN"
-
-# Seed peers (node args form) appended to NODE_ARGS if not already set by caller.
 SEED_PEERS="
 --addpeer=/ip4/3.70.60.211/tcp/18150/p2p/16Uiu2HAmAu2xQq5E5DywJCu7ktGUsWYLGLAs5LCW2wnxcxKHiwUx
 --addpeer=/ip4/18.193.1.54/tcp/18150/p2p/16Uiu2HAm3QMgYN8SsaidjknA7dfj7DZNPkrMrdSd8ZPY1hPnrVsj
@@ -51,12 +48,16 @@ fi
 PEER_PORT_INTERNAL="${PEER_PORT_INTERNAL:-18150}"
 NODE_ARGS="$NODE_ARGS --p2ptcpport=$PEER_PORT_INTERNAL --p2pudpport=$PEER_PORT_INTERNAL"
 
+# If EXTERNAL_IP is provided and not already present, advertise it.
+if [ -n "${EXTERNAL_IP:-}" ] && ! printf '%s' "$NODE_ARGS" | grep -q -- '--externalip='; then
+  NODE_ARGS="$NODE_ARGS --externalip=$EXTERNAL_IP"
+fi
+
 exec nodeworker \
   --health.liveness-timeout="${HEALTH_LIVENESS_TIMEOUT:-5m}" \
   --node-binary="$BIN" \
   --node-args="${NODE_ARGS:-}" \
   --rpc-url="${RPC_URL:-}" \
   --contract-address="${CONTRACT_ADDRESS:-}" \
-  --rollout-window="${ROLLOUT_WINDOW:-}" \
   --persist-root="${PERSIST_ROOT:-}" \
   --health-min-peers="${HEALTH_MIN_PEERS:-}"
