@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.7.4 - 2025-11-30
+
+- Charts: prevent local/remote height series from dipping on noisy RPC responses by clamping to the last known positive height.
+- Summary/Status: importing nodes no longer count as stalled in backend or UI tallies; stalled/importing badges now reflect the actual state.
+- Remote RPC: defaults to HTTPS for new installs; selection persists reliably, caches flush on profile changes, and settings are preserved during upgrades.
+- Launchpad: auto-recovers non-git `blockdag-scripts` directories by backing up and recloning.
+- Self-update/install: preserves `config/settings.json` and requires passwordless sudo checks to avoid interactive failures.
+
 ## v1.7.3 - 2025-11-29
 
 - Remote RPC: HTTPS is now the default profile for new installs; the selector is limited to HTTPS/IP with accurate labels, persists correctly in Settings, and flushes cached remote heights when switched so deltas refresh immediately.
