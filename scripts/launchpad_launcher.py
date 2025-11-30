@@ -504,10 +504,6 @@ def _render_compose(
     else:
         # Force mining address even if template had an empty placeholder.
         text = re.sub(r"--miningaddr=\S*", f"--miningaddr={mining_address}", text)
-    if "MINING_ADDRESS:" in text:
-        text = re.sub(r"(?m)^(\s*MINING_ADDRESS:\s*).*$", rf"\1{mining_address}", text)
-    else:
-        text = re.sub(r"(?m)^(\s*environment:\n)", rf"\1      MINING_ADDRESS: {mining_address}\n", text, count=1)
     selected_image = image or LAUNCHPAD_DEFAULT_IMAGE
     image_line = f"image: {selected_image}"
     pattern = re.compile(r"image:\s+blockdagnetwork/awakening:[^\s]+", re.IGNORECASE)
