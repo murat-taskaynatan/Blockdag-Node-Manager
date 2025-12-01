@@ -4223,6 +4223,11 @@ def _balance_rpc_targets() -> List[str]:
         if normalized and normalized not in targets:
             targets.append(normalized)
 
+    # Prefer an IP-based endpoint (local host IP) to avoid DNS issues.
+    primary_ip = os.getenv("BDAG_BALANCE_RPC_IP") or _detect_primary_ip()
+    if primary_ip:
+        add_candidate(f"http://{primary_ip}:18545")
+
     for item in explicit:
         add_candidate(item)
     add_candidate("https://rpc.awakening.bdagscan.com")
