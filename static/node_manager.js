@@ -993,14 +993,19 @@ const automationLogUpdated = document.getElementById('automationLogUpdated');
     if (walletChartEmpty) {
       walletChartEmpty.hidden = true;
     }
+    const smoothedValues = stabilizeSeries(processed.map((entry) => entry.value));
+    const smoothedPoints = processed.map((entry, idx) => ({
+      ...entry,
+      value: Number.isFinite(smoothedValues[idx]) ? smoothedValues[idx] : entry.value,
+    }));
     if (chart) {
-      chart.data.labels = processed.map((entry) => entry.label);
-      chart.data.datasets[0].data = processed.map((entry) => entry.value);
-      chart.data.datasets[0].meta = processed;
+      chart.data.labels = smoothedPoints.map((entry) => entry.label);
+      chart.data.datasets[0].data = smoothedPoints.map((entry) => entry.value);
+      chart.data.datasets[0].meta = smoothedPoints;
       chart.update('none');
     } else {
       walletChartWrapper.classList.remove('is-empty');
-      drawWalletFallback(processed);
+      drawWalletFallback(smoothedPoints);
     }
   }
 
