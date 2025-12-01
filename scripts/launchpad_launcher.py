@@ -502,6 +502,7 @@ def _render_compose(
 ):
     raw_text = source.read_text()
     text = re.sub(r"(?m)^\s*PEER_PORT_INTERNAL:.*\n?", "", raw_text)
+    text = re.sub(r"(?m)^(\s*container_name:\s*).*$", rf"\1{label}", text, count=1)
     text = text.replace("blockdag-testnet-network", label)
     text = text.replace('- "38131:38131"', f'- "{p2p}:38131"', 1)
     text = text.replace('- "18545:18545"', f'- "{rpc}:18545"', 1)
