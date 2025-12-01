@@ -993,7 +993,7 @@ const automationLogUpdated = document.getElementById('automationLogUpdated');
     if (walletChartEmpty) {
       walletChartEmpty.hidden = true;
     }
-    const smoothedValues = stabilizeSeries(processed.map((entry) => entry.value));
+    const smoothedValues = enforceMonotonic(stabilizeSeries(processed.map((entry) => entry.value)));
     const smoothedPoints = processed.map((entry, idx) => ({
       ...entry,
       value: Number.isFinite(smoothedValues[idx]) ? smoothedValues[idx] : entry.value,
@@ -1138,6 +1138,22 @@ const automationLogUpdated = document.getElementById('automationLogUpdated');
         }
       } else {
         dropStreak = 0;
+      }
+      output.push(value);
+      last = value;
+    }
+    return output;
+  }
+
+  function enforceMonotonic(series) {
+    if (!Array.isArray(series)) return [];
+    const output = [];
+    let last = null;
+    for (const raw of series) {
+      let value = Number(raw);
+      if (!Number.isFinite(value)) value = last;
+      if (last !== null && value < last) {
+        value = last;
       }
       output.push(value);
       last = value;
