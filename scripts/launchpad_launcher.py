@@ -553,11 +553,11 @@ def _render_compose(
     elif "blockdagnetwork/awakening" in text:
         text = text.replace("blockdagnetwork/awakening", selected_image, 1)
     if helper_mount:
-        container_line = f"    container_name: {label}\n"
-        replacement = container_line + '    entrypoint: ["/custom-entrypoint.sh"]\n'
-        if container_line not in text:
-            raise LaunchError("Failed to inject helper entrypoint into docker-compose template")
-        text = text.replace(container_line, replacement, 1)
+        container_match = re.search(r"(?m)^( {4}container_name:\s*.+\n)", text)
+        if not container_match:
+            raise LaunchError("Failed to inject helper entrypoint into docker-compose template (no container_name)")
+        entry_inject = container_match.group(1) + '    entrypoint: ["/custom-entrypoint.sh"]\n'
+        text = text.replace(container_match.group(1), entry_inject, 1)
         volume_anchor = f"      - ./{logs_dir.relative_to(source.parent)}:/bdag/logs"
         if volume_anchor not in text:
             raise LaunchError("Failed to inject helper entrypoint mount into docker-compose template")
