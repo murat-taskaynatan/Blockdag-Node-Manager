@@ -563,6 +563,8 @@ def _render_compose(
         if volume_anchor not in text:
             raise LaunchError("Failed to inject helper entrypoint mount into docker-compose template")
         text = text.replace(volume_anchor, volume_anchor + f"\n      - {helper_mount}", 1)
+    # Finalize container_name to the requested label in case earlier replacements duplicated it.
+    text = re.sub(r"(?m)^(\s*container_name:\s*).*$", rf"\1{label}", text, count=1)
     if target.exists():
         try:
             target.unlink()
