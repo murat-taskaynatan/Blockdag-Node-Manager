@@ -213,6 +213,7 @@ else:
         "can't find cur block state",
         "illegal withdrawal at block",
         "illegal withdrawal at block:difflayer, you can cleanup your block data base by '--cleanup'",
+        "error reading block header: header rlp decode",
         "the dag data was damaged (can't find tip",
         "unknown to the objstorage provider",
     )

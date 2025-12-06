@@ -1,1 +1,86 @@
-[]
+[
+  {
+    "id": "blockdag-testnet-network-1",
+    "label": "blockdag-testnet-network-1",
+    "container": "blockdag-testnet-network-1",
+    "rpc_base": "http://127.0.0.1:18590"
+  },
+  {
+    "id": "blockdag-testnet-network-2",
+    "label": "blockdag-testnet-network-2",
+    "container": "blockdag-testnet-network-2",
+    "rpc_base": "http://127.0.0.1:18546"
+  },
+  {
+    "id": "blockdag-testnet-network-3",
+    "label": "blockdag-testnet-network-3",
+    "container": "blockdag-testnet-network-3",
+    "rpc_base": "http://127.0.0.1:18548"
+  },
+  {
+    "id": "blockdag-testnet-network-4",
+    "label": "blockdag-testnet-network-4",
+    "container": "blockdag-testnet-network-4",
+    "rpc_base": "http://127.0.0.1:18550"
+  },
+  {
+    "id": "blockdag-testnet-network-5",
+    "label": "blockdag-testnet-network-5",
+    "container": "blockdag-testnet-network-5",
+    "rpc_base": "http://127.0.0.1:18556"
+  },
+  {
+    "id": "blockdag-testnet-network-6",
+    "label": "blockdag-testnet-network-6",
+    "container": "blockdag-testnet-network-6",
+    "rpc_base": "http://127.0.0.1:18554"
+  },
+  {
+    "id": "blockdag-testnet-network-7",
+    "label": "blockdag-testnet-network-7",
+    "container": "blockdag-testnet-network-7",
+    "rpc_base": "http://127.0.0.1:18558"
+  },
+  {
+    "id": "blockdag-testnet-network-8",
+    "label": "blockdag-testnet-network-8",
+    "container": "blockdag-testnet-network-8",
+    "rpc_base": "http://127.0.0.1:18560"
+  },
+  {
+    "id": "blockdag-testnet-network-9",
+    "label": "blockdag-testnet-network-9",
+    "container": "blockdag-testnet-network-9",
+    "rpc_base": "http://127.0.0.1:18562"
+  },
+  {
+    "id": "blockdag-testnet-network-10",
+    "label": "blockdag-testnet-network-10",
+    "container": "blockdag-testnet-network-10",
+    "rpc_base": "http://127.0.0.1:18582"
+  },
+  {
+    "id": "blockdag-testnet-network-11",
+    "label": "blockdag-testnet-network-11",
+    "container": "blockdag-testnet-network-11",
+    "rpc_base": "http://127.0.0.1:18566"
+  },
+  {
+    "id": "blockdag-testnet-network-12",
+    "label": "blockdag-testnet-network-12",
+    "container": "blockdag-testnet-network-12",
+    "rpc_base": "http://127.0.0.1:18568"
+  },
+  {
+    "id": "blockdag-testnet-network-13",
+    "label": "blockdag-testnet-network-13",
+    "container": "blockdag-testnet-network-13",
+    "rpc_base": "http://127.0.0.1:18599"
+  },
+  {
+    "id": "blockdag-testnet-network-14",
+    "label": "blockdag-testnet-network-14",
+    "container": "blockdag-testnet-network-14",
+    "rpc_base": "http://127.0.0.1:18597"
+  }
+]
