@@ -1557,13 +1557,12 @@ const automationLogUpdated = document.getElementById('automationLogUpdated');
     if (hasWallet && state.walletBalanceHistory.length) {
       const dayMs = 24 * 60 * 60 * 1000;
       const cutoffMs = Date.now() - dayMs;
-      const windowSamples = state.walletBalanceHistory.filter((entry) => entry.timestamp >= cutoffMs);
-      if (windowSamples.length >= 2) {
-        const first = windowSamples[0];
-        const last = windowSamples[windowSamples.length - 1];
-        total24h = last.balance - first.balance;
-      } else if (windowSamples.length === 1) {
-        total24h = 0;
+      const samples = state.walletBalanceHistory;
+      const latest = samples[samples.length - 1];
+      let baseline = samples.findLast((entry) => entry.timestamp <= cutoffMs);
+      if (!baseline) baseline = samples[0];
+      if (latest && baseline) {
+        total24h = latest.balance - baseline.balance;
       }
     }
 
