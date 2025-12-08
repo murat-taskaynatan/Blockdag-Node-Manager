@@ -4,6 +4,8 @@
 - Wallet 24h change now uses the nearest sample before the 24h cutoff as the baseline, producing accurate deltas even with sparse polling.
 - Liveness recovery detects RLP header decode errors to unblock recovery when block headers are corrupted.
 - Default `nodes.json` remains empty so fresh installs don’t inherit local node entries.
+- Launchpad: aligned p2p ports, expose UDP + TCP, set maxpeers, and inject external IP for correct announce.
+- External reachability checks via ipify/ifconfig and check-host.net port probe to catch firewall/NAT blocks early.
 
 ## v1.7.5 - 2025-11-30
 
