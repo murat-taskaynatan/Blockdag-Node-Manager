@@ -4,6 +4,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="https://blockdag.network/images/presskit/Symbol.svg">
 <style>
+  @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
   :root { --bg:#0b1020; --card:#121a33; --text:#e7eaf6; --muted:#9aa4c7; --ok:#25d366; --bad:#ff5370; --warn:#ffb74d; }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--text);font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Helvetica,Arial}
@@ -50,6 +51,23 @@
   .launchpad-checkbox input{margin-top:0}
   .launchpad-checkbox span{flex:1;line-height:1.4}
   .launchpad-card input[type=checkbox]{width:16px;height:16px;min-height:0}
+  .about-parallax{position:relative;overflow:hidden;border:1px solid rgba(255,255,255,.08);border-radius:18px;background:var(--card);padding:0;margin-top:4px;min-height:80.86px;display:flex;align-items:center;justify-content:center}
+  /* related resource: (index):55:3 */
+  .about-parallax .parallax-scene{position:relative;width:100%;height:120px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .about-parallax .logo-wrapper{position:relative;z-index:10;text-align:center}
+  .about-parallax .blockdag-text{margin:0;font-family:'Press Start 2P',cursive,ui-sans-serif;font-size:clamp(14px,4vw,24px);color:#00ffc4;line-height:1.1;text-shadow:0 0 10px rgba(0,255,200,.6)}
+  .about-parallax .blockdag-slogan{display:block;font-size:0.4em;margin-top:0.2em;color:#00ffc4;opacity:.8;letter-spacing:0;white-space:nowrap}
+  .about-parallax .layer-far,
+  .about-parallax .layer-near{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:1}
+  .about-parallax .layer-far{background:radial-gradient(circle,rgba(255,255,255,.2) 1px,transparent 1px);background-size:50px 50px;animation:parallaxScroll 40s linear infinite}
+  .about-parallax .layer-near{background:repeating-linear-gradient(45deg,rgba(0,255,200,.1) 0px,transparent 5px,rgba(0,255,200,.1) 6px);background-size:100px 100px;animation:parallaxScroll 20s linear infinite reverse}
+  @keyframes parallaxScroll{
+    0%{background-position:0% 0%}
+    25%{background-position:100% 0%}
+    50%{background-position:50% 50%}
+    75%{background-position:0% 100%}
+    100%{background-position:0% 0%}
+  }
   .launchpad-port-gap{height:16px}
   .launchpad-port-grid{display:grid;grid-template-columns:150px 150px 150px;justify-items:flex-start;gap:10px 12px}
   .launchpad-port-grid label{margin:0}
@@ -1166,8 +1184,17 @@
                 Install update
               </button>
             </div>
-            <div class="about-ascii">
-              <pre id="aboutAsciiFrame" class="about-ascii__frame" aria-hidden="true"></pre>
+            <div class="about-parallax" aria-label="BlockDAG — Crypto Mining for All">
+              <div class="parallax-scene">
+                <div class="layer-far"></div>
+                <div class="layer-near"></div>
+                <div class="logo-wrapper">
+                  <h1 class="blockdag-text">
+                    BLOCKDAG
+                    <span class="blockdag-slogan">CRYPTO MINING FOR ALL</span>
+                  </h1>
+                </div>
+              </div>
             </div>
             <div id="aboutReleaseNotes" hidden style="font-size:13px;color:var(--muted);line-height:1.4;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:10px;white-space:pre-wrap"></div>
             <div style="width:100%;max-width:100%;min-width:0">

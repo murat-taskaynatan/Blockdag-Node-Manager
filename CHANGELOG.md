@@ -1,3 +1,10 @@
+## v1.7.6 - 2025-12-07
+
+### Fixes
+- Wallet 24h change now uses the nearest sample before the 24h cutoff as the baseline, producing accurate deltas even with sparse polling.
+- Liveness recovery detects RLP header decode errors to unblock recovery when block headers are corrupted.
+- Default `nodes.json` remains empty so fresh installs don’t inherit local node entries.
+
 ## v1.7.5 - 2025-11-30
 
 ### Launchpad Improvements
