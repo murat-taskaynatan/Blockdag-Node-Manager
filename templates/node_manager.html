@@ -1184,7 +1184,8 @@
                 Install update
               </button>
             </div>
-            <div class="about-parallax" aria-label="BlockDAG — Crypto Mining for All"{% if app_update_available %} hidden{% endif %}>
+            {% if not app_update_available %}
+            <div class="about-parallax" aria-label="BlockDAG — Crypto Mining for All">
               <div class="parallax-scene">
                 <div class="layer-far"></div>
                 <div class="layer-near"></div>
@@ -1196,6 +1197,7 @@
                 </div>
               </div>
             </div>
+            {% endif %}
             <div id="aboutReleaseNotes" hidden style="font-size:13px;color:var(--muted);line-height:1.4;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:10px;white-space:pre-wrap"></div>
             <div style="width:100%;max-width:100%;min-width:0">
               <div style="font-size:12px;color:var(--muted);margin-bottom:4px">Install log</div>
