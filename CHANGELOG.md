@@ -1,3 +1,8 @@
+## v1.7.7 - 2025-12-13
+
+### Launchpad
+- Stop forcing `--gcmode=archive` when launching nodes; the launchpad now strips archive GC flags so existing databases aren’t tripped by state-scheme mismatches.
+
 ## v1.7.6 - 2025-12-07
 
 ### Fixes
