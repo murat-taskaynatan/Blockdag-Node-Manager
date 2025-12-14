@@ -1,3 +1,8 @@
+## v1.7.8 - 2025-12-14
+
+### Launchpad
+- Drop the required contract address check in the launchpad/nodeworker flow so nodes can start without a deployed contract.
+
 ## v1.7.7 - 2025-12-13
 
 ### Launchpad
