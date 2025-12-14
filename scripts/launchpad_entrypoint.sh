@@ -60,6 +60,5 @@ exec nodeworker \
   --node-binary="$BIN" \
   --node-args="${NODE_ARGS:-}" \
   --rpc-url="${RPC_URL:-}" \
-  --contract-address="${CONTRACT_ADDRESS:-}" \
   --persist-root="${PERSIST_ROOT:-}" \
   --health-min-peers="${HEALTH_MIN_PEERS:-}"

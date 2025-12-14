@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Tuple, Union
 import requests
 
 LAUNCHPAD_REPO = os.getenv("BDAG_LAUNCHPAD_REPO", "https://github.com/BlockdagNetworkLabs/blockdag-scripts.git")
-LAUNCHPAD_DEFAULT_IMAGE = os.getenv("BDAG_LAUNCHPAD_IMAGE", "blockdagnetwork/awakening:v0.0.3")
+LAUNCHPAD_DEFAULT_IMAGE = os.getenv("BDAG_LAUNCHPAD_IMAGE", "blockdagnetwork/awakening:v0.0.2")
 HELPER_TEMPLATE = Path(__file__).resolve().parent / "launchpad_entrypoint.sh"
 NETWORK_KEY_NAMES = ("network.key",)
 BDAGETH_KEY_GLOBS = ("**/bdageth/keystore/*",)
