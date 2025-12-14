@@ -1,7 +1,7 @@
 ## v1.7.8 - 2025-12-14
 
 ### Launchpad
-- Drop the required contract address check in the launchpad/nodeworker flow so nodes can start without a deployed contract and avoid “missing bytecode” crashes.
+- Allow launchpad/nodeworker to start without a contract address so nodes don’t crash with “missing bytecode” when no contract is deployed.
 
 ## v1.7.7 - 2025-12-13
 
