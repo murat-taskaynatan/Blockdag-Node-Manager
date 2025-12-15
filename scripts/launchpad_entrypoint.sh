@@ -55,10 +55,8 @@ if [ -n "${EXTERNAL_IP:-}" ] && ! printf '%s' "$NODE_ARGS" | grep -q -- '--exter
   NODE_ARGS="$NODE_ARGS --externalip=$EXTERNAL_IP"
 fi
 
-exec nodeworker \
-  --health.liveness-timeout="${HEALTH_LIVENESS_TIMEOUT:-5m}" \
-  --node-binary="$BIN" \
-  --node-args="${NODE_ARGS:-}" \
-  --rpc-url="${RPC_URL:-}" \
-  --persist-root="${PERSIST_ROOT:-}" \
-  --health-min-peers="${HEALTH_MIN_PEERS:-}"
+# Launchpad should not force archive GC; strip any baked-in --gcmode=archive or variant without breaking quoted sub-args.
+NODE_ARGS="$(printf '%s\n' "$NODE_ARGS" | sed -E 's/--gcmode=archive//g; s/--gcmode[[:space:]]+archive//g')"
+
+# Run the node directly (skip nodeworker contract enforcement) and honor quoted args.
+exec /bin/sh -c "exec \"$BIN\" $NODE_ARGS"
